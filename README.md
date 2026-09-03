@@ -330,6 +330,9 @@ services:
 | CRON_CONCURRENCY                    | cron 刷新详情的并发数（1~20）                                      | 数字                                      | 5                                                                                                                          |
 | CRON_ACTIVE_DAYS                    | 仅刷新 N 天内活跃用户，0 表示不过滤（无 lastOnline 视为活跃）      | 数字                                      | 7                                                                                                                          |
 | CONFIG_CACHE_TTL                    | 非 localstorage 下配置内存缓存秒数，管理后台写入立即失效           | 数字                                      | 15                                                                                                                         |
+| SEARCH_CACHE_TTL                    | 搜索结果缓存秒数（按源+词），0 表示关闭                            | 数字                                      | 600                                                                                                                        |
+| SOURCE_CIRCUIT_THRESHOLD            | 源连续失败多少次触发熔断，0 表示关闭                               | 数字                                      | 5                                                                                                                          |
+| SOURCE_CIRCUIT_COOLDOWN_S           | 熔断冷却秒数，期满后半开放试探                                     | 数字                                      | 300                                                                                                                        |
 
 NEXT_PUBLIC_DOUBAN_PROXY_TYPE 选项解释：
 

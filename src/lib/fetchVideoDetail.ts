@@ -1,7 +1,12 @@
 import { getAvailableApiSites } from '@/lib/config';
 import { SearchResult } from '@/lib/types';
 
-import { getDetailFromApi, searchFromApiStream } from './downstream';
+import {
+  getDetailFromApi,
+  recordSourceFailure,
+  recordSourceSuccess,
+  searchFromApiStream,
+} from './downstream';
 
 interface FetchVideoDetailOptions {
   source: string;
@@ -18,7 +23,31 @@ interface FetchVideoDetailOptions {
  *  - 不使用标题模糊匹配兜底，避免误取其他来源/其他视频的集数；
  *  - 仅当搜索无精确命中时，才调用详情接口兜底。
  */
-export async function fetchVideoDetail({
+export async function fetchVideoDetail(
+  options: FetchVideoDetailOptions
+): Promise<SearchResult> {
+  const { source } = options;
+  try {
+    const result = await fetchVideoDetailInner(options);
+    recordSourceSuccess(source);
+    return result;
+  } catch (error) {
+    // 仅传输层错误计入熔断（配置类错误如“无效的API来源”不计）
+    const msg = error instanceof Error ? error.message : '';
+    if (
+      msg === '请求超时' ||
+      msg === '请求失败' ||
+      msg.includes('网络错误') ||
+      msg.endsWith('timeout') ||
+      msg.includes('失败:')
+    ) {
+      recordSourceFailure(source);
+    }
+    throw error;
+  }
+}
+
+async function fetchVideoDetailInner({
   source,
   id,
   fallbackTitle = '',

@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getCacheTime, getConfig } from '@/lib/config';
-import { searchFromApiStream } from '@/lib/downstream';
+import {
+  recordSourceFailure,
+  recordSourceSuccess,
+  searchFromApiStream,
+} from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'edge';
@@ -92,6 +96,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    recordSourceSuccess(resourceId);
+
     return NextResponse.json(
       { results: result },
       {
@@ -104,6 +110,15 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (error) {
+    const msg = error instanceof Error ? error.message : '';
+    if (
+      msg === '请求超时' ||
+      msg === '请求失败' ||
+      msg.includes('网络错误') ||
+      msg.includes('失败:')
+    ) {
+      recordSourceFailure(resourceId || '');
+    }
     return NextResponse.json(
       {
         error: '搜索失败',

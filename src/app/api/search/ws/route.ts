@@ -4,7 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getConfig } from '@/lib/config';
-import { searchFromApiStream } from '@/lib/downstream';
+import {
+  isSourceCircuitOpen,
+  recordSourceFailure,
+  recordSourceSuccess,
+  searchFromApiStream,
+} from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'edge';
@@ -33,7 +38,10 @@ export async function GET(request: NextRequest) {
   }
 
   const config = await getConfig();
-  const apiSites = await getAvailableApiSites(authInfo.username);
+  const allSites = await getAvailableApiSites(authInfo.username);
+  // 熔断中的源本轮跳过，调用方以 source_error 事件透出
+  const trippedSites = allSites.filter((site) => isSourceCircuitOpen(site.key));
+  const apiSites = allSites.filter((site) => !isSourceCircuitOpen(site.key));
 
   // 共享状态
   let streamClosed = false;
@@ -63,11 +71,11 @@ export async function GET(request: NextRequest) {
         }
       };
 
-      // 发送开始事件
+      // 发送开始事件（总数含熔断源，避免前端一直等待）
       const startEvent = `data: ${JSON.stringify({
         type: 'start',
         query,
-        totalSources: apiSites.length,
+        totalSources: apiSites.length + trippedSites.length,
         timestamp: Date.now(),
       })}\n\n`;
 
@@ -78,6 +86,24 @@ export async function GET(request: NextRequest) {
       // 记录已完成的源数量
       let completedSources = 0;
       const allResults: any[] = [];
+
+      // 熔断源直接以 source_error 透出并计入完成
+      for (const site of trippedSites) {
+        completedSources++;
+        if (!streamClosed) {
+          const trippedEvent = `data: ${JSON.stringify({
+            type: 'source_error',
+            source: site.key,
+            sourceName: site.name,
+            error: '源暂时不可用，已熔断跳过',
+            timestamp: Date.now(),
+          })}\n\n`;
+          if (!safeEnqueue(encoder.encode(trippedEvent))) {
+            streamClosed = true;
+            return;
+          }
+        }
+      }
 
       // 为每个源创建搜索 Promise
       const searchPromises = apiSites.map(async (site) => {
@@ -119,6 +145,9 @@ export async function GET(request: NextRequest) {
             });
           }
 
+          // 有产出视为健康，复位该源熔断计数
+          if (allResults.length > 0) recordSourceSuccess(site.key);
+
           // 发送该源的搜索结果
           completedSources++;
 
@@ -142,6 +171,16 @@ export async function GET(request: NextRequest) {
           }
         } catch (error) {
           console.warn(`搜索失败 ${site.name}:`, error);
+          // 仅传输层错误计入熔断（超时/请求失败/网络错误）
+          const msg = error instanceof Error ? error.message : '';
+          if (
+            msg === '请求超时' ||
+            msg === '请求失败' ||
+            msg.includes('网络错误') ||
+            msg.endsWith('timeout')
+          ) {
+            recordSourceFailure(site.key);
+          }
 
           // 发送源错误事件
           completedSources++;
@@ -162,8 +201,8 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // 检查是否所有源都已完成
-        if (completedSources === apiSites.length) {
+        // 检查是否所有源都已完成（含熔断源）
+        if (completedSources === apiSites.length + trippedSites.length) {
           if (!streamClosed) {
             // 发送最终完成事件
             const completeEvent = `data: ${JSON.stringify({

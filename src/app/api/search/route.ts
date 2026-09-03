@@ -4,7 +4,12 @@ import { NextRequest } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getCacheTime, getConfig } from '@/lib/config';
-import { searchFromApiStream } from '@/lib/downstream';
+import {
+  isSourceCircuitOpen,
+  recordSourceFailure,
+  recordSourceSuccess,
+  searchFromApiStream,
+} from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'edge';
@@ -44,6 +49,17 @@ export async function GET(request: NextRequest) {
     const selectedSources = selectedSourcesParam.split(',');
     apiSites = apiSites.filter((site) => selectedSources.includes(site.key));
   }
+
+  // 熔断中的源直接跳过，不占用 20s 超时；信息进 failedSources，前端失败源面板可见
+  const tripped = apiSites.filter((site) => isSourceCircuitOpen(site.key));
+  if (tripped.length > 0) {
+    apiSites = apiSites.filter((site) => !isSourceCircuitOpen(site.key));
+  }
+  const trippedFailures = tripped.map((site) => ({
+    name: site.name,
+    key: site.key,
+    error: '源暂时不可用，已熔断跳过',
+  }));
 
   const encoder = new TextEncoder();
   const { readable, writable } = new TransformStream();
@@ -118,17 +134,21 @@ export async function GET(request: NextRequest) {
         if (!hasResults) {
           throw new Error('无搜索结果');
         }
+        recordSourceSuccess(site.key);
         return { siteResults, failed: null };
       } catch (err: any) {
         let errorMessage = err.message || '未知的错误';
 
-        // 根据错误类型提供更具体的错误信息
+        // 根据错误类型提供更具体的错误信息；仅传输层错误计入熔断
         if (err.message === '请求超时') {
           errorMessage = '请求超时';
+          recordSourceFailure(site.key);
         } else if (err.message === '请求失败') {
           errorMessage = '请求失败';
+          recordSourceFailure(site.key);
         } else if (err.message?.includes('网络错误')) {
           errorMessage = '网络错误';
+          recordSourceFailure(site.key);
         }
 
         return {
@@ -140,7 +160,10 @@ export async function GET(request: NextRequest) {
 
     const results = await Promise.all(tasks);
     const aggregatedResults = results.flatMap((r) => r.siteResults);
-    const failedSources = results.filter((r) => r.failed).map((r) => r.failed);
+    const failedSources = [
+      ...trippedFailures,
+      ...results.filter((r) => r.failed).map((r) => r.failed),
+    ];
 
     if (aggregatedResults.length === 0) {
       const body = { results: [], failedSources };
@@ -169,7 +192,12 @@ export async function GET(request: NextRequest) {
   // -------------------------
   (async () => {
     const aggregatedResults: any[] = [];
-    const failedSources: { name: string; key: string; error: string }[] = [];
+    const failedSources: { name: string; key: string; error: string }[] = [
+      ...trippedFailures,
+    ];
+    if (trippedFailures.length > 0) {
+      await safeWrite({ failedSources });
+    }
 
     const tasks = apiSites.map(async (site) => {
       try {
@@ -219,18 +247,23 @@ export async function GET(request: NextRequest) {
             error: '无搜索结果',
           });
           await safeWrite({ failedSources });
+        } else {
+          recordSourceSuccess(site.key);
         }
       } catch (err: any) {
         console.warn(`搜索失败 ${site.name}:`, err.message);
         let errorMessage = err.message || '未知的错误';
 
-        // 根据错误类型提供更具体的错误信息
+        // 根据错误类型提供更具体的错误信息；仅传输层错误计入熔断
         if (err.message === '请求超时') {
           errorMessage = '请求超时';
+          recordSourceFailure(site.key);
         } else if (err.message === '请求失败') {
           errorMessage = '请求失败';
+          recordSourceFailure(site.key);
         } else if (err.message.includes('网络错误')) {
           errorMessage = '网络错误';
+          recordSourceFailure(site.key);
         }
 
         failedSources.push({

@@ -1,6 +1,83 @@
-import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
+import { API_CONFIG, ApiSite, getCacheTime, getConfig } from '@/lib/config';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
+
+// ---------- 进程内热点缓存（serverless 多实例下尽力而为） ----------
+// 搜索：key=`${site}:${maxPages}:${query}`，默认 10 分钟；同一词重复搜不再打上游
+const searchCache = new Map<
+  string,
+  { at: number; batches: SearchResult[][] }
+>();
+const SEARCH_CACHE_MAX = 200;
+
+function getSearchCacheTtlMs(): number {
+  const sec = Number(process.env.SEARCH_CACHE_TTL || 600);
+  if (!Number.isFinite(sec) || sec < 0) return 600000;
+  return sec * 1000;
+}
+
+// 详情：key=`${site}:${id}`，TTL 取站点接口缓存时间，默认上限 500 条
+const detailCache = new Map<string, { at: number; data: SearchResult }>();
+const DETAIL_CACHE_MAX = 500;
+
+function setWithCap<K, V>(map: Map<K, V>, key: K, value: V, max: number): void {
+  if (map.has(key)) map.delete(key);
+  else if (map.size >= max) {
+    const oldest = map.keys().next();
+    if (!oldest.done) map.delete(oldest.value);
+  }
+  map.set(key, value);
+}
+
+// ---------- 源健康熔断（进程内，serverless 下尽力而为） ----------
+// 连续失败达阈值的源会被跳过一个冷却期，避免每次搜索都被慢源拖到超时；
+// 跳过信息通过各搜索接口既有的 failedSources/source_error 透出，前端失败源面板直接可见。
+const sourceHealth = new Map<string, { fails: number; openedAt: number }>();
+
+function getCircuitThreshold(): number {
+  const n = Number(process.env.SOURCE_CIRCUIT_THRESHOLD ?? 5);
+  if (!Number.isFinite(n) || n < 0) return 5;
+  return Math.floor(n);
+}
+
+function getCircuitCooldownMs(): number {
+  const n = Number(process.env.SOURCE_CIRCUIT_COOLDOWN_S ?? 300);
+  if (!Number.isFinite(n) || n < 0) return 300000;
+  return n * 1000;
+}
+
+/** 熔断器是否打开（打开=本轮跳过该源）；冷却期过后半开，允许试探一次 */
+export function isSourceCircuitOpen(key: string): boolean {
+  if (getCircuitThreshold() === 0) return false;
+  const entry = sourceHealth.get(key);
+  if (!entry || entry.fails < getCircuitThreshold()) return false;
+  if (Date.now() - entry.openedAt > getCircuitCooldownMs()) {
+    sourceHealth.delete(key);
+    return false;
+  }
+  return true;
+}
+
+export function recordSourceSuccess(key: string): void {
+  if (sourceHealth.has(key)) sourceHealth.delete(key);
+}
+
+export function recordSourceFailure(key: string): void {
+  const threshold = getCircuitThreshold();
+  if (threshold === 0) return;
+  const entry = sourceHealth.get(key) || { fails: 0, openedAt: 0 };
+  entry.fails++;
+  if (entry.fails >= threshold && !entry.openedAt) {
+    entry.openedAt = Date.now();
+    // eslint-disable-next-line no-console
+    console.warn(
+      `源熔断: ${key} 连续失败 ${entry.fails} 次，冷却 ${
+        getCircuitCooldownMs() / 1000
+      }s`
+    );
+  }
+  sourceHealth.set(key, entry);
+}
 
 interface ApiSearchItem {
   vod_id: string;
@@ -129,110 +206,169 @@ export async function* searchFromApiStream(
   timeout?: number,
   maxPages?: number
 ): AsyncGenerator<SearchResult[], void, unknown> {
-  const apiUrl =
-    apiSite.api + API_CONFIG.search.path + encodeURIComponent(query);
-
-  const response = await fetchWithTimeout(
-    apiUrl,
-    { headers: API_CONFIG.search.headers },
-    timeout
-  );
-  if (!response.ok) return;
-
-  const data = await response.json();
-  if (!Array.isArray(data?.list)) return;
-
-  // 第一页
-  yield data.list.map((item: ApiSearchItem) =>
-    mapItemToResult(item, apiSite, apiSite.name)
-  );
-
-  // 分页
+  // 分页上限先确定（调用方透传则零读库），缓存 key 与之绑定
   const resolvedMaxPages =
     maxPages ?? (await getConfig()).SiteConfig.SearchDownstreamMaxPage;
   const maxPagesNum = resolvedMaxPages;
-  const pageCount = data.pagecount || 1;
-  const pagesToFetch = Math.min(pageCount, maxPagesNum);
+  const cacheKey = `s:${apiSite.key}:${maxPagesNum}:${query}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < getSearchCacheTtlMs()) {
+    // 命中则刷新 LRU 顺序后直接回放
+    searchCache.delete(cacheKey);
+    searchCache.set(cacheKey, cached);
+    for (const batch of cached.batches) {
+      yield batch;
+    }
+    return;
+  }
 
-  if (pagesToFetch > 1) {
-    if (parallel) {
-      // ------------------ 并行模式 ------------------
-      const pagePromises: Promise<{
-        page: number;
-        results: SearchResult[];
-      } | null>[] = [];
+  const collected: SearchResult[][] = [];
+  let fullyConsumed = false;
+  try {
+    const apiUrl =
+      apiSite.api + API_CONFIG.search.path + encodeURIComponent(query);
 
-      for (let page = 2; page <= pagesToFetch; page++) {
-        const pageUrl =
-          apiSite.api +
-          API_CONFIG.search.pagePath
-            .replace('{query}', encodeURIComponent(query))
-            .replace('{page}', page.toString());
+    const response = await fetchWithTimeout(
+      apiUrl,
+      { headers: API_CONFIG.search.headers },
+      timeout
+    );
+    if (!response.ok) return;
 
-        const promise = (async () => {
+    const data = await response.json();
+    if (!Array.isArray(data?.list)) return;
+
+    // 第一页
+    const firstBatch = data.list.map((item: ApiSearchItem) =>
+      mapItemToResult(item, apiSite, apiSite.name)
+    );
+    collected.push(firstBatch);
+    yield firstBatch;
+
+    // 分页
+    const pageCount = data.pagecount || 1;
+    const pagesToFetch = Math.min(pageCount, maxPagesNum);
+
+    if (pagesToFetch > 1) {
+      if (parallel) {
+        // ------------------ 并行模式 ------------------
+        const pagePromises: Promise<{
+          page: number;
+          results: SearchResult[];
+        } | null>[] = [];
+
+        for (let page = 2; page <= pagesToFetch; page++) {
+          const pageUrl =
+            apiSite.api +
+            API_CONFIG.search.pagePath
+              .replace('{query}', encodeURIComponent(query))
+              .replace('{page}', page.toString());
+
+          const promise = (async () => {
+            const pageRes = await fetchWithTimeout(
+              pageUrl,
+              { headers: API_CONFIG.search.headers },
+              timeout
+            );
+            if (!pageRes.ok) return null;
+
+            const pageData = await pageRes.json();
+            if (!Array.isArray(pageData?.list)) return null;
+
+            const results = pageData.list.map((item: ApiSearchItem) =>
+              mapItemToResult(item, apiSite, apiSite.name)
+            );
+            return { page, results };
+          })();
+
+          pagePromises.push(promise);
+        }
+
+        const settled = await Promise.all(pagePromises);
+        for (const res of settled
+          .filter(
+            (r): r is { page: number; results: SearchResult[] } =>
+              !!r && r.results.length > 0
+          )
+          .sort((a, b) => a.page - b.page)) {
+          collected.push(res.results);
+          yield res.results;
+        }
+      } else {
+        // ------------------ 顺序模式 ------------------
+        for (let page = 2; page <= pagesToFetch; page++) {
+          const pageUrl =
+            apiSite.api +
+            API_CONFIG.search.pagePath
+              .replace('{query}', encodeURIComponent(query))
+              .replace('{page}', page.toString());
+
           const pageRes = await fetchWithTimeout(
             pageUrl,
             { headers: API_CONFIG.search.headers },
             timeout
           );
-          if (!pageRes.ok) return null;
+          if (!pageRes.ok) continue;
 
           const pageData = await pageRes.json();
-          if (!Array.isArray(pageData?.list)) return null;
-
-          const results = pageData.list.map((item: ApiSearchItem) =>
-            mapItemToResult(item, apiSite, apiSite.name)
-          );
-          return { page, results };
-        })();
-
-        pagePromises.push(promise);
-      }
-
-      const settled = await Promise.all(pagePromises);
-      for (const res of settled
-        .filter(
-          (r): r is { page: number; results: SearchResult[] } =>
-            !!r && r.results.length > 0
-        )
-        .sort((a, b) => a.page - b.page)) {
-        yield res.results;
-      }
-    } else {
-      // ------------------ 顺序模式 ------------------
-      for (let page = 2; page <= pagesToFetch; page++) {
-        const pageUrl =
-          apiSite.api +
-          API_CONFIG.search.pagePath
-            .replace('{query}', encodeURIComponent(query))
-            .replace('{page}', page.toString());
-
-        const pageRes = await fetchWithTimeout(
-          pageUrl,
-          { headers: API_CONFIG.search.headers },
-          timeout
-        );
-        if (!pageRes.ok) continue;
-
-        const pageData = await pageRes.json();
-        if (Array.isArray(pageData?.list)) {
-          const results = pageData.list.map((item: ApiSearchItem) =>
-            mapItemToResult(item, apiSite, apiSite.name)
-          );
-          if (results.length > 0) yield results;
+          if (Array.isArray(pageData?.list)) {
+            const results = pageData.list.map((item: ApiSearchItem) =>
+              mapItemToResult(item, apiSite, apiSite.name)
+            );
+            if (results.length > 0) {
+              collected.push(results);
+              yield results;
+            }
+          }
         }
       }
+    }
+
+    fullyConsumed = true;
+  } finally {
+    // 仅完整消费才缓存：提前 break（如精确命中）时半截结果不进缓存；
+    // 空结果多为上游抖动，同样不缓存避免把空洞固化
+    if (fullyConsumed && collected.length > 0) {
+      setWithCap(
+        searchCache,
+        cacheKey,
+        { at: Date.now(), batches: collected },
+        SEARCH_CACHE_MAX
+      );
     }
   }
 }
 
-/** 获取详情 */
+/** 获取详情（进程内 LRU，TTL 取站点接口缓存时间；追更/cron/播放页反复拉同一批剧集时省上游请求） */
 export async function getDetailFromApi(
   apiSite: ApiSite,
   id: string
 ): Promise<SearchResult> {
-  if (apiSite.detail) return handleSpecialSourceDetail(id, apiSite);
+  const cacheKey = `d:${apiSite.key}:${id}`;
+  const cached = detailCache.get(cacheKey);
+  const ttlMs = (await getCacheTime()) * 1000;
+  if (cached && Date.now() - cached.at < ttlMs) {
+    detailCache.delete(cacheKey);
+    detailCache.set(cacheKey, cached);
+    return cached.data;
+  }
 
+  const fresh = apiSite.detail
+    ? await handleSpecialSourceDetail(id, apiSite)
+    : await fetchDetailFromApi(apiSite, id);
+  setWithCap(
+    detailCache,
+    cacheKey,
+    { at: Date.now(), data: fresh },
+    DETAIL_CACHE_MAX
+  );
+  return fresh;
+}
+
+async function fetchDetailFromApi(
+  apiSite: ApiSite,
+  id: string
+): Promise<SearchResult> {
   const detailUrl = `${apiSite.api}${API_CONFIG.detail.path}${id}`;
   const response = await fetchWithTimeout(detailUrl, {
     headers: API_CONFIG.detail.headers,
