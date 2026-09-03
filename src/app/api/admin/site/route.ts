@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
-import { getConfig } from '@/lib/config';
+import { getConfig, invalidateConfigCache } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 
 export const runtime = 'edge';
@@ -117,6 +117,7 @@ export async function POST(request: NextRequest) {
     // 写入数据库
     if (storage && typeof (storage as any).setAdminConfig === 'function') {
       await (storage as any).setAdminConfig(adminConfig);
+      invalidateConfigCache();
     }
 
     return NextResponse.json(

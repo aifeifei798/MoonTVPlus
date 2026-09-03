@@ -47,11 +47,23 @@ export const API_CONFIG = {
 // 在模块加载时根据环境决定配置来源
 let fileConfig: ConfigFileStruct;
 let cachedConfig: AdminConfig;
+// 非 localstorage 下 DB 配置的内存短 TTL（毫秒），命中则跳过读库。
+// 后台管理写入走 setAdminConfig 会立即失效；直接调 storage.setAdminConfig 的
+// 旧路径最多延迟一个 TTL 可见（默认 15s），serverless 多实例同理最终一致。
+let cachedAt = 0;
+
+function getConfigCacheTtlMs(): number {
+  const sec = Number(process.env.CONFIG_CACHE_TTL || 15);
+  if (!Number.isFinite(sec) || sec < 0) return 15000;
+  return sec * 1000;
+}
+
+export function invalidateConfigCache(): void {
+  cachedAt = 0;
+}
 
 function getSiteNameEnv(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME || 'MoonTV'
-  );
+  return process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME || 'MoonTV';
 }
 
 // Docker/nodejs 下从磁盘读取 config.json；失败时返回空结构而非抛错
@@ -265,14 +277,14 @@ async function initConfig() {
   if (storageType !== 'localstorage') {
     // 数据库存储，读取并补全管理员配置
     const storage = getStorage();
-  
+
     try {
       // 尝试从数据库获取管理员配置
       let adminConfig: AdminConfig | null = null;
       if (storage && typeof (storage as any).getAdminConfig === 'function') {
         adminConfig = await (storage as any).getAdminConfig();
       }
-  
+
       // 获取所有用户名，用于补全 Users
       let userNames: string[] = [];
       if (storage && typeof (storage as any).getAllUsers === 'function') {
@@ -282,7 +294,7 @@ async function initConfig() {
           console.error('获取用户列表失败:', e);
         }
       }
-  
+
       if (adminConfig) {
         try {
           const parsed = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
@@ -297,7 +309,7 @@ async function initConfig() {
         }
         mergeSourceConfigs(adminConfig, fileConfig);
         mergeCustomCategories(adminConfig, fileConfig);
-  
+
         const existedUsers = new Set(
           (adminConfig.UserConfig.Users || []).map((u) => u.username)
         );
@@ -322,9 +334,16 @@ async function initConfig() {
         }
         // 初始化分组结构（若缺失）
         if (!adminConfig.UserConfig) {
-          adminConfig.UserConfig = { AllowRegister: false, Users: [], Groups: [] } as any;
+          adminConfig.UserConfig = {
+            AllowRegister: false,
+            Users: [],
+            Groups: [],
+          } as any;
         }
-        if (!('Groups' in adminConfig.UserConfig) || !adminConfig.UserConfig.Groups) {
+        if (
+          !('Groups' in adminConfig.UserConfig) ||
+          !adminConfig.UserConfig.Groups
+        ) {
           (adminConfig.UserConfig as any).Groups = [];
         }
       } else {
@@ -365,42 +384,44 @@ async function initConfig() {
               process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY_TYPE || 'direct',
             DoubanImageProxy: process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY || '',
             DisableYellowFilter:
-          process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true',
-            DanmakuApiBaseUrl:
-              process.env.NEXT_PUBLIC_DANMU_API_BASE_URL ||
-              '',
-        TVBoxEnabled: false,
-        TVBoxPassword: '',
+              process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true',
+            DanmakuApiBaseUrl: process.env.NEXT_PUBLIC_DANMU_API_BASE_URL || '',
+            TVBoxEnabled: false,
+            TVBoxPassword: '',
           },
           UserConfig: {
             AllowRegister: process.env.NEXT_PUBLIC_ENABLE_REGISTER === 'true',
             Users: allUsers as any,
             Groups: [],
           },
-          SourceConfig: Object.entries(fileConfig.api_site || {}).map(([key, site]) => ({
-            key,
-            name: site.name,
-            api: site.api,
-            detail: site.detail,
-            from: 'config',
-            disabled: false,
-          })),
-          CustomCategories: (fileConfig.custom_category || []).map((category) => ({
-            name: category.name,
-            type: category.type,
-            query: category.query,
-            from: 'config',
-            disabled: false,
-          })),
+          SourceConfig: Object.entries(fileConfig.api_site || {}).map(
+            ([key, site]) => ({
+              key,
+              name: site.name,
+              api: site.api,
+              detail: site.detail,
+              from: 'config',
+              disabled: false,
+            })
+          ),
+          CustomCategories: (fileConfig.custom_category || []).map(
+            (category) => ({
+              name: category.name,
+              type: category.type,
+              query: category.query,
+              from: 'config',
+              disabled: false,
+            })
+          ),
           SubscriptionConfig: {},
         };
       }
-  
+
       // 写回数据库（更新/创建）
       if (storage && typeof (storage as any).setAdminConfig === 'function') {
         await (storage as any).setAdminConfig(adminConfig);
       }
-  
+
       // 更新缓存
       cachedConfig = adminConfig;
     } catch (err) {
@@ -418,17 +439,14 @@ async function initConfig() {
         SearchDownstreamMaxPage:
           Number(process.env.NEXT_PUBLIC_SEARCH_MAX_PAGE) || 5,
         SiteInterfaceCacheTime: fileConfig.cache_time || 7200,
-        DoubanProxyType:
-          process.env.NEXT_PUBLIC_DOUBAN_PROXY_TYPE || 'direct',
+        DoubanProxyType: process.env.NEXT_PUBLIC_DOUBAN_PROXY_TYPE || 'direct',
         DoubanProxy: process.env.NEXT_PUBLIC_DOUBAN_PROXY || '',
         DoubanImageProxyType:
           process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY_TYPE || 'direct',
         DoubanImageProxy: process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY || '',
         DisableYellowFilter:
           process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true',
-        DanmakuApiBaseUrl:
-          process.env.NEXT_PUBLIC_DANMU_API_BASE_URL ||
-          '',
+        DanmakuApiBaseUrl: process.env.NEXT_PUBLIC_DANMU_API_BASE_URL || '',
         TVBoxEnabled: false,
         TVBoxPassword: '',
       },
@@ -437,14 +455,16 @@ async function initConfig() {
         Users: [],
         Groups: [],
       },
-      SourceConfig: Object.entries(fileConfig.api_site || {}).map(([key, site]) => ({
-        key,
-        name: site.name,
-        api: site.api,
-        detail: site.detail,
-        from: 'config',
-        disabled: false,
-      })),
+      SourceConfig: Object.entries(fileConfig.api_site || {}).map(
+        ([key, site]) => ({
+          key,
+          name: site.name,
+          api: site.api,
+          detail: site.detail,
+          from: 'config',
+          disabled: false,
+        })
+      ),
       CustomCategories:
         fileConfig.custom_category?.map((category) => ({
           name: category.name,
@@ -474,6 +494,11 @@ export async function getConfig(): Promise<AdminConfig> {
     return cloneConfig(cachedConfig);
   }
 
+  // 非本地存储：TTL 内直接返回内存缓存，跳过读库（每次请求至少省 1 次 DB roundtrip）
+  if (cachedConfig && Date.now() - cachedAt < getConfigCacheTtlMs()) {
+    return cloneConfig(cachedConfig);
+  }
+
   // 非本地存储，直接读 db 配置
   const storage = getStorage();
   let adminConfig: AdminConfig | null = null;
@@ -499,13 +524,21 @@ export async function getConfig(): Promise<AdminConfig> {
         ? adminConfig.UserConfig.AllowRegister
         : process.env.NEXT_PUBLIC_ENABLE_REGISTER === 'true';
     adminConfig.SiteConfig.DoubanProxyType =
-      adminConfig.SiteConfig.DoubanProxyType || process.env.NEXT_PUBLIC_DOUBAN_PROXY_TYPE || 'direct';
+      adminConfig.SiteConfig.DoubanProxyType ||
+      process.env.NEXT_PUBLIC_DOUBAN_PROXY_TYPE ||
+      'direct';
     adminConfig.SiteConfig.DoubanProxy =
-      adminConfig.SiteConfig.DoubanProxy || process.env.NEXT_PUBLIC_DOUBAN_PROXY || '';
+      adminConfig.SiteConfig.DoubanProxy ||
+      process.env.NEXT_PUBLIC_DOUBAN_PROXY ||
+      '';
     adminConfig.SiteConfig.DoubanImageProxyType =
-      adminConfig.SiteConfig.DoubanImageProxyType || process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY_TYPE || 'direct';
+      adminConfig.SiteConfig.DoubanImageProxyType ||
+      process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY_TYPE ||
+      'direct';
     adminConfig.SiteConfig.DoubanImageProxy =
-      adminConfig.SiteConfig.DoubanImageProxy || process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY || '';
+      adminConfig.SiteConfig.DoubanImageProxy ||
+      process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY ||
+      '';
     adminConfig.SiteConfig.DisableYellowFilter =
       typeof adminConfig.SiteConfig.DisableYellowFilter === 'boolean'
         ? adminConfig.SiteConfig.DisableYellowFilter
@@ -549,9 +582,16 @@ export async function getConfig(): Promise<AdminConfig> {
 
     // 初始化分组结构（若缺失）
     if (!adminConfig.UserConfig) {
-      adminConfig.UserConfig = { AllowRegister: false, Users: [], Groups: [] } as any;
+      adminConfig.UserConfig = {
+        AllowRegister: false,
+        Users: [],
+        Groups: [],
+      } as any;
     }
-    if (!('Groups' in adminConfig.UserConfig) || !adminConfig.UserConfig.Groups) {
+    if (
+      !('Groups' in adminConfig.UserConfig) ||
+      !adminConfig.UserConfig.Groups
+    ) {
       (adminConfig.UserConfig as any).Groups = [];
     }
 
@@ -586,6 +626,7 @@ export async function getConfig(): Promise<AdminConfig> {
       });
     }
     cachedConfig = adminConfig;
+    cachedAt = Date.now();
   } else {
     await initConfig();
   }
@@ -598,13 +639,19 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   if (!adminConfig.UserConfig) {
     adminConfig.UserConfig = { AllowRegister: false, Users: [] };
   }
-  if (!adminConfig.UserConfig.Users || !Array.isArray(adminConfig.UserConfig.Users)) {
+  if (
+    !adminConfig.UserConfig.Users ||
+    !Array.isArray(adminConfig.UserConfig.Users)
+  ) {
     adminConfig.UserConfig.Users = [];
   }
   if (!adminConfig.SourceConfig || !Array.isArray(adminConfig.SourceConfig)) {
     adminConfig.SourceConfig = [];
   }
-  if (!adminConfig.CustomCategories || !Array.isArray(adminConfig.CustomCategories)) {
+  if (
+    !adminConfig.CustomCategories ||
+    !Array.isArray(adminConfig.CustomCategories)
+  ) {
     adminConfig.CustomCategories = [];
   }
   if (!adminConfig.SubscriptionConfig) {
@@ -616,7 +663,9 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   if (!ownerUser) {
     return adminConfig;
   }
-  const originalOwner = adminConfig.UserConfig.Users.find((u) => u.username === ownerUser);
+  const originalOwner = adminConfig.UserConfig.Users.find(
+    (u) => u.username === ownerUser
+  );
 
   // 去重
   const seenUsernames = new Set<string>();
@@ -628,7 +677,9 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     return true;
   });
   // 过滤站长
-  adminConfig.UserConfig.Users = adminConfig.UserConfig.Users.filter((user) => user.username !== ownerUser);
+  adminConfig.UserConfig.Users = adminConfig.UserConfig.Users.filter(
+    (user) => user.username !== ownerUser
+  );
   // 其他用户不得拥有 owner 权限
   adminConfig.UserConfig.Users.forEach((user) => {
     if (user.role === 'owner') {
@@ -656,17 +707,18 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
 
   // 自定义分类去重
   const seenCustomCategoryKeys = new Set<string>();
-  adminConfig.CustomCategories = adminConfig.CustomCategories.filter((category) => {
-    if (seenCustomCategoryKeys.has(category.query + category.type)) {
-      return false;
+  adminConfig.CustomCategories = adminConfig.CustomCategories.filter(
+    (category) => {
+      if (seenCustomCategoryKeys.has(category.query + category.type)) {
+        return false;
+      }
+      seenCustomCategoryKeys.add(category.query + category.type);
+      return true;
     }
-    seenCustomCategoryKeys.add(category.query + category.type);
-    return true;
-  });
+  );
 
   return adminConfig;
 }
-
 
 export async function resetConfig() {
   const storage = getStorage();
@@ -718,11 +770,9 @@ export async function resetConfig() {
       DoubanImageProxy: process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY || '',
       DisableYellowFilter:
         process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true',
-        DanmakuApiBaseUrl:
-          process.env.NEXT_PUBLIC_DANMU_API_BASE_URL ||
-          '',
-        TVBoxEnabled: false,
-        TVBoxPassword: '',
+      DanmakuApiBaseUrl: process.env.NEXT_PUBLIC_DANMU_API_BASE_URL || '',
+      TVBoxEnabled: false,
+      TVBoxPassword: '',
     },
     UserConfig: {
       AllowRegister: process.env.NEXT_PUBLIC_ENABLE_REGISTER === 'true',
@@ -753,6 +803,7 @@ export async function resetConfig() {
   if (cachedConfig == null) {
     // serverless 环境，直接使用 adminConfig
     cachedConfig = adminConfig;
+    cachedAt = Date.now();
     return;
   }
   cachedConfig.ConfigFile = adminConfig.ConfigFile;
@@ -761,6 +812,7 @@ export async function resetConfig() {
   cachedConfig.SourceConfig = adminConfig.SourceConfig;
   cachedConfig.CustomCategories = adminConfig.CustomCategories || [];
   cachedConfig.SubscriptionConfig = adminConfig.SubscriptionConfig;
+  cachedAt = Date.now();
 }
 
 export async function getCacheTime(): Promise<number> {
@@ -768,26 +820,53 @@ export async function getCacheTime(): Promise<number> {
   return config.SiteConfig.SiteInterfaceCacheTime || 7200;
 }
 
-export async function getAvailableApiSites(username?: string): Promise<ApiSite[]> {
+export async function getAvailableApiSites(
+  username?: string
+): Promise<ApiSite[]> {
   const config = await getConfig();
   const all = config.SourceConfig.filter((s) => !s.disabled);
-  if (!username || !config.UserConfig?.Groups || config.UserConfig.Groups.length === 0) {
-    return all.map((s) => ({ key: s.key, name: s.name, api: s.api, detail: s.detail }));
+  if (
+    !username ||
+    !config.UserConfig?.Groups ||
+    config.UserConfig.Groups.length === 0
+  ) {
+    return all.map((s) => ({
+      key: s.key,
+      name: s.name,
+      api: s.api,
+      detail: s.detail,
+    }));
   }
   const user = config.UserConfig.Users.find((u) => u.username === username);
   const groupName = user?.group;
   if (!groupName) {
-    return all.map((s) => ({ key: s.key, name: s.name, api: s.api, detail: s.detail }));
+    return all.map((s) => ({
+      key: s.key,
+      name: s.name,
+      api: s.api,
+      detail: s.detail,
+    }));
   }
   const group = config.UserConfig.Groups.find((g) => g.name === groupName);
   if (!group) {
-    return all.map((s) => ({ key: s.key, name: s.name, api: s.api, detail: s.detail }));
+    return all.map((s) => ({
+      key: s.key,
+      name: s.name,
+      api: s.api,
+      detail: s.detail,
+    }));
   }
   const allowed = new Set(group.sourceKeys);
   const filtered = all.filter((s) => allowed.has(s.key));
-  return filtered.map((s) => ({ key: s.key, name: s.name, api: s.api, detail: s.detail }));
+  return filtered.map((s) => ({
+    key: s.key,
+    name: s.name,
+    api: s.api,
+    detail: s.detail,
+  }));
 }
 
 export async function setCachedConfig(config: AdminConfig) {
   cachedConfig = config;
+  cachedAt = Date.now();
 }

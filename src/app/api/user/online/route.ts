@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
-import { configSelfCheck, getConfig } from '@/lib/config';
+import { configSelfCheck, getConfig, invalidateConfigCache } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 
 export const runtime = 'edge';
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
     const storage = getStorage();
     if (storage && typeof (storage as any).setAdminConfig === 'function') {
       await (storage as any).setAdminConfig(configSelfCheck(adminConfig));
+      invalidateConfigCache();
     }
 
     return NextResponse.json({ ok: true, lastOnline: userEntry.lastOnline }, { status: 200 });

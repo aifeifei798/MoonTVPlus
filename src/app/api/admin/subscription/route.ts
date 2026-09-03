@@ -3,7 +3,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
-import { configSelfCheck,getConfig } from '@/lib/config';
+import {
+  configSelfCheck,
+  getConfig,
+  invalidateConfigCache,
+} from '@/lib/config';
 import { getStorage } from '@/lib/db';
 import { IStorage } from '@/lib/types';
 
@@ -58,9 +62,13 @@ async function fetchSubscriptionData(url: string): Promise<any> {
 }
 
 // 导入数据到配置
-function importSources(adminConfig: any, subscriptionData: any, importMode: 'overwrite' | 'merge') {
+function importSources(
+  adminConfig: any,
+  subscriptionData: any,
+  importMode: 'overwrite' | 'merge'
+) {
   // 假设 subscriptionData 是一个对象，包含 api_site 和 custom_category
-  const { api_site = {}} = subscriptionData;
+  const { api_site = {} } = subscriptionData;
 
   if (importMode === 'overwrite') {
     // 完全覆盖：清空现有 SourceConfig
@@ -73,11 +81,16 @@ function importSources(adminConfig: any, subscriptionData: any, importMode: 'ove
     };
     const configFileObj = { ...defaultConfig };
     try {
-      if (adminConfig.ConfigFile && typeof adminConfig.ConfigFile === 'string') {
+      if (
+        adminConfig.ConfigFile &&
+        typeof adminConfig.ConfigFile === 'string'
+      ) {
         const parsed = JSON.parse(adminConfig.ConfigFile);
         // 保留原有 cache_time 和 custom_category（如果存在）
-        configFileObj.cache_time = parsed.cache_time ?? defaultConfig.cache_time;
-        configFileObj.custom_category = parsed.custom_category ?? defaultConfig.custom_category;
+        configFileObj.cache_time =
+          parsed.cache_time ?? defaultConfig.cache_time;
+        configFileObj.custom_category =
+          parsed.custom_category ?? defaultConfig.custom_category;
       }
     } catch (e) {
       // 解析失败，使用默认值
@@ -206,7 +219,8 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'update': {
-        const { subscriptionUrl, autoUpdate, updateInterval, importMode } = body;
+        const { subscriptionUrl, autoUpdate, updateInterval, importMode } =
+          body;
         // 更新订阅配置
         adminConfig.SubscriptionConfig = adminConfig.SubscriptionConfig || {};
         if (subscriptionUrl !== undefined) {
@@ -216,50 +230,68 @@ export async function POST(request: NextRequest) {
           adminConfig.SubscriptionConfig.autoUpdate = Boolean(autoUpdate);
         }
         if (updateInterval !== undefined) {
-          adminConfig.SubscriptionConfig.updateInterval = Number(updateInterval);
+          adminConfig.SubscriptionConfig.updateInterval =
+            Number(updateInterval);
         }
         if (importMode !== undefined) {
           if (importMode !== 'overwrite' && importMode !== 'merge') {
-            return NextResponse.json({ error: 'importMode 必须是 overwrite 或 merge' }, { status: 400 });
+            return NextResponse.json(
+              { error: 'importMode 必须是 overwrite 或 merge' },
+              { status: 400 }
+            );
           }
           adminConfig.SubscriptionConfig.importMode = importMode;
         }
         // 保存配置
         if (storage && typeof (storage as any).setAdminConfig === 'function') {
           await (storage as any).setAdminConfig(configSelfCheck(adminConfig));
+          invalidateConfigCache();
         }
         return NextResponse.json({ success: true });
       }
 
       case 'import': {
         const { subscriptionUrl, importMode } = body;
-        const url = subscriptionUrl || adminConfig.SubscriptionConfig?.subscriptionUrl;
+        const url =
+          subscriptionUrl || adminConfig.SubscriptionConfig?.subscriptionUrl;
         if (!url) {
-          return NextResponse.json({ error: '订阅地址未提供' }, { status: 400 });
+          return NextResponse.json(
+            { error: '订阅地址未提供' },
+            { status: 400 }
+          );
         }
-        const mode = importMode || adminConfig.SubscriptionConfig?.importMode || 'merge';
+        const mode =
+          importMode || adminConfig.SubscriptionConfig?.importMode || 'merge';
         // 获取数据
         const subscriptionData = await fetchSubscriptionData(url);
         // 导入数据
         importSources(adminConfig, subscriptionData, mode);
         // 更新最后更新时间
         adminConfig.SubscriptionConfig = adminConfig.SubscriptionConfig || {};
-        adminConfig.SubscriptionConfig.lastUpdated = Math.floor(Date.now() / 1000);
+        adminConfig.SubscriptionConfig.lastUpdated = Math.floor(
+          Date.now() / 1000
+        );
         // 保存配置
         if (storage && typeof (storage as any).setAdminConfig === 'function') {
           await (storage as any).setAdminConfig(configSelfCheck(adminConfig));
+          invalidateConfigCache();
         }
         return NextResponse.json({ success: true, imported: true });
       }
 
       case 'check': {
         const subConfig = adminConfig.SubscriptionConfig || {};
-        const { autoUpdate = false, subscriptionUrl, lastUpdated, updateInterval = 86400 } = subConfig;
+        const {
+          autoUpdate = false,
+          subscriptionUrl,
+          lastUpdated,
+          updateInterval = 86400,
+        } = subConfig;
         const now = Math.floor(Date.now() / 1000);
         let shouldImport = false;
         let urlToImport = '';
         if (autoUpdate && subscriptionUrl) {
-          if (!lastUpdated || (now - lastUpdated) > updateInterval) {
+          if (!lastUpdated || now - lastUpdated > updateInterval) {
             shouldImport = true;
             urlToImport = subscriptionUrl;
           }
@@ -270,19 +302,41 @@ export async function POST(request: NextRequest) {
             const subscriptionData = await fetchSubscriptionData(urlToImport);
             const mode = subConfig.importMode || 'merge';
             importSources(adminConfig, subscriptionData, mode);
-            adminConfig.SubscriptionConfig = adminConfig.SubscriptionConfig || {};
+            adminConfig.SubscriptionConfig =
+              adminConfig.SubscriptionConfig || {};
             adminConfig.SubscriptionConfig.lastUpdated = now;
             // 保存配置
-            if (storage && typeof (storage as any).setAdminConfig === 'function') {
-              await (storage as any).setAdminConfig(configSelfCheck(adminConfig));
+            if (
+              storage &&
+              typeof (storage as any).setAdminConfig === 'function'
+            ) {
+              await (storage as any).setAdminConfig(
+                configSelfCheck(adminConfig)
+              );
+              invalidateConfigCache();
             }
-            return NextResponse.json({ success: true, updated: true, imported: true });
+            return NextResponse.json({
+              success: true,
+              updated: true,
+              imported: true,
+            });
           } catch (error) {
             console.error('自动更新导入失败:', error);
-            return NextResponse.json({ success: false, updated: false, error: (error as Error).message }, { status: 500 });
+            return NextResponse.json(
+              {
+                success: false,
+                updated: false,
+                error: (error as Error).message,
+              },
+              { status: 500 }
+            );
           }
         } else {
-          return NextResponse.json({ success: true, updated: false, reason: '未满足自动更新条件' });
+          return NextResponse.json({
+            success: true,
+            updated: false,
+            reason: '未满足自动更新条件',
+          });
         }
       }
 

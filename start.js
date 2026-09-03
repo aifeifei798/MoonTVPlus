@@ -43,10 +43,15 @@ const intervalId = setInterval(() => {
       // 服务器启动后，立即执行一次 cron 任务
       executeCronJob();
 
-      // 然后设置每小时执行一次 cron 任务
-      setInterval(() => {
-        executeCronJob();
-      }, 60 * 60 * 1000); // 每小时执行一次
+      // 然后按 CRON_INTERVAL_MINUTES 间隔执行（默认 60 分钟，0 表示只跑启动那一次）
+      const intervalMinutes = Number(process.env.CRON_INTERVAL_MINUTES || 60);
+      if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
+        setInterval(() => {
+          executeCronJob();
+        }, intervalMinutes * 60 * 1000);
+      } else {
+        console.log('CRON_INTERVAL_MINUTES<=0，仅执行启动时的一次 cron 任务');
+      }
     }
   });
 

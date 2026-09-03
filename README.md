@@ -326,6 +326,10 @@ services:
 | NEXT_PUBLIC_DANMU_API_BASE_URL      | 弹幕接口地址                                                       | 接口地址                                  | (空)                                                                                                                       |
 | TVBOX_ENABLED                       | 本地模式 TVBox 开关                                                | true/false                                | true                                                                                                                       |
 | CRON_SECRET                         | 定时任务鉴权密钥（设置后调用 /api/cron 必须携带 x-cron-secret 头） | 任意字符串                                | (空，即不校验，仅建议 Docker/自托管设置)                                                                                   |
+| CRON_INTERVAL_MINUTES               | Docker 启动脚本执行 cron 的间隔分钟数，0 表示只跑启动那一次        | 数字                                      | 60                                                                                                                         |
+| CRON_CONCURRENCY                    | cron 刷新详情的并发数（1~20）                                      | 数字                                      | 5                                                                                                                          |
+| CRON_ACTIVE_DAYS                    | 仅刷新 N 天内活跃用户，0 表示不过滤（无 lastOnline 视为活跃）      | 数字                                      | 7                                                                                                                          |
+| CONFIG_CACHE_TTL                    | 非 localstorage 下配置内存缓存秒数，管理后台写入立即失效           | 数字                                      | 15                                                                                                                         |
 
 NEXT_PUBLIC_DOUBAN_PROXY_TYPE 选项解释：
 

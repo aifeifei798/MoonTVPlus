@@ -6,7 +6,7 @@ import {
   getAuthCookieOptions,
   getAuthInfoCookieOptions,
 } from '@/lib/auth';
-import { getConfig } from '@/lib/config';
+import { getConfig, invalidateConfigCache } from '@/lib/config';
 import { db } from '@/lib/db';
 
 export const runtime = 'edge';
@@ -98,6 +98,7 @@ export async function POST(req: NextRequest) {
         role: 'user',
       });
       await db.saveAdminConfig(config);
+      invalidateConfigCache();
 
       // 注册成功，设置认证cookie
       const response = NextResponse.json({ ok: true });

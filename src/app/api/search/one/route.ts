@@ -11,7 +11,6 @@ export const runtime = 'edge';
 
 // OrionTV 兼容接口（JSON 非流式）
 export async function GET(request: NextRequest) {
-
   // 检查是否为本地存储模式
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   const isLocalStorage = storageType === 'localstorage';
@@ -62,7 +61,13 @@ export async function GET(request: NextRequest) {
 
     // 聚合搜索（使用流式实现做非流式聚合）
     const allResults: any[] = [];
-    for await (const batch of searchFromApiStream(targetSite, query!, true, timeout)) {
+    for await (const batch of searchFromApiStream(
+      targetSite,
+      query!,
+      true,
+      timeout,
+      config.SiteConfig.SearchDownstreamMaxPage
+    )) {
       allResults.push(...batch);
     }
 
