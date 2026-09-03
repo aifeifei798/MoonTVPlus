@@ -5,6 +5,7 @@ import {
   generateSignature,
   getAuthCookieOptions,
   getAuthInfoCookieOptions,
+  isSecureRequest,
 } from '@/lib/auth';
 import { getConfig, invalidateConfigCache } from '@/lib/config';
 import { db } from '@/lib/db';
@@ -33,6 +34,7 @@ async function generateAuthCookie(username: string): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const secureCookie = isSecureRequest(req);
   try {
     // localstorage 模式下不支持注册
     if (STORAGE_TYPE === 'localstorage') {
@@ -106,13 +108,17 @@ export async function POST(req: NextRequest) {
       const expires = new Date();
       expires.setDate(expires.getDate() + 7); // 7天过期
 
-      response.cookies.set('auth', cookieValue, getAuthCookieOptions(expires));
+      response.cookies.set(
+        'auth',
+        cookieValue,
+        getAuthCookieOptions(expires, secureCookie)
+      );
       response.cookies.set(
         'auth_info',
         encodeURIComponent(
           JSON.stringify({ username: cleanUsername, role: 'user' })
         ),
-        getAuthInfoCookieOptions(expires)
+        getAuthInfoCookieOptions(expires, secureCookie)
       );
 
       return response;

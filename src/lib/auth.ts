@@ -109,29 +109,47 @@ export async function getVerifiedAuthInfo(
   return ok ? raw : null;
 }
 
+// 判断请求是否走 HTTPS（含反代场景的 X-Forwarded-Proto）。
+// Secure Cookie 在 http 下会被浏览器直接丢弃（登录成功也存不住），故必须按实际协议设置。
+export function isSecureRequest(request: NextRequest | Request): boolean {
+  try {
+    if (new URL(request.url).protocol === 'https:') return true;
+  } catch {
+    // 解析失败则继续看代理头
+  }
+  const forwarded =
+    request.headers.get('x-forwarded-proto') ||
+    request.headers.get('x-forwarded-protocol') ||
+    '';
+  return forwarded.split(',')[0].trim().toLowerCase() === 'https';
+}
+
 // 统一的 cookie 配置：auth 为 httpOnly 私密凭证，auth_info 为前端可读的展示信息
-export function getAuthCookieOptions(expires?: Date) {
+// secure 默认跟随 NODE_ENV，调用方传入请求的实际协议后以实际协议为准
+export function getAuthCookieOptions(expires?: Date, secure?: boolean) {
   return {
     path: '/',
     expires: expires ?? new Date(Date.now() + AUTH_COOKIE_MAX_AGE_MS),
     sameSite: 'lax' as const,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: secure ?? process.env.NODE_ENV === 'production',
   };
 }
 
-export function getAuthInfoCookieOptions(expires?: Date) {
+export function getAuthInfoCookieOptions(expires?: Date, secure?: boolean) {
   return {
     path: '/',
     expires: expires ?? new Date(Date.now() + AUTH_COOKIE_MAX_AGE_MS),
     sameSite: 'lax' as const,
     httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
+    secure: secure ?? process.env.NODE_ENV === 'production',
   };
 }
 
 // 从cookie获取认证信息 (服务端使用，原始解析，不验签；验签请用 getVerifiedAuthInfo)
-export function getAuthInfoFromCookie(request: NextRequest): ServerAuthInfo | null {
+export function getAuthInfoFromCookie(
+  request: NextRequest
+): ServerAuthInfo | null {
   const authCookie = request.cookies.get('auth');
 
   if (!authCookie) {

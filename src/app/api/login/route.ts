@@ -18,6 +18,7 @@ import {
   generateSignature,
   getAuthCookieOptions,
   getAuthInfoCookieOptions,
+  isSecureRequest,
 } from '@/lib/auth';
 
 // 生成认证Cookie（带签名，不再写入明文密码）
@@ -58,6 +59,7 @@ function buildAuthInfoCookie(
 }
 
 export async function POST(req: NextRequest) {
+  const secureCookie = isSecureRequest(req);
   try {
     // 本地 / localStorage 模式——仅校验固定密码
     if (STORAGE_TYPE === 'localstorage') {
@@ -89,11 +91,15 @@ export async function POST(req: NextRequest) {
       const expires = new Date();
       expires.setDate(expires.getDate() + 7); // 7天过期
 
-      response.cookies.set('auth', cookieValue, getAuthCookieOptions(expires));
+      response.cookies.set(
+        'auth',
+        cookieValue,
+        getAuthCookieOptions(expires, secureCookie)
+      );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie('', 'user'),
-        getAuthInfoCookieOptions(expires)
+        getAuthInfoCookieOptions(expires, secureCookie)
       );
 
       return response;
@@ -122,11 +128,15 @@ export async function POST(req: NextRequest) {
       const expires = new Date();
       expires.setDate(expires.getDate() + 7); // 7天过期
 
-      response.cookies.set('auth', cookieValue, getAuthCookieOptions(expires));
+      response.cookies.set(
+        'auth',
+        cookieValue,
+        getAuthCookieOptions(expires, secureCookie)
+      );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie(username, 'owner'),
-        getAuthInfoCookieOptions(expires)
+        getAuthInfoCookieOptions(expires, secureCookie)
       );
 
       return response;
@@ -157,11 +167,15 @@ export async function POST(req: NextRequest) {
       const expires = new Date();
       expires.setDate(expires.getDate() + 7); // 7天过期
 
-      response.cookies.set('auth', cookieValue, getAuthCookieOptions(expires));
+      response.cookies.set(
+        'auth',
+        cookieValue,
+        getAuthCookieOptions(expires, secureCookie)
+      );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie(username, finalRole),
-        getAuthInfoCookieOptions(expires)
+        getAuthInfoCookieOptions(expires, secureCookie)
       );
 
       return response;
