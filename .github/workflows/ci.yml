@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -38,6 +38,10 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --store-dir ~/.pnpm-store
+
+      - name: Generate runtime files
+        # src/lib/runtime.ts 系生成文件（gitignored），typecheck/test/build 之前必须先生成
+        run: pnpm gen:manifest && pnpm gen:runtime
 
       - name: Run linting
         run: pnpm run lint
