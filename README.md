@@ -187,16 +187,18 @@ pnpm build
 
 ### Docker 部署
 
-Docker 镜像需自行构建（仓库未发布预构建镜像）：
+GitHub Actions 会在手动触发后构建并推送多架构镜像（`linux/amd64,linux/arm64`）：
 
 ```bash
-docker build -t moontvplus:latest .
+docker pull ghcr.io/aifeifei798/moontvplus:latest
 ```
+
+如需自行构建：`docker build -t moontvplus:latest .`
 
 #### 直接运行（最简单，localstorage）
 
 ```bash
-docker run -d --name moontvplus -p 3000:3000 --env PASSWORD=your_password moontvplus:latest
+docker run -d --name moontvplus -p 3000:3000 --env PASSWORD=your_password ghcr.io/aifeifei798/moontvplus:latest
 ```
 
 #### Docker Compose
@@ -206,7 +208,7 @@ docker run -d --name moontvplus -p 3000:3000 --env PASSWORD=your_password moontv
 ```yaml
 services:
   moontvplus:
-    image: moontvplus:latest
+    image: ghcr.io/aifeifei798/moontvplus:latest
     container_name: moontvplus
     restart: on-failure
     ports:
@@ -220,7 +222,7 @@ services:
 ```yml
 services:
   moontvplus:
-    image: moontvplus:latest
+    image: ghcr.io/aifeifei798/moontvplus:latest
     container_name: moontvplus
     restart: on-failure
     ports:
@@ -254,7 +256,7 @@ volumes:
 ```yml
 services:
   moontvplus:
-    image: moontvplus:latest
+    image: ghcr.io/aifeifei798/moontvplus:latest
     container_name: moontvplus
     restart: on-failure
     ports:
@@ -287,7 +289,7 @@ networks:
 ```yaml
 services:
   moontvplus:
-    image: moontvplus:latest
+    image: ghcr.io/aifeifei798/moontvplus:latest
     container_name: moontvplus
     restart: on-failure
     ports:
