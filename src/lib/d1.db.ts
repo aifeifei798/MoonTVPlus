@@ -542,9 +542,9 @@ export class D1Storage implements IStorage {
     const results = await this.db
       .prepare(
         `
-        SELECT keyword FROM search_history 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
+        SELECT keyword FROM search_history
+        WHERE user_id = ?
+        ORDER BY created_at DESC, id DESC
         LIMIT ?
       `
       )
@@ -575,11 +575,11 @@ export class D1Storage implements IStorage {
     await this.db
       .prepare(
         `
-        DELETE FROM search_history 
+        DELETE FROM search_history
         WHERE user_id = ? AND id NOT IN (
-          SELECT id FROM search_history 
-          WHERE user_id = ? 
-          ORDER BY created_at DESC 
+          SELECT id FROM search_history
+          WHERE user_id = ?
+          ORDER BY created_at DESC, id DESC
           LIMIT ?
         )
       `

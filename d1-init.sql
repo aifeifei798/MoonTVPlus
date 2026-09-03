@@ -128,5 +128,3 @@ SELECT '  • search_history - 搜索历史表' as table_info;
 SELECT '  • skip_configs - 跳过片头片尾配置表' as table_info;
 SELECT '  • today_updated - 今日新更记录表' as table_info;
 SELECT '  • admin_config - 管理员配置表' as table_info;
-SELECT '  • source_configs - 源配置表' as table_info;
-SELECT '  • custom_categories - 自定义分类表' as table_info;
