@@ -9,6 +9,17 @@ import { SearchResult } from '@/lib/types';
 export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
+  // 纵深防御：中间件已校验 CRON_SECRET，此处再校验一次，避免中间件未覆盖时被匿名触发
+  const secret = process.env.CRON_SECRET || '';
+  if (secret) {
+    const provided =
+      request.headers.get('x-cron-secret') ||
+      new URL(request.url).searchParams.get('secret') ||
+      '';
+    if (provided !== secret) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
   console.log(request.url);
   try {
     console.log('Cron job triggered:', new Date().toISOString());

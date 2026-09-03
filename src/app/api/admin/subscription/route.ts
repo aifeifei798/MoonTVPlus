@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { configSelfCheck,getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 import { IStorage } from '@/lib/types';
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const authInfo = getAuthInfoFromCookie(request);
+  const authInfo = await getVerifiedAuthInfo(request);
   if (!authInfo || !authInfo.username) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
     // 对于 update 和 import 操作需要身份验证
     let username: string | null = null;
     if (action === 'update' || action === 'import') {
-      const authInfo = getAuthInfoFromCookie(request);
+      const authInfo = await getVerifiedAuthInfo(request);
       if (!authInfo || !authInfo.username) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }

@@ -1,6 +1,11 @@
 /* eslint-disable no-console,@typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 
+import {
+  generateSignature,
+  getAuthCookieOptions,
+  getAuthInfoCookieOptions,
+} from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 
@@ -14,47 +19,17 @@ const STORAGE_TYPE =
     | 'upstash'
     | undefined) || 'localstorage';
 
-// 生成签名
-async function generateSignature(
-  data: string,
-  secret: string
-): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const messageData = encoder.encode(data);
-
-  // 导入密钥
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  // 生成签名
-  const signature = await crypto.subtle.sign('HMAC', key, messageData);
-
-  // 转换为十六进制字符串
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// 生成认证Cookie（带签名）
+// 生成认证Cookie（带签名，绑定 role+timestamp，7 天过期由中间件校验）
 async function generateAuthCookie(username: string): Promise<string> {
-  const authData: any = {
-    role: 'user',
-    username,
-    timestamp: Date.now(),
-  };
-
-  // 使用process.env.PASSWORD作为签名密钥，而不是用户密码
+  const timestamp = Date.now();
   const signingKey = process.env.PASSWORD || '';
-  const signature = await generateSignature(username, signingKey);
-  authData.signature = signature;
-
-  return encodeURIComponent(JSON.stringify(authData));
+  const signature = await generateSignature(
+    `${username}:user:${timestamp}`,
+    signingKey
+  );
+  return encodeURIComponent(
+    JSON.stringify({ username, role: 'user', timestamp, signature })
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -73,6 +48,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '当前未开放注册' }, { status: 400 });
     }
 
+    if (!process.env.PASSWORD) {
+      return NextResponse.json(
+        { error: '服务端未配置 PASSWORD，拒绝注册' },
+        { status: 500 }
+      );
+    }
+
     const { username, password } = await req.json();
 
     if (!username || typeof username !== 'string') {
@@ -81,41 +63,56 @@ export async function POST(req: NextRequest) {
     if (!password || typeof password !== 'string') {
       return NextResponse.json({ error: '密码不能为空' }, { status: 400 });
     }
+    const cleanUsername = username.trim();
+    // 基础强度与格式校验：3-32 位，字母数字下划线/中划线
+    if (!/^[a-zA-Z0-9_-]{3,32}$/.test(cleanUsername)) {
+      return NextResponse.json(
+        { error: '用户名仅允许 3-32 位字母/数字/下划线/中划线' },
+        { status: 400 }
+      );
+    }
+    if (password.length < 6 || password.length > 64) {
+      return NextResponse.json(
+        { error: '密码长度需为 6-64 位' },
+        { status: 400 }
+      );
+    }
 
-    // 检查是否和管理员重复
-    if (username === process.env.USERNAME) {
+    // 检查是否和管理员重复（统一返回，避免枚举差异过大；此处保持 400 但不泄露角色）
+    if (process.env.USERNAME && cleanUsername === process.env.USERNAME) {
       return NextResponse.json({ error: '用户已存在' }, { status: 400 });
     }
 
     try {
       // 检查用户是否已存在
-      const exist = await db.checkUserExist(username);
+      const exist = await db.checkUserExist(cleanUsername);
       if (exist) {
         return NextResponse.json({ error: '用户已存在' }, { status: 400 });
       }
 
-      await db.registerUser(username, password);
+      await db.registerUser(cleanUsername, password);
 
       // 添加到配置中并保存
       config.UserConfig.Users.push({
-        username,
+        username: cleanUsername,
         role: 'user',
       });
       await db.saveAdminConfig(config);
 
       // 注册成功，设置认证cookie
       const response = NextResponse.json({ ok: true });
-      const cookieValue = await generateAuthCookie(username);
+      const cookieValue = await generateAuthCookie(cleanUsername);
       const expires = new Date();
       expires.setDate(expires.getDate() + 7); // 7天过期
 
-      response.cookies.set('auth', cookieValue, {
-        path: '/',
-        expires,
-        sameSite: 'lax', // 改为 lax 以支持 PWA
-        httpOnly: false, // PWA 需要客户端可访问
-        secure: false, // 根据协议自动设置
-      });
+      response.cookies.set('auth', cookieValue, getAuthCookieOptions(expires));
+      response.cookies.set(
+        'auth_info',
+        encodeURIComponent(
+          JSON.stringify({ username: cleanUsername, role: 'user' })
+        ),
+        getAuthInfoCookieOptions(expires)
+      );
 
       return response;
     } catch (err) {

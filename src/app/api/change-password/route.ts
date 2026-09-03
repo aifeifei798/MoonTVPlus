@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getStorage } from '@/lib/db';
 import { IStorage } from '@/lib/types';
 
@@ -26,14 +26,20 @@ export async function POST(request: NextRequest) {
     const { newPassword } = body;
 
     // 获取认证信息
-    const authInfo = getAuthInfoFromCookie(request);
+    const authInfo = await getVerifiedAuthInfo(request);
     if (!authInfo || !authInfo.username) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 验证新密码
+    // 验证新密码（基础强度：6-64 位）
     if (!newPassword || typeof newPassword !== 'string') {
       return NextResponse.json({ error: '新密码不得为空' }, { status: 400 });
+    }
+    if (newPassword.length < 6 || newPassword.length > 64) {
+      return NextResponse.json(
+        { error: '新密码长度需为 6-64 位' },
+        { status: 400 }
+      );
     }
 
     const username = authInfo.username;

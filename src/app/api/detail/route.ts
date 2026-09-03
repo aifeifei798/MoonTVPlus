@@ -31,9 +31,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result, {
       headers: {
-        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        // 需鉴权内容使用 private，避免 CDN 跨用户串味
+        'Cache-Control': `private, max-age=${cacheTime}`,
         'Netlify-Vary': 'query',
       },
     });

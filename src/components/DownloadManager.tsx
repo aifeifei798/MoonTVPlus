@@ -4,11 +4,11 @@ import { Download, List, Pause, Play, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 
+import { formatTime } from '@/lib/formatTime';
 import { downloadM3U8Video, DownloadProgress, M3U8Task, parseM3U8, PauseResumeController, StreamSaverMode } from '@/lib/m3u8-downloader';
 
 import AddDownloadModal from './AddDownloadModal';
 import SegmentViewer from './SegmentViewer';
-import { formatTime } from '@/lib/formatTime';
 
 
 interface DownloadTask {

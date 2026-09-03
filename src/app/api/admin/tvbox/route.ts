@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 import { getRequestOrigin } from '@/lib/request-origin';
@@ -15,10 +15,16 @@ function buildTvboxConfigUrl(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  // 所有模式均需登录（网关已拦截，此处再验签做纵深防御，避免中间件失效即越权）
+  const authInfo = await getVerifiedAuthInfo(request);
+  if (!authInfo) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   const adminConfig = await getConfig();
 
-  // 本地模式：不强制要求登录，用环境变量返回只读信息
+  // 本地模式：已登录才返回只读信息（不再匿名泄露 PASSWORD）
   if (storageType === 'localstorage') {
     const baseUrl = buildTvboxConfigUrl(request);
     return NextResponse.json({
@@ -32,12 +38,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 非本地模式：需要已登录用户
-  const authInfo = getAuthInfoFromCookie(request);
-  if (!authInfo || !authInfo.username) {
+  if (!authInfo.username) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
   // 生成接口 URL（基于请求 URL 推导）
   const baseUrl = buildTvboxConfigUrl(request);
   // 为生成的订阅 URL 添加加密后的 un 查询参数
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authInfo = getAuthInfoFromCookie(request);
+  const authInfo = await getVerifiedAuthInfo(request);
   if (!authInfo || !authInfo.username) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -1,8 +1,8 @@
 # ---- 第 1 阶段：安装依赖 ----
 FROM node:20-alpine AS deps
 
-# 启用 corepack 并激活 pnpm（Node20 默认提供 corepack）
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# 启用 corepack 并激活与 packageManager 一致的 pnpm，避免 latest 漂移
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile
 
 # ---- 第 2 阶段：构建项目 ----
 FROM node:20-alpine AS builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 WORKDIR /app
 
 # 复制依赖
@@ -24,12 +24,15 @@ COPY . .
 
 # 在构建阶段也显式设置 DOCKER_ENV，
 # 确保 Next.js 在编译时即选择 Node Runtime 而不是 Edge Runtime
+# 注意：字符串替换为兜底手段，上游改双引号/分号即失效；首选在代码中以 DOCKER_ENV 分支，而非依赖 sed
 RUN find ./src -type f \( -name "route.ts" -o -name "layout.tsx" -o -name "not-found.tsx" \) -print0 \
-  | xargs -0 sed -i "s/export const runtime = 'edge';/export const runtime = 'nodejs';/g"
+  | xargs -0 sed -i "s/export const runtime = 'edge';/export const runtime = 'nodejs';/g" \
+  && grep -rq "export const runtime = 'nodejs'" ./src || (echo "edge->nodejs 替换未生效，检查 runtime 声明格式" && exit 1)
 ENV DOCKER_ENV=true
 
 # For Docker builds, force dynamic rendering to read runtime environment variables.
-RUN sed -i "/const inter = Inter({ subsets: \['latin'] });/a export const dynamic = 'force-dynamic';" src/app/layout.tsx
+# 幂等处理：已存在 force-dynamic 则跳过，避免重复插入导致构建失败
+RUN grep -q "export const dynamic = 'force-dynamic'" src/app/layout.tsx || sed -i "/const inter = Inter({ subsets: \['latin'] });/a export const dynamic = 'force-dynamic';" src/app/layout.tsx
 
 # 生成生产构建
 RUN pnpm run build

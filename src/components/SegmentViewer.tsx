@@ -3,8 +3,8 @@
 import { RefreshCw, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { aesDecrypt, downloadTsSegment, M3U8Task, StreamSaverMode } from '@/lib/m3u8-downloader';
 import { formatTime } from '@/lib/formatTime';
+import { aesDecrypt, downloadTsSegment, M3U8Task, StreamSaverMode } from '@/lib/m3u8-downloader';
 
 interface SegmentViewerProps {
   task: M3U8Task;

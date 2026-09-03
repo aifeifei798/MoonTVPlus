@@ -48,6 +48,118 @@ export const API_CONFIG = {
 let fileConfig: ConfigFileStruct;
 let cachedConfig: AdminConfig;
 
+function getSiteNameEnv(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME || 'MoonTV'
+  );
+}
+
+// Docker/nodejs 下从磁盘读取 config.json；失败时返回空结构而非抛错
+function loadFileConfigFromDisk(): ConfigFileStruct {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const _require = eval('require') as NodeJS.Require;
+    const fs = _require('fs') as typeof import('fs');
+    const path = _require('path') as typeof import('path');
+    const configPath = path.join(process.cwd(), 'config.json');
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const parsed = JSON.parse(raw) as ConfigFileStruct;
+    console.log('load dynamic config success');
+    return {
+      cache_time: parsed.cache_time,
+      api_site: parsed.api_site || {},
+      custom_category: parsed.custom_category || [],
+    };
+  } catch (e) {
+    console.error('读取 config.json 失败，使用空配置:', e);
+    return { api_site: {} } as ConfigFileStruct;
+  }
+}
+
+function loadBuildTimeFileConfig(): ConfigFileStruct {
+  const cfg = runtimeConfig as unknown as ConfigFileStruct;
+  return {
+    cache_time: cfg?.cache_time,
+    api_site: cfg?.api_site || {},
+    custom_category: cfg?.custom_category || [],
+  };
+}
+
+function mergeSourceConfigs(
+  adminConfig: AdminConfig,
+  file: ConfigFileStruct
+): void {
+  const apiSiteEntries = Object.entries(file.api_site || {});
+  const sourceConfigMap = new Map(
+    (adminConfig.SourceConfig || []).map((s) => [s.key, s])
+  );
+  apiSiteEntries.forEach(([key, site]) => {
+    const existing = sourceConfigMap.get(key);
+    if (existing) {
+      existing.name = site.name;
+      existing.api = site.api;
+      existing.detail = site.detail;
+      existing.from = 'config';
+    } else {
+      sourceConfigMap.set(key, {
+        key,
+        name: site.name,
+        api: site.api,
+        detail: site.detail,
+        from: 'config',
+        disabled: false,
+      });
+    }
+  });
+  const keys = new Set(apiSiteEntries.map(([k]) => k));
+  sourceConfigMap.forEach((s) => {
+    if (!keys.has(s.key)) s.from = 'custom';
+  });
+  adminConfig.SourceConfig = Array.from(sourceConfigMap.values());
+}
+
+function mergeCustomCategories(
+  adminConfig: AdminConfig,
+  file: ConfigFileStruct,
+  onlyConfigFrom = false
+): void {
+  const customCategories = file.custom_category || [];
+  if (!adminConfig.CustomCategories) adminConfig.CustomCategories = [];
+  const map = new Map(
+    adminConfig.CustomCategories.map((c) => [c.query + c.type, c])
+  );
+  customCategories.forEach((category) => {
+    const key = category.query + category.type;
+    const existed = map.get(key);
+    if (existed) {
+      if (!onlyConfigFrom || existed.from === 'config') {
+        existed.name = category.name;
+        existed.query = category.query;
+        existed.type = category.type;
+        existed.from = 'config';
+        if (!onlyConfigFrom) existed.disabled = false;
+        else {
+          existed.from = 'config';
+          existed.disabled = false;
+        }
+      }
+    } else {
+      map.set(key, {
+        name: category.name,
+        type: category.type,
+        query: category.query,
+        from: 'config',
+        disabled: false,
+      });
+    }
+  });
+  const keys = new Set(customCategories.map((c) => c.query + c.type));
+  map.forEach((c) => {
+    if (!keys.has(c.query + c.type)) c.from = 'custom';
+  });
+  adminConfig.CustomCategories = Array.from(map.values());
+}
+
 export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   try {
     fileConfig = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
@@ -144,27 +256,13 @@ async function initConfig() {
   }
 
   if (process.env.DOCKER_ENV === 'true') {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const _require = eval('require') as NodeJS.Require;
-    const fs = _require('fs') as typeof import('fs');
-    const path = _require('path') as typeof import('path');
-
-    const configPath = path.join(process.cwd(), 'config.json');
-    const raw = fs.readFileSync(configPath, 'utf-8');
-    fileConfig = JSON.parse(raw) as ConfigFileStruct;
-    console.log('load dynamic config success');
+    fileConfig = loadFileConfigFromDisk();
   } else {
     // 默认使用编译时生成的配置
-    fileConfig = runtimeConfig as unknown as ConfigFileStruct;
+    fileConfig = loadBuildTimeFileConfig();
   }
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   if (storageType !== 'localstorage') {
-    if (cachedConfig) {
-      // 自检补全配置
-      cachedConfig = refineConfig(cachedConfig);
-      return;
-    }
-  
     // 数据库存储，读取并补全管理员配置
     const storage = getStorage();
   
@@ -187,73 +285,18 @@ async function initConfig() {
   
       if (adminConfig) {
         try {
-          fileConfig = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
+          const parsed = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
+          fileConfig = {
+            cache_time: parsed.cache_time,
+            api_site: parsed.api_site || {},
+            custom_category: parsed.custom_category || [],
+          };
         } catch (e) {
           console.error('解析配置文件失败:', e);
-          fileConfig = {} as ConfigFileStruct;
+          fileConfig = { api_site: {} } as ConfigFileStruct;
         }
-        const apiSiteEntries = Object.entries(fileConfig.api_site || []);
-        const customCategories = fileConfig.custom_category || [];
-  
-        // 补全 SourceConfig
-        const sourceConfigMap = new Map(
-          (adminConfig.SourceConfig || []).map((s) => [s.key, s])
-        );
-  
-        apiSiteEntries.forEach(([key, site]) => {
-          sourceConfigMap.set(key, {
-            key,
-            name: site.name,
-            api: site.api,
-            detail: site.detail,
-            from: 'config',
-            disabled: false,
-          });
-        });
-  
-        // 将 Map 转换回数组
-        adminConfig.SourceConfig = Array.from(sourceConfigMap.values());
-  
-        // 检查现有源是否在 fileConfig.api_site 中，如果不在则标记为 custom
-        const apiSiteKeys = new Set(apiSiteEntries.map(([key]) => key));
-        adminConfig.SourceConfig.forEach((source) => {
-          if (!apiSiteKeys.has(source.key)) {
-            source.from = 'custom';
-          }
-        });
-  
-        // 确保 CustomCategories 被初始化
-        if (!adminConfig.CustomCategories) {
-          adminConfig.CustomCategories = [];
-        }
-  
-        // 补全 CustomCategories
-        const customCategoriesMap = new Map(
-          adminConfig.CustomCategories.map((c) => [c.query + c.type, c])
-        );
-  
-        customCategories.forEach((category) => {
-          customCategoriesMap.set(category.query + category.type, {
-            name: category.name,
-            type: category.type,
-            query: category.query,
-            from: 'config',
-            disabled: false,
-          });
-        });
-  
-        // 检查现有 CustomCategories 是否在 fileConfig.custom_category 中，如果不在则标记为 custom
-        const customCategoriesKeys = new Set(
-          customCategories.map((c) => c.query + c.type)
-        );
-        customCategoriesMap.forEach((category) => {
-          if (!customCategoriesKeys.has(category.query + category.type)) {
-            category.from = 'custom';
-          }
-        });
-  
-        // 将 Map 转换回数组
-        adminConfig.CustomCategories = Array.from(customCategoriesMap.values());
+        mergeSourceConfigs(adminConfig, fileConfig);
+        mergeCustomCategories(adminConfig, fileConfig);
   
         const existedUsers = new Set(
           (adminConfig.UserConfig.Users || []).map((u) => u.username)
@@ -287,17 +330,10 @@ async function initConfig() {
       } else {
         // 数据库中没有配置，使用默认的运行时配置
         if (process.env.DOCKER_ENV === 'true') {
-          // eslint-disable-next-line @typescript-eslint/no-implied-eval
-          const _require = eval('require') as NodeJS.Require;
-          const fs = _require('fs') as typeof import('fs');
-          const path = _require('path') as typeof import('path');
-
-          const configPath = path.join(process.cwd(), 'config.json');
-          const raw = fs.readFileSync(configPath, 'utf-8');
-          fileConfig = JSON.parse(raw) as ConfigFileStruct;
+          fileConfig = loadFileConfigFromDisk();
         } else {
           // 默认使用编译时生成的配置
-          fileConfig = runtimeConfig as unknown as ConfigFileStruct;
+          fileConfig = loadBuildTimeFileConfig();
         }
         // 数据库中没有配置，创建新的管理员配置
         let allUsers = userNames.map((uname) => ({
@@ -315,7 +351,7 @@ async function initConfig() {
         adminConfig = {
           ConfigFile: JSON.stringify(fileConfig),
           SiteConfig: {
-            SiteName: process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV',
+            SiteName: getSiteNameEnv(),
             Announcement:
               process.env.ANNOUNCEMENT ||
               '本网站仅提供影视信息搜索服务，所有内容均来自第三方网站。本站不存储任何视频资源，不对任何内容的准确性、合法性、完整性负责。',
@@ -375,7 +411,7 @@ async function initConfig() {
     cachedConfig = {
       ConfigFile: JSON.stringify(fileConfig),
       SiteConfig: {
-        SiteName: process.env.SITE_NAME || 'MoonTV',
+        SiteName: getSiteNameEnv(),
         Announcement:
           process.env.ANNOUNCEMENT ||
           '本网站仅提供影视信息搜索服务，所有内容均来自第三方网站。本站不存储任何视频资源，不对任何内容的准确性、合法性、完整性负责。',
@@ -401,7 +437,7 @@ async function initConfig() {
         Users: [],
         Groups: [],
       },
-      SourceConfig: Object.entries(fileConfig.api_site).map(([key, site]) => ({
+      SourceConfig: Object.entries(fileConfig.api_site || {}).map(([key, site]) => ({
         key,
         name: site.name,
         api: site.api,
@@ -422,11 +458,20 @@ async function initConfig() {
   }
 }
 
+function cloneConfig<T>(cfg: T): T {
+  try {
+    return JSON.parse(JSON.stringify(cfg)) as T;
+  } catch {
+    return cfg;
+  }
+}
+
 export async function getConfig(): Promise<AdminConfig> {
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   if (storageType === 'localstorage') {
     await initConfig();
-    return cachedConfig;
+    // 返回深拷贝，避免跨请求共享可变单例
+    return cloneConfig(cachedConfig);
   }
 
   // 非本地存储，直接读 db 配置
@@ -444,7 +489,7 @@ export async function getConfig(): Promise<AdminConfig> {
 
     // 数据库优先，环境变量仅在缺省时回退
     adminConfig.SiteConfig.SiteName =
-      adminConfig.SiteConfig.SiteName || process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV';
+      adminConfig.SiteConfig.SiteName || getSiteNameEnv();
     adminConfig.SiteConfig.Announcement =
       adminConfig.SiteConfig.Announcement ||
       process.env.ANNOUNCEMENT ||
@@ -471,109 +516,31 @@ export async function getConfig(): Promise<AdminConfig> {
       adminConfig.SiteConfig.DanmakuApiBaseUrl ||
       process.env.NEXT_PUBLIC_DANMU_API_BASE_URL ||
       '';
-    // TVBox 开关与密码默认值
-    const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
-    if (storageType === 'localstorage') {
-      const raw = process.env.TVBOX_ENABLED;
-      adminConfig.SiteConfig.TVBoxEnabled =
-        raw == null ? true : String(raw).toLowerCase() === 'true';
-      adminConfig.SiteConfig.TVBoxPassword = process.env.PASSWORD || '';
-    } else {
-      adminConfig.SiteConfig.TVBoxEnabled =
-        typeof adminConfig.SiteConfig.TVBoxEnabled === 'boolean'
-          ? adminConfig.SiteConfig.TVBoxEnabled
-          : false;
-      adminConfig.SiteConfig.TVBoxPassword =
-        typeof adminConfig.SiteConfig.TVBoxPassword === 'string'
-          ? adminConfig.SiteConfig.TVBoxPassword
-          : '';
-    }
+    // TVBox 开关与密码默认值（此处仅非 localstorage 分支可达，localstorage 已提前返回）
+    adminConfig.SiteConfig.TVBoxEnabled =
+      typeof adminConfig.SiteConfig.TVBoxEnabled === 'boolean'
+        ? adminConfig.SiteConfig.TVBoxEnabled
+        : false;
+    adminConfig.SiteConfig.TVBoxPassword =
+      typeof adminConfig.SiteConfig.TVBoxPassword === 'string'
+        ? adminConfig.SiteConfig.TVBoxPassword
+        : '';
 
     try {
-      fileConfig = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
+      const parsed = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
+      fileConfig = {
+        cache_time: parsed.cache_time,
+        api_site: parsed.api_site || {},
+        custom_category: parsed.custom_category || [],
+      };
     } catch (e) {
       console.error('解析配置文件失败:', e);
-      fileConfig = {} as ConfigFileStruct;
+      fileConfig = { api_site: {} } as ConfigFileStruct;
     }
 
-    // 合并文件中的源信息
-    const apiSiteEntries = Object.entries(fileConfig.api_site || []);
-    const sourceConfigMap = new Map(
-      (adminConfig.SourceConfig || []).map((s) => [s.key, s])
-    );
-
-    apiSiteEntries.forEach(([key, site]) => {
-      const existingSource = sourceConfigMap.get(key);
-      if (existingSource) {
-        // 如果已存在，只覆盖 name、api、detail 和 from
-        existingSource.name = site.name;
-        existingSource.api = site.api;
-        existingSource.detail = site.detail;
-        existingSource.from = 'config';
-      } else {
-        // 如果不存在，创建新条目
-        sourceConfigMap.set(key, {
-          key,
-          name: site.name,
-          api: site.api,
-          detail: site.detail,
-          from: 'config',
-          disabled: false,
-        });
-      }
-    });
-
-    // 检查现有源是否在 fileConfig.api_site 中，如果不在则标记为 custom
-    const apiSiteKeys = new Set(apiSiteEntries.map(([key]) => key));
-    sourceConfigMap.forEach((source) => {
-      if (!apiSiteKeys.has(source.key)) {
-        source.from = 'custom';
-      }
-    });
-
-    // 将 Map 转换回数组
-    adminConfig.SourceConfig = Array.from(sourceConfigMap.values());
-
-    // 覆盖 CustomCategories - 只覆盖 from 为 config 的项
-    const customCategories = fileConfig.custom_category || [];
-    const customCategoriesMap = new Map(
-      (adminConfig.CustomCategories || []).map((c) => [c.query + c.type, c])
-    );
-
-    customCategories.forEach((category) => {
-      const key = category.query + category.type;
-      const existingCategory = customCategoriesMap.get(key);
-      if (existingCategory) {
-        // 如果已存在，只覆盖 from 为 config 的项
-        if (existingCategory.from === 'config') {
-          existingCategory.name = category.name;
-          existingCategory.type = category.type;
-          existingCategory.query = category.query;
-          existingCategory.from = 'config';
-          existingCategory.disabled = false;
-        }
-      } else {
-        // 如果不存在，创建新条目
-        customCategoriesMap.set(key, {
-          name: category.name,
-          type: category.type,
-          query: category.query,
-          from: 'config',
-          disabled: false,
-        });
-      }
-    });
-
-    // 检查现有分类是否在 fileConfig.custom_category 中，如果不在则标记为 custom
-    const customCategoryKeys = new Set(customCategories.map((c) => c.query + c.type));
-    customCategoriesMap.forEach((category) => {
-      if (!customCategoryKeys.has(category.query + category.type)) {
-        category.from = 'custom';
-      }
-    });
-
-    // 将 Map 转换回数组
-    adminConfig.CustomCategories = Array.from(customCategoriesMap.values());
+    mergeSourceConfigs(adminConfig, fileConfig);
+    // 非 localstorage 下仅覆盖 from 为 config 的分类，避免覆盖用户自定义禁用态
+    mergeCustomCategories(adminConfig, fileConfig, true);
 
     // 同步 cache_time 到 SiteConfig.SiteInterfaceCacheTime
     if (fileConfig.cache_time !== undefined) {
@@ -589,23 +556,33 @@ export async function getConfig(): Promise<AdminConfig> {
     }
 
     const ownerUser = process.env.USERNAME || '';
-    // 检查配置中的站长用户是否和 USERNAME 匹配，如果不匹配则降级为普通用户
-    let containOwner = false;
-    adminConfig.UserConfig.Users.forEach((user) => {
-      if (user.username !== ownerUser && user.role === 'owner') {
-        user.role = 'user';
-      }
-      if (user.username === ownerUser) {
-        containOwner = true;
-        user.role = 'owner';
-      }
-    });
+    // 未配置 USERNAME 时不写入空站长，避免毒数据
+    if (ownerUser) {
+      // 检查配置中的站长用户是否和 USERNAME 匹配，如果不匹配则降级为普通用户
+      let containOwner = false;
+      adminConfig.UserConfig.Users.forEach((user) => {
+        if (user.username !== ownerUser && user.role === 'owner') {
+          user.role = 'user';
+        }
+        if (user.username === ownerUser) {
+          containOwner = true;
+          user.role = 'owner';
+        }
+      });
 
-    // 如果不在则添加
-    if (!containOwner) {
-      adminConfig.UserConfig.Users.unshift({
-        username: ownerUser,
-        role: 'owner',
+      // 如果不在则添加
+      if (!containOwner) {
+        adminConfig.UserConfig.Users.unshift({
+          username: ownerUser,
+          role: 'owner',
+        });
+      }
+    } else {
+      // 无站长配置时，确保无人持有 owner 权限
+      adminConfig.UserConfig.Users.forEach((user) => {
+        if (user.role === 'owner') {
+          user.role = 'user';
+        }
       });
     }
     cachedConfig = adminConfig;
@@ -613,7 +590,7 @@ export async function getConfig(): Promise<AdminConfig> {
     await initConfig();
   }
 
-  return cachedConfig;
+  return cloneConfig(cachedConfig);
 }
 
 export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
@@ -634,8 +611,11 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     adminConfig.SubscriptionConfig = {};
   }
 
-  // 站长变更自检
+  // 站长变更自检：未配置 USERNAME 时不写入毒数据，直接返回去重后的配置
   const ownerUser = process.env.USERNAME;
+  if (!ownerUser) {
+    return adminConfig;
+  }
   const originalOwner = adminConfig.UserConfig.Users.find((u) => u.username === ownerUser);
 
   // 去重
@@ -689,7 +669,6 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
 
 
 export async function resetConfig() {
-  const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
   const storage = getStorage();
   // 获取所有用户名，用于补全 Users
   let userNames: string[] = [];
@@ -702,21 +681,13 @@ export async function resetConfig() {
   }
 
   if (process.env.DOCKER_ENV === 'true') {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const _require = eval('require') as NodeJS.Require;
-    const fs = _require('fs') as typeof import('fs');
-    const path = _require('path') as typeof import('path');
-
-    const configPath = path.join(process.cwd(), 'config.json');
-    const raw = fs.readFileSync(configPath, 'utf-8');
-    fileConfig = JSON.parse(raw) as ConfigFileStruct;
-    console.log('load dynamic config success');
+    fileConfig = loadFileConfigFromDisk();
   } else {
     // 默认使用编译时生成的配置
-    fileConfig = runtimeConfig as unknown as ConfigFileStruct;
+    fileConfig = loadBuildTimeFileConfig();
   }
 
-  const apiSiteEntries = Object.entries(fileConfig.api_site);
+  const apiSiteEntries = Object.entries(fileConfig.api_site || {});
   const customCategories = fileConfig.custom_category || [];
   let allUsers = userNames.map((uname) => ({
     username: uname,
@@ -733,7 +704,7 @@ export async function resetConfig() {
   const adminConfig = {
     ConfigFile: JSON.stringify(fileConfig),
     SiteConfig: {
-      SiteName: process.env.SITE_NAME || 'MoonTV',
+      SiteName: getSiteNameEnv(),
       Announcement:
         process.env.ANNOUNCEMENT ||
         '本网站仅提供影视信息搜索服务，所有内容均来自第三方网站。本站不存储任何视频资源，不对任何内容的准确性、合法性、完整性负责。',
@@ -766,15 +737,13 @@ export async function resetConfig() {
       disabled: false,
     })),
     CustomCategories:
-      storageType === 'redis'
-        ? customCategories?.map((category) => ({
-            name: category.name,
-            type: category.type,
-            query: category.query,
-            from: 'config',
-            disabled: false,
-          })) || []
-        : [],
+      customCategories?.map((category) => ({
+        name: category.name,
+        type: category.type,
+        query: category.query,
+        from: 'config',
+        disabled: false,
+      })) || [],
     SubscriptionConfig: {},
   } as AdminConfig;
 
@@ -784,6 +753,7 @@ export async function resetConfig() {
   if (cachedConfig == null) {
     // serverless 环境，直接使用 adminConfig
     cachedConfig = adminConfig;
+    return;
   }
   cachedConfig.ConfigFile = adminConfig.ConfigFile;
   cachedConfig.SiteConfig = adminConfig.SiteConfig;

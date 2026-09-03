@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { inflate } from 'pako';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { configSelfCheck, setCachedConfig } from '@/lib/config';
 import { SimpleCrypto } from '@/lib/crypto';
 import { db } from '@/lib/db';
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证身份和权限
-    const authInfo = getAuthInfoFromCookie(req);
+    const authInfo = await getVerifiedAuthInfo(req);
     if (!authInfo || !authInfo.username) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }
@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '解密失败，请检查密码是否正确' }, { status: 400 });
     }
 
-    // 解压缩数据
-    const compressedBuffer = Buffer.from(decryptedData, 'base64');
+    // 解压缩数据（Buffer 转 Uint8Array 以兼容 pako + TS5 类型）
+    const compressedBuffer = new Uint8Array(Buffer.from(decryptedData, 'base64'));
     const decompressedBuffer = inflate(compressedBuffer);
     const decompressedData = new TextDecoder().decode(decompressedBuffer);
 

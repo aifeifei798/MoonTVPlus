@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getConfig } from '@/lib/config';
 import { searchFromApiStream } from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
@@ -10,8 +10,13 @@ import { yellowWords } from '@/lib/yellow';
 export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
-  const authInfo = getAuthInfoFromCookie(request);
-  if (!authInfo || !authInfo.username) {
+  const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
+  const authInfo = await getVerifiedAuthInfo(request);
+  if (!authInfo) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  // localstorage 模式无 username 概念，仅验签；数据库模式必须有 username
+  if (storageType !== 'localstorage' && !authInfo.username) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -180,15 +185,13 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  // 返回流式响应
+  // 返回流式响应（同源 SSE，不再通配 CORS，避免登录态数据被任意站点读取）
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-store',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }

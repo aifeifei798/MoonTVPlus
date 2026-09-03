@@ -161,7 +161,19 @@ export async function parseM3U8(url: string, depth = 0): Promise<M3U8Task> {
     throw new Error('M3U8 解析层级过深，可能存在循环引用');
   }
 
-  const response = await fetch(url);
+  // 服务端代理场景下的 SSRF 纵深校验（浏览器直调不受影响，失败即抛错由调用方处理）
+  try {
+    const { assertSafeFetchUrl } = await import('./ssrf');
+    assertSafeFetchUrl(url);
+  } catch (e) {
+    throw new Error((e as Error).message || '非法 m3u8 URL');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  const response = await fetch(url, { signal: controller.signal }).finally(() =>
+    clearTimeout(timeout)
+  );
   const m3u8Str = await response.text();
 
   if (m3u8Str.substring(0, 7).toUpperCase() !== '#EXTM3U') {
@@ -242,8 +254,17 @@ export async function parseM3U8(url: string, depth = 0): Promise<M3U8Task> {
 
     // 获取 AES key
     if (task.aesConf.uri) {
+      try {
+        const { assertSafeFetchUrl } = await import('./ssrf');
+        assertSafeFetchUrl(task.aesConf.uri);
+      } catch (e) {
+        throw new Error((e as Error).message || '非法 AES key URL');
+      }
       const keyResponse = await fetch(task.aesConf.uri);
       const keyArrayBuffer = await keyResponse.arrayBuffer();
+      if (keyArrayBuffer.byteLength > 64 * 1024) {
+        throw new Error('AES key 过大');
+      }
       task.aesConf.key = arrayBufferToWordArray(keyArrayBuffer);
     }
   }
@@ -312,11 +333,21 @@ export function aesDecrypt(data: ArrayBuffer, key: any, iv: string): ArrayBuffer
  * 下载单个 TS 片段
  */
 export async function downloadTsSegment(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  try {
+    const { assertSafeFetchUrl } = await import('./ssrf');
+    assertSafeFetchUrl(url);
+  } catch (e) {
+    throw new Error((e as Error).message || '非法片段 URL');
+  }
   const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`下载失败: ${response.status}`);
   }
-  return response.arrayBuffer();
+  const buf = await response.arrayBuffer();
+  if (buf.byteLength > 50 * 1024 * 1024) {
+    throw new Error('片段过大');
+  }
+  return buf;
 }
 
 /**

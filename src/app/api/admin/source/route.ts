@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 import { IStorage } from '@/lib/types';
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as BaseBody & Record<string, any>;
     const { action } = body;
 
-    const authInfo = getAuthInfoFromCookie(request);
+    const authInfo = await getVerifiedAuthInfo(request);
     if (!authInfo || !authInfo.username) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

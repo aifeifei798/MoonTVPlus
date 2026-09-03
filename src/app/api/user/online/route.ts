@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { configSelfCheck, getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const auth = getAuthInfoFromCookie(request);
+    const auth = await getVerifiedAuthInfo(request);
     if (!auth?.username) {
       return NextResponse.json({ error: '未登录' }, { status: 401 });
     }

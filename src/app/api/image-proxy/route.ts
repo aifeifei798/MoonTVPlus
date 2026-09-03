@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { assertSafeFetchUrl } from '@/lib/ssrf';
+
 export const runtime = 'edge';
 
 // OrionTV 兼容接口
@@ -12,13 +14,26 @@ export async function GET(request: Request) {
   }
 
   try {
+    assertSafeFetchUrl(imageUrl);
+  } catch (e) {
+    return NextResponse.json(
+      { error: (e as Error).message || '非法 URL' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const imageResponse = await fetch(imageUrl, {
+      signal: controller.signal,
+      redirect: 'follow',
       headers: {
         Referer: 'https://movie.douban.com/',
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       },
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!imageResponse.ok) {
       return NextResponse.json(
@@ -27,7 +42,25 @@ export async function GET(request: Request) {
       );
     }
 
-    const contentType = imageResponse.headers.get('content-type');
+    const contentType = imageResponse.headers.get('content-type') || '';
+    if (!contentType.startsWith('image/')) {
+      // 避免被用作任意文件代理
+      try {
+        await imageResponse.arrayBuffer();
+      } catch {
+        // ignore
+      }
+      return NextResponse.json(
+        { error: '仅允许代理图片内容' },
+        { status: 400 }
+      );
+    }
+    const contentLength = Number(
+      imageResponse.headers.get('content-length') || '0'
+    );
+    if (contentLength > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: '图片过大' }, { status: 413 });
+    }
 
     if (!imageResponse.body) {
       return NextResponse.json(

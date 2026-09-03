@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { NextResponse } from 'next/server';
 
 import { getCacheTime, getConfig } from '@/lib/config';
@@ -6,14 +8,10 @@ export const runtime = 'edge';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  let inputPassword = url.searchParams.get('pwd') || url.searchParams.get('password') || '';
+  const inputPassword = url.searchParams.get('pwd') || url.searchParams.get('password') || '';
 
   const adminConfig = await getConfig();
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
-  // 本地模式下未提供查询参数则自动使用环境变量 PASSWORD
-  if (storageType === 'localstorage' && !inputPassword) {
-    inputPassword = process.env.PASSWORD || '';
-  }
   const enabled = storageType === 'localstorage'
     ? (process.env.TVBOX_ENABLED == null
         ? true
@@ -22,6 +20,15 @@ export async function GET(request: Request) {
 
   if (!enabled) {
     return NextResponse.json({ error: 'TVBox 接口未开启' }, { status: 403 });
+  }
+
+  const expectedPassword =
+    storageType === 'localstorage'
+      ? process.env.PASSWORD || ''
+      : adminConfig.SiteConfig.TVBoxPassword || '';
+  // 未配置口令时拒绝匿名访问；已配置则必须显式携带正确口令（不再自动填充）
+  if (!expectedPassword || inputPassword !== expectedPassword) {
+    return NextResponse.json({ error: '密码错误或未提供' }, { status: 401 });
   }
 
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { downloadTsSegment, parseM3U8 } from '@/lib/m3u8-downloader';
+import { assertSafeFetchUrl } from '@/lib/ssrf';
 
 export const runtime = 'edge';
 
@@ -12,8 +13,19 @@ export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json();
 
-    if (!url) {
+    if (!url || typeof url !== 'string') {
       return NextResponse.json({ error: '缺少 m3u8 URL' }, { status: 400 });
+    }
+    if (url.length > 2048) {
+      return NextResponse.json({ error: 'URL 过长' }, { status: 400 });
+    }
+    try {
+      assertSafeFetchUrl(url);
+    } catch (e) {
+      return NextResponse.json(
+        { error: (e as Error).message || '非法 URL' },
+        { status: 400 }
+      );
     }
 
     const task = await parseM3U8(url);
@@ -57,8 +69,19 @@ export async function GET(request: NextRequest) {
     if (!url) {
       return NextResponse.json({ error: '缺少 URL 参数' }, { status: 400 });
     }
+    try {
+      assertSafeFetchUrl(url);
+    } catch (e) {
+      return NextResponse.json(
+        { error: (e as Error).message || '非法 URL' },
+        { status: 400 }
+      );
+    }
 
     const data = await downloadTsSegment(url);
+    if (data.byteLength > 50 * 1024 * 1024) {
+      return NextResponse.json({ error: '片段过大' }, { status: 413 });
+    }
     
     return new NextResponse(data, {
       headers: {

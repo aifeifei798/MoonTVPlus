@@ -15,7 +15,7 @@ export const runtime = 'edge';
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    let inputPassword = url.searchParams.get('pwd') || url.searchParams.get('password') || '';
+    const inputPassword = url.searchParams.get('pwd') || url.searchParams.get('password') || '';
     const un = url.searchParams.get('un') || '';
     
     const adminConfig = await getConfig();
@@ -35,10 +35,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // 本地模式下未提供查询参数则自动使用环境变量 PASSWORD
-    if (storageType === 'localstorage' && !inputPassword) {
-      inputPassword = process.env.PASSWORD || '';
-    }
     const enabled = storageType === 'localstorage'
       ? (process.env.TVBOX_ENABLED == null
           ? true

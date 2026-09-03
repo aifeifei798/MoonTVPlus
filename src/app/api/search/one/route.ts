@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getCacheTime, getConfig } from '@/lib/config';
 import { searchFromApiStream } from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   let authInfo = null;
   if (!isLocalStorage) {
-    authInfo = getAuthInfoFromCookie(request);
+    authInfo = await getVerifiedAuthInfo(request);
     if (!authInfo || !authInfo.username) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

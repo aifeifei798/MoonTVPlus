@@ -5,25 +5,16 @@ const nextConfig = {
   output: 'standalone',
   eslint: {
     dirs: ['src'],
-    ignoreDuringBuilds: true,
+    // 构建时不再忽略 lint，让 CI 分步失败可见；本地可用 pnpm lint 快速检查
+    ignoreDuringBuilds: false,
   },
 
-  reactStrictMode: false,
-  swcMinify: true,
+  reactStrictMode: true,
 
-  // Uncoment to add domain whitelist
+  // 聚合播放器需直出任意第三方图床（api_site/豆瓣），故保持 unoptimized；
+  // remotePatterns 仅作文档用途，unoptimized 下不生效，切勿误以为是白名单
   images: {
     unoptimized: true,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: '**',
-      },
-    ],
   },
 
   webpack(config) {
@@ -31,6 +22,9 @@ const nextConfig = {
     const fileLoaderRule = config.module.rules.find((rule) =>
       rule.test?.test?.('.svg')
     );
+    if (!fileLoaderRule) {
+      throw new Error('未找到处理 .svg 的默认规则，升级 Next 后需同步调整 SVGR 配置');
+    }
 
     config.module.rules.push(
       // Reapply the existing rule, but only for svg imports ending in ?url

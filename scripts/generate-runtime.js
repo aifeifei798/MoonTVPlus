@@ -13,15 +13,23 @@ try {
   let config = {};
 
   if (fs.existsSync(configPath)) {
-    // 有 config.json 就读取
+    // 有 config.json 就读取；解析失败直接 fail-fast，避免把坏配置固化进构建
     const configContent = fs.readFileSync(configPath, "utf-8");
     try {
       config = JSON.parse(configContent);
     } catch (err) {
-      console.error("解析 config.json 失败");
+      console.error("❌ 解析 config.json 失败，终止构建:", err.message);
+      process.exit(1);
+    }
+    if (!config || typeof config !== "object") {
+      console.error("❌ config.json 内容非法，终止构建");
+      process.exit(1);
+    }
+    if (!config.api_site || Object.keys(config.api_site).length === 0) {
+      console.warn("⚠️ config.json 中 api_site 为空，站点将无播放源（空壳站），请检查配置");
     }
   } else {
-    console.warn("⚠️ 未找到 config.json 文件");
+    console.warn("⚠️ 未找到 config.json 文件，将生成空配置");
   }
 
   // 生成 TypeScript 代码

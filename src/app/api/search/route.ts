@@ -2,7 +2,7 @@
 
 import { NextRequest } from 'next/server';
 
-import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getVerifiedAuthInfo } from '@/lib/auth';
 import { getAvailableApiSites, getCacheTime, getConfig } from '@/lib/config';
 import { searchFromApiStream } from '@/lib/downstream';
 import { yellowWords } from '@/lib/yellow';
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   let authInfo = null;
   if (!isLocalStorage) {
     // 非本地存储模式才需要认证
-    authInfo = getAuthInfoFromCookie(request);
+    authInfo = await getVerifiedAuthInfo(request);
     if (!authInfo || !authInfo.username) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
         status: 401,
