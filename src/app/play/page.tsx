@@ -193,8 +193,7 @@ function PlayPageClient() {
         selectedDanmakuAnime.episodes[selectedDanmakuEpisode - 1];
       setSelectedState(false);
     } else if (autoDanmakuEnabled) {
-
-    /** ② 自动匹配模式：直接使用第 0 集 */
+      /** ② 自动匹配模式：直接使用第 0 集 */
       matchedEpisode = selectedDanmakuAnime.episodes[0];
     }
 
@@ -279,7 +278,7 @@ function PlayPageClient() {
   // 上次使用的音量，默认 0.7
   const lastVolumeRef = useRef<number>(0.7);
   // 音量增强（Web Audio API，最高 2 倍）
-  const audioBoostRef = useRef<boolean>(false);
+  const audioBoostRef = useRef<boolean>(true);
   const boostCtxRef = useRef<AudioContext | null>(null);
   const boostGainRef = useRef<GainNode | null>(null);
   const boostSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -862,17 +861,56 @@ function PlayPageClient() {
   function filterAdsFromM3U8(m3u8Content: string): string {
     if (!m3u8Content) return '';
 
-    // 按行分割M3U8内容
     const lines = m3u8Content.split('\n');
-    const filteredLines = [];
+    const filteredLines: string[] = [];
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    const MAX_AD_DURATION_SECONDS = 300;
+    const isDiscontinuity = (line: string) =>
+      line.trim() === '#EXT-X-DISCONTINUITY';
+    const isSegmentLine = (line: string) => {
+      const t = line.trim();
+      if (t === '') return true;
+      if (t.startsWith('#EXTINF')) return true;
+      return !t.startsWith('#');
+    };
 
-      // 只过滤#EXT-X-DISCONTINUITY标识
-      if (!line.includes('#EXT-X-DISCONTINUITY')) {
+    let inAdBlock = false;
+    let pendingLines: string[] = [];
+    let pendingDuration = 0;
+    let pendingClean = true;
+
+    for (const line of lines) {
+      if (isDiscontinuity(line)) {
+        if (inAdBlock) {
+          if (!pendingClean || pendingDuration > MAX_AD_DURATION_SECONDS) {
+            filteredLines.push(...pendingLines);
+          }
+          pendingLines = [];
+          pendingDuration = 0;
+          pendingClean = true;
+          inAdBlock = false;
+        } else {
+          inAdBlock = true;
+        }
         filteredLines.push(line);
+        continue;
       }
+
+      if (inAdBlock) {
+        if (line.includes('#EXTINF:')) {
+          const match = line.match(/#EXTINF:\s*([\d.]+)/);
+          if (match) pendingDuration += parseFloat(match[1]);
+        }
+        if (!isSegmentLine(line)) pendingClean = false;
+        pendingLines.push(line);
+        continue;
+      }
+
+      filteredLines.push(line);
+    }
+
+    if (inAdBlock) {
+      filteredLines.push(...pendingLines);
     }
 
     return filteredLines.join('\n');
