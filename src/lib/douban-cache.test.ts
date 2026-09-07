@@ -49,30 +49,63 @@ describe('豆瓣缓存', () => {
   });
 
   it('缓存 key 与参数顺序无关', () => {
-    const a = buildDoubanCacheKey('list', { type: 'movie', tag: '热门', ps: '16' });
-    const b = buildDoubanCacheKey('list', { ps: '16', tag: '热门', type: 'movie' });
+    const a = buildDoubanCacheKey('list', {
+      type: 'movie',
+      tag: '热门',
+      ps: '16',
+    });
+    const b = buildDoubanCacheKey('list', {
+      ps: '16',
+      tag: '热门',
+      type: 'movie',
+    });
     expect(a).toBe(b);
     expect(buildDoubanCacheKey('categories', { kind: 'tv' })).not.toBe(a);
   });
 
   it('各接口 key 构造函数与 buildDoubanCacheKey 一致（路由与暖缓存不漂移）', () => {
-    const listParams = { type: 'movie', tag: '热门', pageSize: '20', pageStart: '0' };
+    const listParams = {
+      type: 'movie',
+      tag: '热门',
+      pageSize: '20',
+      pageStart: '0',
+    };
     expect(listCacheKey(listParams)).toBe(
       buildDoubanCacheKey('list', listParams)
     );
-    const catParams = { kind: 'tv', category: '剧情', type: 'tv', limit: '20', start: '0' };
+    const catParams = {
+      kind: 'tv',
+      category: '剧情',
+      type: 'tv',
+      limit: '20',
+      start: '0',
+    };
     expect(categoriesCacheKey(catParams)).toBe(
       buildDoubanCacheKey('categories', catParams)
     );
     const recParams = {
-      kind: 'movie', limit: '20', start: '0',
-      category: 'all', format: 'all', region: 'all', year: 'all',
-      platform: 'all', sort: 'T', label: 'all',
+      kind: 'movie',
+      limit: '20',
+      start: '0',
+      category: 'all',
+      format: 'all',
+      region: 'all',
+      year: 'all',
+      platform: 'all',
+      sort: 'T',
+      label: 'all',
     };
     const norm = {
-      kind: 'movie', limit: '20', start: '0',
-      category: '', format: '', region: '', year: '',
-      platform: '', sort: '', label: '',
+      kind: 'movie',
+      limit: '20',
+      start: '0',
+      category: '',
+      format: '',
+      region: '',
+      year: '',
+      platform: '',
+      sort: '',
+      label: '',
     };
     expect(recommendsCacheKey(recParams)).toBe(
       buildDoubanCacheKey('recommends', norm)

@@ -164,8 +164,10 @@ export function recommendsCacheKey(params: {
 }): string {
   // 与 recommends 路由的归一化保持一致：category/format/label/region/year/platform 的 'all'
   // 和 sort 的 'T' 都会归一为空
-  const field = (v?: string) => (String(v ?? '') === 'all' ? '' : String(v ?? ''));
-  const sortField = (v?: string) => (String(v ?? '') === 'T' ? '' : String(v ?? ''));
+  const field = (v?: string) =>
+    String(v ?? '') === 'all' ? '' : String(v ?? '');
+  const sortField = (v?: string) =>
+    String(v ?? '') === 'T' ? '' : String(v ?? '');
   return buildDoubanCacheKey('recommends', {
     kind: String(params.kind ?? ''),
     limit: String(params.limit ?? ''),
@@ -180,7 +182,9 @@ export function recommendsCacheKey(params: {
   });
 }
 
-async function readEntryFromDisk(key: string): Promise<DoubanCacheEntry | null> {
+async function readEntryFromDisk(
+  key: string
+): Promise<DoubanCacheEntry | null> {
   const modules = getNodeModules();
   if (!modules) return null;
   try {
@@ -272,13 +276,20 @@ function sweepExpiredFiles(): void {
         .filter((f) => !stale.includes(f))
         .map((f) => {
           try {
-            return { f, mtime: modules.fs.statSync(modules.path.join(dir, f)).mtimeMs };
+            return {
+              f,
+              mtime: modules.fs.statSync(modules.path.join(dir, f)).mtimeMs,
+            };
           } catch {
             return { f, mtime: 0 };
           }
         })
         .sort((a, b) => a.mtime - b.mtime);
-      stale.push(...fresh.slice(0, files.length - MAX_FILES - stale.length).map((d) => d.f));
+      stale.push(
+        ...fresh
+          .slice(0, files.length - MAX_FILES - stale.length)
+          .map((d) => d.f)
+      );
     }
     stale.slice(0, files.length - MAX_FILES).forEach((f) => {
       try {
