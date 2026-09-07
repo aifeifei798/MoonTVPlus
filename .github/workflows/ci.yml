@@ -22,6 +22,10 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
+          # setup-node@v5 检测到 package.json 的 packageManager 会自动缓存 pnpm，
+          # 但该步骤早于 pnpm/action-setup（此时 pnpm 尚未安装）会报
+          # "Unable to locate executable file: pnpm"；下方已有显式 Cache pnpm store 步骤
+          package-manager-cache: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
