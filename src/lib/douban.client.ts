@@ -113,13 +113,53 @@ function getDoubanProxyConfig(): {
 }
 
 /**
+ * 代理/CDN/custom 源请求失败时退回服务端 API 的兜底包装。
+ * 服务端 API（/api/douban*）自带本地缓存：豆瓣源站不可用时也能返回最近一次缓存数据。
+ * 所选源成功时会通过 onPrimarySuccess 回写服务端缓存（暖缓存），
+ * 保证即便服务端从未直连豆瓣源站，源故障时也有缓存可兜底。
+ */
+async function withServerFallback<T>(
+  primary: () => Promise<T>,
+  serverApi: () => Promise<T>,
+  onPrimarySuccess?: (result: T) => void
+): Promise<T> {
+  try {
+    const result = await primary();
+    onPrimarySuccess?.(result);
+    return result;
+  } catch {
+    return await serverApi();
+  }
+}
+
+/**
+ * 把客户端成功抓取的豆瓣数据回写到服务端本地缓存（暖缓存），失败时静默忽略。
+ */
+async function warmDoubanCache(
+  scope: string,
+  params: Record<string, string>,
+  data: DoubanResult
+): Promise<void> {
+  try {
+    await fetch('/api/douban/cache', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope, params, data }),
+    });
+  } catch {
+    // 暖缓存失败不影响主流程
+  }
+}
+
+/**
  * 浏览器端豆瓣分类数据获取函数
  */
 export async function fetchDoubanCategories(
   params: DoubanCategoriesParams,
   proxyUrl: string,
   useTencentCDN = false,
-  useAliCDN = false
+  useAliCDN = false,
+  silent = false
 ): Promise<DoubanResult> {
   const { kind, category, type, pageLimit = 20, pageStart = 0 } = params;
 
@@ -173,8 +213,8 @@ export async function fetchDoubanCategories(
       list: list,
     };
   } catch (error) {
-    // 触发全局错误提示
-    if (typeof window !== 'undefined') {
+    // 触发全局错误提示（silent 时由上层走服务端兜底，不弹错误）
+    if (!silent && typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('globalError', {
           detail: { message: '获取豆瓣分类数据失败' },
@@ -186,30 +226,64 @@ export async function fetchDoubanCategories(
 }
 
 /**
- * 统一的豆瓣分类数据获取函数，根据代理设置选择使用服务端 API 或客户端代理获取
+ * 统一的豆瓣分类数据获取函数，根据代理设置选择使用服务端 API 或客户端代理获取。
+ * 代理/CDN/custom 源失败时自动退回服务端 API（自带本地缓存兜底）。
  */
 export async function getDoubanCategories(
   params: DoubanCategoriesParams
 ): Promise<DoubanResult> {
   const { kind, category, type, pageLimit = 20, pageStart = 0 } = params;
   const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  // 与服务端 /api/douban/categories 的缓存 key 完全一致的参数集（暖缓存回写复用）
+  const serverParams = {
+    kind,
+    category,
+    type,
+    limit: String(pageLimit),
+    start: String(pageStart),
+  };
+  const serverApi = () =>
+    fetch(
+      `/api/douban/categories?${new URLSearchParams(serverParams).toString()}`
+    ).then((response) => response.json());
+  const warm = (data: DoubanResult) =>
+    warmDoubanCache('categories', serverParams, data);
   switch (proxyType) {
     case 'cors-proxy-zwei':
-      return fetchDoubanCategories(params, 'https://ciao-cors.is-an.org/');
+      return withServerFallback(
+        () =>
+          fetchDoubanCategories(
+            params,
+            'https://ciao-cors.is-an.org/',
+            false,
+            false,
+            true
+          ),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-tencent':
-      return fetchDoubanCategories(params, '', true, false);
+      return withServerFallback(
+        () => fetchDoubanCategories(params, '', true, false, true),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-ali':
-      return fetchDoubanCategories(params, '', false, true);
-
-    case 'custom':
-      return fetchDoubanCategories(params, proxyUrl);
-    case 'direct':
-    default:
-      const response = await fetch(
-        `/api/douban/categories?kind=${kind}&category=${category}&type=${type}&limit=${pageLimit}&start=${pageStart}`
+      return withServerFallback(
+        () => fetchDoubanCategories(params, '', false, true, true),
+        serverApi,
+        warm
       );
 
-      return response.json();
+    case 'custom':
+      return withServerFallback(
+        () => fetchDoubanCategories(params, proxyUrl, false, false, true),
+        serverApi,
+        warm
+      );
+    case 'direct':
+    default:
+      return serverApi();
   }
 }
 
@@ -225,23 +299,54 @@ export async function getDoubanList(
 ): Promise<DoubanResult> {
   const { tag, type, pageLimit = 20, pageStart = 0 } = params;
   const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  const serverParams = {
+    type,
+    tag,
+    pageSize: String(pageLimit),
+    pageStart: String(pageStart),
+  };
+  const serverApi = () =>
+    fetch(`/api/douban?${new URLSearchParams(serverParams).toString()}`).then(
+      (response) => response.json()
+    );
+  const warm = (data: DoubanResult) =>
+    warmDoubanCache('list', serverParams, data);
   switch (proxyType) {
     case 'cors-proxy-zwei':
-      return fetchDoubanList(params, 'https://ciao-cors.is-an.org/');
+      return withServerFallback(
+        () =>
+          fetchDoubanList(
+            params,
+            'https://ciao-cors.is-an.org/',
+            false,
+            false,
+            true
+          ),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-tencent':
-      return fetchDoubanList(params, '', true, false);
+      return withServerFallback(
+        () => fetchDoubanList(params, '', true, false, true),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-ali':
-      return fetchDoubanList(params, '', false, true);
-
-    case 'custom':
-      return fetchDoubanList(params, proxyUrl);
-    case 'direct':
-    default:
-      const response = await fetch(
-        `/api/douban?tag=${tag}&type=${type}&pageSize=${pageLimit}&pageStart=${pageStart}`
+      return withServerFallback(
+        () => fetchDoubanList(params, '', false, true, true),
+        serverApi,
+        warm
       );
 
-      return response.json();
+    case 'custom':
+      return withServerFallback(
+        () => fetchDoubanList(params, proxyUrl, false, false, true),
+        serverApi,
+        warm
+      );
+    case 'direct':
+    default:
+      return serverApi();
   }
 }
 
@@ -249,7 +354,8 @@ export async function fetchDoubanList(
   params: DoubanListParams,
   proxyUrl: string,
   useTencentCDN = false,
-  useAliCDN = false
+  useAliCDN = false,
+  silent = false
 ): Promise<DoubanResult> {
   const { tag, type, pageLimit = 20, pageStart = 0 } = params;
 
@@ -303,8 +409,8 @@ export async function fetchDoubanList(
       list: list,
     };
   } catch (error) {
-    // 触发全局错误提示
-    if (typeof window !== 'undefined') {
+    // 触发全局错误提示（silent 时由上层走服务端兜底，不弹错误）
+    if (!silent && typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('globalError', {
           detail: { message: '获取豆瓣列表数据失败' },
@@ -344,23 +450,54 @@ export async function getDoubanRecommends(
     sort,
   } = params;
   const { proxyType, proxyUrl } = getDoubanProxyConfig();
+  // 与服务端 /api/douban/recommends 的缓存 key 完全一致的参数集（暖缓存回写复用）
+  const serverParams = {
+    kind,
+    limit: String(pageLimit),
+    start: String(pageStart),
+    category: String(category ?? ''),
+    format: String(format ?? ''),
+    region: String(region ?? ''),
+    year: String(year ?? ''),
+    platform: String(platform ?? ''),
+    sort: String(sort ?? ''),
+    label: String(label ?? ''),
+  };
+  const serverApi = () =>
+    fetch(
+      `/api/douban/recommends?${new URLSearchParams(serverParams).toString()}`
+    ).then((response) => response.json());
+  const warm = (data: DoubanResult) =>
+    warmDoubanCache('recommends', serverParams, data);
   switch (proxyType) {
     case 'cors-proxy-zwei':
-      return fetchDoubanRecommends(params, 'https://ciao-cors.is-an.org/');
+      return withServerFallback(
+        () => fetchDoubanRecommends(params, 'https://ciao-cors.is-an.org/'),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-tencent':
-      return fetchDoubanRecommends(params, '', true, false);
+      return withServerFallback(
+        () => fetchDoubanRecommends(params, '', true, false),
+        serverApi,
+        warm
+      );
     case 'cmliussss-cdn-ali':
-      return fetchDoubanRecommends(params, '', false, true);
-
-    case 'custom':
-      return fetchDoubanRecommends(params, proxyUrl);
-    case 'direct':
-    default:
-      const response = await fetch(
-        `/api/douban/recommends?kind=${kind}&limit=${pageLimit}&start=${pageStart}&category=${category}&format=${format}&region=${region}&year=${year}&platform=${platform}&sort=${sort}&label=${label}`
+      return withServerFallback(
+        () => fetchDoubanRecommends(params, '', false, true),
+        serverApi,
+        warm
       );
 
-      return response.json();
+    case 'custom':
+      return withServerFallback(
+        () => fetchDoubanRecommends(params, proxyUrl),
+        serverApi,
+        warm
+      );
+    case 'direct':
+    default:
+      return serverApi();
   }
 }
 

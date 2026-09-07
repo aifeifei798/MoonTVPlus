@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 
-import { getCacheTime } from '@/lib/config';
 import { fetchDoubanData } from '@/lib/douban';
+import {
+  buildDoubanOkResponse,
+  categoriesCacheKey,
+  getDoubanCache,
+  setDoubanCache,
+} from '@/lib/douban-cache';
 import { DoubanItem, DoubanResult } from '@/lib/types';
 
 interface DoubanCategoryApiResponse {
@@ -61,6 +66,20 @@ export async function GET(request: Request) {
     );
   }
 
+  const cacheKey = categoriesCacheKey({
+    kind,
+    category,
+    type,
+    limit: pageLimit.toString(),
+    start: pageStart.toString(),
+  });
+
+  // 先读缓存，命中直接返回
+  const cached = await getDoubanCache(cacheKey);
+  if (cached) {
+    return buildDoubanOkResponse(cached, 'hit');
+  }
+
   const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${kind}?start=${pageStart}&limit=${pageLimit}&category=${category}&type=${type}`;
 
   try {
@@ -82,16 +101,14 @@ export async function GET(request: Request) {
       list: list,
     };
 
-    const cacheTime = await getCacheTime();
-    return NextResponse.json(response, {
-      headers: {
-        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Netlify-Vary': 'query',
-      },
-    });
+    await setDoubanCache(cacheKey, response);
+    return buildDoubanOkResponse(response, 'fresh');
   } catch (error) {
+    // 豆瓣不可用时退回缓存（允许过期数据兜底）
+    const stale = await getDoubanCache(cacheKey, true);
+    if (stale) {
+      return buildDoubanOkResponse(stale, 'stale');
+    }
     return NextResponse.json(
       { error: '获取豆瓣数据失败', details: (error as Error).message },
       { status: 500 }

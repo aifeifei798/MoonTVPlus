@@ -333,6 +333,10 @@ services:
 | SEARCH_CACHE_TTL                    | 搜索结果缓存秒数（按源+词），0 表示关闭                            | 数字                                      | 600                                                                                                                        |
 | SOURCE_CIRCUIT_THRESHOLD            | 源连续失败多少次触发熔断，0 表示关闭                               | 数字                                      | 5                                                                                                                          |
 | SOURCE_CIRCUIT_COOLDOWN_S           | 熔断冷却秒数，期满后半开放试探                                     | 数字                                      | 300                                                                                                                        |
+| DOUBAN_CACHE_TTL                    | 豆瓣列表数据缓存秒数，0 表示取到即视为过期（仅 stale 兜底）        | 数字                                      | 7200                                                                                                                       |
+| DOUBAN_CACHE_DIR                    | 豆瓣缓存目录（Node/Docker 下写入磁盘 JSON；Edge 无 fs 时自动退化为进程内存缓存） | 目录路径                                  | /tmp/douban-cache                                                                                                          |
+
+DOUBAN_CACHE_DIR 说明：豆瓣列表接口（`/api/douban`、`/api/douban/categories`、`/api/douban/recommends`）的成功响应会写入该目录的 JSON 文件，豆瓣上游不可用时自动返回最近一次缓存数据兜底。客户端无论使用 direct、cors-proxy 还是 CDN 镜像源，当所选源请求失败时都会自动退回上述带缓存的服务端接口；并且代理/CDN/custom 源的成功结果也会回写到服务端缓存（`POST /api/douban/cache` 暖缓存），因此即使服务端从未直连豆瓣源站，切代理/CDN 也能获得兜底。Docker 如需容器重建后仍保留缓存，可将目录挂载为数据卷，例如 `-v douban-cache:/tmp/douban-cache`。
 
 NEXT_PUBLIC_DOUBAN_PROXY_TYPE 选项解释：
 

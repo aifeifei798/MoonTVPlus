@@ -3,9 +3,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
-import { getCacheTime } from '@/lib/config';
 import { getConfig } from '@/lib/config';
 import { fetchDoubanData } from '@/lib/douban';
+import {
+  buildDoubanOkResponse,
+  getDoubanCache,
+  recommendsCacheKey,
+  setDoubanCache,
+} from '@/lib/douban-cache';
 import { DoubanResult } from '@/lib/types';
 
 interface DoubanRecommendApiResponse {
@@ -71,6 +76,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '非法 kind 参数' }, { status: 400 });
   }
 
+  const cacheKey = recommendsCacheKey({
+    kind,
+    limit: pageLimit.toString(),
+    start: pageStart.toString(),
+    category: category || '',
+    format: format || '',
+    region: region || '',
+    year: year || '',
+    platform: platform || '',
+    sort: sort || '',
+    label: label || '',
+  });
+
+  // 先读缓存，命中直接返回（推荐数据不随用户变化，可全局共享）
+  const cached = await getDoubanCache(cacheKey);
+  if (cached) {
+    return buildDoubanOkResponse(cached, 'hit');
+  }
+
   const selectedCategories = { 类型: category } as any;
   if (format) {
     selectedCategories['形式'] = format;
@@ -133,16 +157,14 @@ export async function GET(request: NextRequest) {
       list: list,
     };
 
-    const cacheTime = await getCacheTime();
-    return NextResponse.json(response, {
-      headers: {
-        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Netlify-Vary': 'query',
-      },
-    });
+    await setDoubanCache(cacheKey, response);
+    return buildDoubanOkResponse(response, 'fresh');
   } catch (error) {
+    // 豆瓣不可用时退回缓存（允许过期数据兜底）
+    const stale = await getDoubanCache(cacheKey, true);
+    if (stale) {
+      return buildDoubanOkResponse(stale, 'stale');
+    }
     return NextResponse.json(
       { error: '获取豆瓣数据失败', details: (error as Error).message },
       { status: 500 }
