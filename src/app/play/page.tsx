@@ -13,20 +13,13 @@ import {
   matchAnime,
 } from '@/lib/danmaku.client';
 import {
-  deleteFavorite,
-  deleteFollowing,
   deletePlayRecord,
   deleteSkipConfig,
   generateStorageKey,
   getAllPlayRecords,
   getSkipConfig,
-  isFavorited,
-  isFollowing,
-  saveFavorite,
-  saveFollowing,
   savePlayRecord,
   saveSkipConfig,
-  subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
 import { getRequestTimeout, getVideoResolutionFromM3u8 } from '@/lib/utils';
@@ -37,6 +30,8 @@ import EpisodeSelector from '@/components/EpisodeSelector';
 import { FollowingIconButton } from '@/components/FollowingIcon';
 import { triggerGlobalError } from '@/components/GlobalErrorIndicator';
 import PageLayout from '@/components/PageLayout';
+
+import { useFavoriteFollowing } from './useFavoriteFollowing';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
@@ -69,10 +64,6 @@ function PlayPageClient() {
   const [detail, setDetail] = useState<SearchResult | null>(null);
   const [isDanmakuPluginReady, setIsDanmakuPluginReady] = useState(false);
   const [isDanmakuLoading, setIsDanmakuLoading] = useState(false);
-
-  // 收藏状态
-  const [favorited, setFavorited] = useState(false);
-  const [following, setFollowing] = useState(false);
 
   // 添加下载弹窗状态
   const [showAddDownload, setShowAddDownload] = useState(false);
@@ -178,6 +169,17 @@ function PlayPageClient() {
   const videoYearRef = useRef(videoYear);
   const detailRef = useRef<SearchResult | null>(detail);
   const currentEpisodeIndexRef = useRef(currentEpisodeIndex);
+
+  // 收藏 + 追更状态（hook 内部监听数据更新事件）
+  const { favorited, following, handleToggleFavorite, handleToggleFollowing } =
+    useFavoriteFollowing({
+      currentSource,
+      currentId,
+      videoTitleRef,
+      detailRef,
+      currentEpisodeIndexRef,
+      searchTitle,
+    });
 
   useEffect(() => {
     if (!selectedDanmakuAnime || !detail) return;
@@ -1764,124 +1766,6 @@ function PlayPageClient() {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 收藏相关
-  // ---------------------------------------------------------------------------
-  // 每当 source 或 id 变化时检查收藏状态
-  useEffect(() => {
-    if (!currentSource || !currentId) return;
-    (async () => {
-      try {
-        const fav = await isFavorited(currentSource, currentId);
-        setFavorited(fav);
-      } catch (err) {
-        console.error('检查收藏状态失败:', err);
-      }
-    })();
-  }, [currentSource, currentId]);
-
-  // 监听收藏数据更新事件
-  useEffect(() => {
-    if (!currentSource || !currentId) return;
-
-    const unsubscribe = subscribeToDataUpdates(
-      'favoritesUpdated',
-      (favorites: Record<string, any>) => {
-        const key = generateStorageKey(currentSource, currentId);
-        const isFav = !!favorites[key];
-        setFavorited(isFav);
-      }
-    );
-
-    return unsubscribe;
-  }, [currentSource, currentId]);
-
-  // 切换收藏
-  const handleToggleFavorite = async () => {
-    if (
-      !videoTitleRef.current ||
-      !detailRef.current ||
-      !currentSourceRef.current ||
-      !currentIdRef.current
-    )
-      return;
-
-    try {
-      if (favorited) {
-        // 如果已收藏，删除收藏
-        await deleteFavorite(currentSourceRef.current, currentIdRef.current);
-        setFavorited(false);
-      } else {
-        // 如果未收藏，添加收藏
-        await saveFavorite(currentSourceRef.current, currentIdRef.current, {
-          title: videoTitleRef.current,
-          source_name: detailRef.current?.source_name || '',
-          year: detailRef.current?.year,
-          cover: detailRef.current?.poster || '',
-          total_episodes: detailRef.current?.episodes.length || 1,
-          save_time: Date.now(),
-          search_title: searchTitle,
-        });
-        setFavorited(true);
-      }
-    } catch (err) {
-      console.error('切换收藏失败:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (!currentSource || !currentId) return;
-
-    const refreshFollowingState = async () => {
-      const isFollow = await isFollowing(currentSource, currentId);
-      setFollowing(isFollow);
-    };
-
-    refreshFollowingState();
-
-    const unsubscribe = subscribeToDataUpdates(
-      'followingsUpdated',
-      (followings: Record<string, any>) => {
-        const key = generateStorageKey(currentSource, currentId);
-        setFollowing(!!followings[key]);
-      }
-    );
-
-    return unsubscribe;
-  }, [currentSource, currentId]);
-
-  const handleToggleFollowing = async () => {
-    if (
-      !videoTitleRef.current ||
-      !detailRef.current ||
-      !currentSourceRef.current ||
-      !currentIdRef.current
-    )
-      return;
-
-    try {
-      if (following) {
-        await deleteFollowing(currentSourceRef.current, currentIdRef.current);
-        setFollowing(false);
-      } else {
-        await saveFollowing(currentSourceRef.current, currentIdRef.current, {
-          title: videoTitleRef.current,
-          source_name: detailRef.current?.source_name || '',
-          year: detailRef.current?.year,
-          cover: detailRef.current?.poster || '',
-          total_episodes: detailRef.current?.episodes.length || 1,
-          watched_episodes: currentEpisodeIndexRef.current + 1,
-          save_time: Date.now(),
-          search_title: searchTitle,
-          source: currentSourceRef.current,
-          id: currentIdRef.current,
-        });
-        setFollowing(true);
-      }
-    } catch (err) {
-      console.error('切换追更失败:', err);
-    }
-  };
-
   // 动态加载播放器相关库，仅在客户端
   const artLibRef = useRef<any>(null);
   const hlsLibRef = useRef<any>(null);
