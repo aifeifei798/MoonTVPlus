@@ -11,10 +11,39 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none; /* Chrome, Safari and Opera */
   }
+
+  /* 图片骨架屏占位效果 */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--skeleton-color) 25%,
+      var(--skeleton-highlight) 50%,
+      var(--skeleton-color) 75%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shine 1.5s infinite;
+  }
+}
+
+@keyframes skeleton-shine {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 :root {
   --foreground-rgb: 255, 255, 255;
+  --skeleton-color: #f0f0f0;
+  --skeleton-highlight: #e0e0e0;
+}
+
+/* 暗色模式骨架屏颜色 */
+.dark {
+  --skeleton-color: #2d2d2d;
+  --skeleton-highlight: #3d3d3d;
 }
 
 html,
