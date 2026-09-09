@@ -115,10 +115,13 @@ export async function GET(request: NextRequest) {
               query,
               true,
               undefined,
-              config.SiteConfig.SearchDownstreamMaxPage
+              config.SiteConfig.SearchDownstreamMaxPage,
             ),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(`${site.name} timeout`)), 20000)
+              setTimeout(
+                () => reject(new Error(`${site.name} timeout`)),
+                20000,
+              ),
             ),
           ]);
 
@@ -140,7 +143,7 @@ export async function GET(request: NextRequest) {
             filteredResults = allResults.filter((result) => {
               const typeName = result.type_name || '';
               return !yellowWords.some((word: string) =>
-                typeName.includes(word)
+                typeName.includes(word),
               );
             });
           }

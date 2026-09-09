@@ -68,7 +68,7 @@ export const FollowingIconButton: React.FC<FollowingIconButtonProps> = ({
       type='button'
       onClick={onClick}
       style={{ width: buttonSize, height: buttonSize }}
-      className={`flex flex-shrink-0 items-center justify-center rounded-full shadow-md transition-all duration-300 ease-out hover:scale-[1.1] ${themeClasses} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full shadow-md transition-all duration-300 ease-out hover:scale-[1.1] ${themeClasses} ${className}`}
       title={following ? '取消追更' : '加入追更'}
       aria-label={following ? '取消追更' : '加入追更'}
     >

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 'use client';
 
 import {
@@ -82,7 +80,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
                 t.status === 'downloading' ||
                 t.status === 'paused' ||
                 t.status === 'waiting' ||
-                t.status === 'error'
+                t.status === 'error',
             ).length;
             setDownloadTaskCount(activeCount);
           } catch {
@@ -107,7 +105,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
       // 自定义事件：当任务列表更新时
       window.addEventListener(
         'downloadTasksUpdated',
-        handleStorageChange as EventListener
+        handleStorageChange as EventListener,
       );
     }
 
@@ -116,7 +114,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
         window.removeEventListener('storage', handleStorageChange);
         window.removeEventListener(
           'downloadTasksUpdated',
-          handleStorageChange as EventListener
+          handleStorageChange as EventListener,
         );
       }
     };
@@ -139,7 +137,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
     getSearchHistory().then(setSearchHistory);
     const unsubscribe = subscribeToDataUpdates(
       'searchHistoryUpdated',
-      setSearchHistory
+      setSearchHistory,
     );
 
     return () => {
@@ -350,7 +348,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
   const searchBarContent = (
     <div className='flex-1 max-w-md flex items-center' ref={searchBarRef}>
       {/* 搜索源选择器 */}
-      <div className='flex-shrink-0'>
+      <div className='shrink-0'>
         <SourceSelector
           selectedSources={searchSources}
           onChange={setSearchSources}
@@ -371,7 +369,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
             onChange={handleInputChange}
             onFocus={handleInputFocus}
             placeholder='搜索电影、电视剧...'
-            className='w-full h-10 rounded-r-lg rounded-l-none bg-gray-100/80 py-2 pl-10 pr-20 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:bg-white transition-all duration-200 border border-gray-200/50 border-l-0 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:bg-gray-700 dark:border-gray-700'
+            className='w-full h-10 rounded-r-lg rounded-l-none bg-gray-100/80 py-2 pl-10 pr-20 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:bg-white transition-all duration-200 border border-gray-200/50 border-l-0 dark:bg-gray-800 dark:text-gray-300 dark:placeholder:text-gray-500 dark:focus:bg-gray-700 dark:border-gray-700'
           />
           <div className='absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1'>
             {searchQuery && (
@@ -454,7 +452,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
         setShowSearchBar(true);
         setTimeout(() => searchInputRef.current?.focus(), 300);
       }}
-      className='p-2 text-gray-700 hover:bg-gray-100/50 hover:text-green-600 rounded-lg transition-colors duration-200 dark:text-gray-300 dark:hover:text-green-400 dark:hover:bg-gray-700/50 flex-shrink-0'
+      className='p-2 text-gray-700 hover:bg-gray-100/50 hover:text-green-600 rounded-lg transition-colors duration-200 dark:text-gray-300 dark:hover:text-green-400 dark:hover:bg-gray-700/50 shrink-0'
       title='搜索'
     >
       <Search className='h-5 w-5' />
@@ -463,7 +461,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
 
   return (
     <>
-      <header className='hidden md:block sticky top-0 z-[600] w-full bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm dark:bg-gray-900/80 dark:border-gray-700/50'>
+      <header className='hidden md:block sticky top-0 z-[600] w-full bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-xs dark:bg-gray-900/80 dark:border-gray-700/50'>
         <div className='mx-auto px-6 h-16 flex items-center justify-between gap-6'>
           {/* Logo */}
           {simpleMode ? (
@@ -485,7 +483,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
           ) : (
             <Link
               href='/'
-              className='flex items-center justify-center select-none hover:opacity-80 transition-opacity duration-200 flex-shrink-0'
+              className='flex items-center justify-center select-none hover:opacity-80 transition-opacity duration-200 shrink-0'
               onClick={() => {
                 if (active !== '/') {
                   startLoading();
@@ -499,7 +497,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
           )}
 
           {/* 导航菜单 */}
-          <nav className='flex items-center gap-1 flex-shrink-0'>
+          <nav className='flex items-center gap-1 shrink-0'>
             {isClient && !simpleMode && (
               <Link
                 href='/'
@@ -559,7 +557,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
           </div>
 
           {/* 右侧按钮组 */}
-          <div className='flex items-center gap-2 flex-shrink-0 mr-9'>
+          <div className='flex items-center gap-2 shrink-0 mr-9'>
             <button
               onClick={() => {
                 if (typeof window !== 'undefined') {

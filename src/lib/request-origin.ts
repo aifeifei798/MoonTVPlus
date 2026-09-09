@@ -30,8 +30,12 @@ export function getRequestOrigin(request: Request) {
 
   const forwardedHost = getForwardedValue(forwarded, 'host');
   const forwardedProto = getForwardedValue(forwarded, 'proto');
-  const xForwardedHost = pickHeaderValue(request.headers.get('x-forwarded-host'));
-  const xForwardedProto = pickHeaderValue(request.headers.get('x-forwarded-proto'));
+  const xForwardedHost = pickHeaderValue(
+    request.headers.get('x-forwarded-host'),
+  );
+  const xForwardedProto = pickHeaderValue(
+    request.headers.get('x-forwarded-proto'),
+  );
   const host = pickHeaderValue(request.headers.get('host'));
 
   const resolvedHost = [forwardedHost, xForwardedHost, host, url.host].find(

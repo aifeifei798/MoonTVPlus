@@ -65,7 +65,7 @@ async function fetchSubscriptionData(url: string): Promise<any> {
 function importSources(
   adminConfig: any,
   subscriptionData: any,
-  importMode: 'overwrite' | 'merge'
+  importMode: 'overwrite' | 'merge',
 ) {
   // 假设 subscriptionData 是一个对象，包含 api_site 和 custom_category
   const { api_site = {} } = subscriptionData;
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
       {
         error: '不支持本地存储进行管理员配置',
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
     // 权限校验
     if (username !== process.env.USERNAME) {
       const userEntry = config.UserConfig.Users.find(
-        (u) => u.username === username
+        (u) => u.username === username,
       );
       if (!userEntry || userEntry.role !== 'admin' || userEntry.banned) {
         return NextResponse.json({ error: '权限不足' }, { status: 401 });
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
         error: '获取订阅配置失败',
         details: (error as Error).message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       {
         error: '不支持本地存储进行管理员配置',
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
     if (username) {
       if (username !== process.env.USERNAME) {
         const userEntry = adminConfig.UserConfig.Users.find(
-          (u) => u.username === username
+          (u) => u.username === username,
         );
         if (!userEntry || userEntry.role !== 'admin' || userEntry.banned) {
           return NextResponse.json({ error: '权限不足' }, { status: 401 });
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
           if (importMode !== 'overwrite' && importMode !== 'merge') {
             return NextResponse.json(
               { error: 'importMode 必须是 overwrite 或 merge' },
-              { status: 400 }
+              { status: 400 },
             );
           }
           adminConfig.SubscriptionConfig.importMode = importMode;
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
         if (!url) {
           return NextResponse.json(
             { error: '订阅地址未提供' },
-            { status: 400 }
+            { status: 400 },
           );
         }
         const mode =
@@ -269,7 +269,7 @@ export async function POST(request: NextRequest) {
         // 更新最后更新时间
         adminConfig.SubscriptionConfig = adminConfig.SubscriptionConfig || {};
         adminConfig.SubscriptionConfig.lastUpdated = Math.floor(
-          Date.now() / 1000
+          Date.now() / 1000,
         );
         // 保存配置
         if (storage && typeof (storage as any).setAdminConfig === 'function') {
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
               typeof (storage as any).setAdminConfig === 'function'
             ) {
               await (storage as any).setAdminConfig(
-                configSelfCheck(adminConfig)
+                configSelfCheck(adminConfig),
               );
               invalidateConfigCache();
             }
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
                 updated: false,
                 error: (error as Error).message,
               },
-              { status: 500 }
+              { status: 500 },
             );
           }
         } else {
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
         error: '订阅操作失败',
         details: (error as Error).message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

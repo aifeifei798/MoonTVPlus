@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       return NextResponse.json(
         { error: (e as Error).message || '非法 URL' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         error: '解析M3U8文件失败',
         message: error instanceof Error ? error.message : '未知错误',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     } catch (e) {
       return NextResponse.json(
         { error: (e as Error).message || '非法 URL' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
     if (data.byteLength > 50 * 1024 * 1024) {
       return NextResponse.json({ error: '片段过大' }, { status: 413 });
     }
-    
+
     return new NextResponse(data, {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
         error: '下载失败',
         message: error instanceof Error ? error.message : '未知错误',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

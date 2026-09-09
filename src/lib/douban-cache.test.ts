@@ -71,7 +71,7 @@ describe('豆瓣缓存', () => {
       pageStart: '0',
     };
     expect(listCacheKey(listParams)).toBe(
-      buildDoubanCacheKey('list', listParams)
+      buildDoubanCacheKey('list', listParams),
     );
     const catParams = {
       kind: 'tv',
@@ -81,7 +81,7 @@ describe('豆瓣缓存', () => {
       start: '0',
     };
     expect(categoriesCacheKey(catParams)).toBe(
-      buildDoubanCacheKey('categories', catParams)
+      buildDoubanCacheKey('categories', catParams),
     );
     const recParams = {
       kind: 'movie',
@@ -108,7 +108,7 @@ describe('豆瓣缓存', () => {
       label: '',
     };
     expect(recommendsCacheKey(recParams)).toBe(
-      buildDoubanCacheKey('recommends', norm)
+      buildDoubanCacheKey('recommends', norm),
     );
     expect(recommendsCacheKey(recParams)).toBe(recommendsCacheKey(norm));
   });
@@ -136,7 +136,7 @@ describe('豆瓣缓存', () => {
     const diskOnlyKey = buildDoubanCacheKey('list', { type: 'tv', tag: '冷' });
     writeFileSync(
       join(tmpDir, `${diskOnlyKey}.json`),
-      JSON.stringify({ savedAt: Date.now(), data: data })
+      JSON.stringify({ savedAt: Date.now(), data: data }),
     );
     const fromDisk = await getDoubanCache(diskOnlyKey);
     expect(fromDisk).toEqual(data);

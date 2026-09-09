@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
         for await (const suggestions of suggestionsStream) {
           controller.enqueue(
-            encoder.encode(JSON.stringify({ suggestions }) + '\n')
+            encoder.encode(JSON.stringify({ suggestions }) + '\n'),
           );
         }
 
@@ -72,7 +72,7 @@ async function* generateSuggestionsStream(query: string, timeout?: number) {
         query,
         true,
         timeout,
-        config.SiteConfig.SearchDownstreamMaxPage
+        config.SiteConfig.SearchDownstreamMaxPage,
       )) {
         // 统计关键词出现频率
         const keywordFrequency = new Map<string, number>();
@@ -81,7 +81,7 @@ async function* generateSuggestionsStream(query: string, timeout?: number) {
           .filter(Boolean)
           .flatMap((title: string) => title.split(/[ -:：·、-]/))
           .filter(
-            (w: string) => w.length > 1 && w.toLowerCase().includes(queryLower)
+            (w: string) => w.length > 1 && w.toLowerCase().includes(queryLower),
           );
 
         allKeywords.forEach((word) => {
@@ -91,7 +91,7 @@ async function* generateSuggestionsStream(query: string, timeout?: number) {
 
         const realKeywords: string[] = Array.from(new Set(allKeywords)).slice(
           0,
-          8
+          8,
         );
 
         const realSuggestions = realKeywords.map((word) => {

@@ -35,7 +35,7 @@ function setupHook() {
         ...refs,
         searchTitle: '搜索标题',
       }),
-    { initialProps: { currentSource: 'source1', currentId: 'id1' } }
+    { initialProps: { currentSource: 'source1', currentId: 'id1' } },
   );
 
   return { result, rerender, refs };
@@ -103,7 +103,7 @@ describe('useFavoriteFollowing', () => {
         detailRef: { current: null },
         currentEpisodeIndexRef: { current: 0 },
         searchTitle: '搜索标题',
-      })
+      }),
     );
 
     await act(async () => {

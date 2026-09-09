@@ -28,7 +28,7 @@ function getCronActiveDays(): number {
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
-  fn: (item: T) => Promise<void>
+  fn: (item: T) => Promise<void>,
 ): Promise<void> {
   let cursor = 0;
   const workers = Array.from(
@@ -38,7 +38,7 @@ async function runWithConcurrency<T>(
         const item = items[cursor++];
         await fn(item);
       }
-    }
+    },
   );
   await Promise.all(workers);
 }
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -112,7 +112,7 @@ async function refreshRecordAndFavorites() {
     const getDetail = async (
       source: string,
       id: string,
-      fallbackTitle: string
+      fallbackTitle: string,
     ): Promise<SearchResult | null> => {
       const key = `${source}+${id}`;
       let promise = detailCache.get(key);
@@ -221,7 +221,7 @@ async function refreshRecordAndFavorites() {
 
     const concurrency = getCronConcurrency();
     console.log(
-      `开始刷新: ${activeUsers.length} 用户, ${tasks.length} 条目, 并发 ${concurrency}`
+      `开始刷新: ${activeUsers.length} 用户, ${tasks.length} 条目, 并发 ${concurrency}`,
     );
     const stats = new Map<string, { processed: number; total: number }>();
     const statKey = (t: RefreshTask) => `${t.user}:${t.kind}`;
@@ -239,7 +239,7 @@ async function refreshRecordAndFavorites() {
           console.warn(
             `跳过无法获取详情的${
               kind === 'record' ? '播放记录' : '收藏'
-            }: ${key}`
+            }: ${key}`,
           );
           return;
         }
@@ -260,7 +260,7 @@ async function refreshRecordAndFavorites() {
               search_title: data.search_title,
             });
             console.log(
-              `更新播放记录: ${data.title} (${data.total_episodes} -> ${episodeCount})`
+              `更新播放记录: ${data.title} (${data.total_episodes} -> ${episodeCount})`,
             );
           } else {
             await db.saveFavorite(user, source, id, {
@@ -273,7 +273,7 @@ async function refreshRecordAndFavorites() {
               search_title: data.search_title,
             });
             console.log(
-              `更新收藏: ${data.title} (${data.total_episodes} -> ${episodeCount})`
+              `更新收藏: ${data.title} (${data.total_episodes} -> ${episodeCount})`,
             );
           }
         }
@@ -282,7 +282,7 @@ async function refreshRecordAndFavorites() {
       } catch (err) {
         console.error(
           `处理${kind === 'record' ? '播放记录' : '收藏'}失败 (${key}):`,
-          err
+          err,
         );
         // 继续处理下一个
       }

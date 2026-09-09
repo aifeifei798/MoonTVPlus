@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, no-console, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 
 'use client';
 
@@ -108,7 +108,7 @@ const CollapsibleTab = ({
   children,
 }: CollapsibleTabProps) => {
   return (
-    <div className='rounded-xl shadow-sm mb-4 overflow-hidden bg-white/80 backdrop-blur-md dark:bg-gray-800/50 dark:ring-1 dark:ring-gray-700'>
+    <div className='rounded-xl shadow-xs mb-4 overflow-hidden bg-white/80 backdrop-blur-md dark:bg-gray-800/50 dark:ring-1 dark:ring-gray-700'>
       <button
         onClick={onToggle}
         className='w-full px-6 py-4 flex items-center justify-between bg-gray-50/70 dark:bg-gray-800/60 hover:bg-gray-100/80 dark:hover:bg-gray-700/60 transition-colors'
@@ -227,7 +227,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
     await handleUserAction(
       'changePassword',
       changePasswordUser.username,
-      changePasswordUser.password
+      changePasswordUser.password,
     );
     setChangePasswordUser({ username: '', password: '' });
     setShowChangePasswordForm(false);
@@ -285,7 +285,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
               <span style="font-size:13px"><strong>${
                 s.name || s.key
               }</strong> <span style="opacity:.7">(${s.key})</span></span>
-            </label>`
+            </label>`,
           )
           .join('')}
       </div>`;
@@ -304,10 +304,10 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
         sourceListHtml,
       didOpen: (el) => {
         const toggleAll = el.querySelector(
-          '#swal-group-select-all'
+          '#swal-group-select-all',
         ) as HTMLInputElement | null;
         const itemNodes = Array.from(
-          el.querySelectorAll('input[name="groupSources"]')
+          el.querySelectorAll('input[name="groupSources"]'),
         ) as HTMLInputElement[];
         if (toggleAll) {
           toggleAll.addEventListener('change', () => {
@@ -323,7 +323,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       cancelButtonText: '取消',
       preConfirm: () => {
         const nameEl = document.getElementById(
-          'swal-input-group-name'
+          'swal-input-group-name',
         ) as HTMLInputElement | null;
         const name = nameEl?.value?.trim();
         if (!name) {
@@ -331,7 +331,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           return null as unknown as { name: string; sourceKeys: string[] };
         }
         const checked = Array.from(
-          document.querySelectorAll('input[name="groupSources"]:checked')
+          document.querySelectorAll('input[name="groupSources"]:checked'),
         ) as HTMLInputElement[];
         const sourceKeys = checked.map((c) => c.value);
         return { name, sourceKeys };
@@ -462,7 +462,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                   (g) => `
                 <div 
                   onclick="window.selectGroupInDialog('${g.name}')"
-                  class="p-3 rounded-lg border cursor-pointer transition-colors hover:shadow-sm"
+                  class="p-3 rounded-lg border cursor-pointer transition-colors hover:shadow-xs"
                   style="background-color: var(--selected-group-bg, #f9fafb); border-color: var(--selected-group-border, #e5e7eb);"
                   id="group-card-${g.name}"
                 >
@@ -480,10 +480,10 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                     ${(g.sourceKeys || [])
                       .map(
                         (k) => `
-                      <span class="px-2 py-1 text-xs rounded border bg-gray-50 border-gray-300 text-gray-700">
+                      <span class="px-2 py-1 text-xs rounded-sm border bg-gray-50 border-gray-300 text-gray-700">
                         ${k}
                       </span>
-                    `
+                    `,
                       )
                       .join('')}
                     ${
@@ -493,7 +493,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                     }
                   </div>
                 </div>
-              `
+              `,
                 )
                 .join('')}
               ${
@@ -524,21 +524,21 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           <div class="flex gap-2">
             <button 
               id="edit-group-btn" 
-              class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              class="px-3 py-1 bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               disabled
             >
               编辑
             </button>
             <button 
               id="assign-group-btn" 
-              class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              class="px-3 py-1 bg-green-600 text-white rounded-sm hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               disabled
             >
               分配
             </button>
             <button 
               id="delete-group-btn" 
-              class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              class="px-3 py-1 bg-red-600 text-white rounded-sm hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               disabled
             >
               删除
@@ -569,13 +569,13 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           // 更新文本和按钮状态
           const selectedText = document.getElementById('selected-group-text');
           const editBtn = document.getElementById(
-            'edit-group-btn'
+            'edit-group-btn',
           ) as HTMLButtonElement;
           const assignBtn = document.getElementById(
-            'assign-group-btn'
+            'assign-group-btn',
           ) as HTMLButtonElement;
           const deleteBtn = document.getElementById(
-            'delete-group-btn'
+            'delete-group-btn',
           ) as HTMLButtonElement;
 
           if (selectedText) selectedText.textContent = `已选择: ${groupName}`;
@@ -626,7 +626,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
 
   const openEditGroupDialog = async (
     groupName: string,
-    currentKeys: string[]
+    currentKeys: string[],
   ) => {
     const allSources = config?.SourceConfig || [];
     const sourceListHtml = `
@@ -642,7 +642,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
               s.name || s.key
             }</strong> <span style="opacity:.7">(${
               s.key
-            })</span></span>\n            </label>`
+            })</span></span>\n            </label>`,
           )
           .join('')}
       </div>`;
@@ -665,10 +665,10 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       cancelButtonText: '取消',
       didOpen: (el) => {
         const toggleAll = el.querySelector(
-          '#swal-edit-group-select-all'
+          '#swal-edit-group-select-all',
         ) as HTMLInputElement | null;
         const itemNodes = Array.from(
-          el.querySelectorAll('input[name="editGroupSources"]')
+          el.querySelectorAll('input[name="editGroupSources"]'),
         ) as HTMLInputElement[];
         if (toggleAll) {
           toggleAll.addEventListener('change', () => {
@@ -680,7 +680,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       },
       preConfirm: () => {
         const nameEl = document.getElementById(
-          'swal-edit-group-name'
+          'swal-edit-group-name',
         ) as HTMLInputElement | null;
         const name = nameEl?.value?.trim();
         if (!name) {
@@ -688,7 +688,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           return null as unknown as { name: string; sourceKeys: string[] };
         }
         const checked = Array.from(
-          document.querySelectorAll('input[name="editGroupSources"]:checked')
+          document.querySelectorAll('input[name="editGroupSources"]:checked'),
         ) as HTMLInputElement[];
         const sourceKeys = checked.map((c) => c.value);
         return { name, sourceKeys };
@@ -717,7 +717,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       | 'changePassword'
       | 'deleteUser',
     targetUsername: string,
-    targetPassword?: string
+    targetPassword?: string,
   ) => {
     try {
       const res = await fetch('/api/admin/user', {
@@ -780,7 +780,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
             onClick={() =>
               toggleAllowRegister(!userSettings.enableRegistration)
             }
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
               userSettings.enableRegistration
                 ? 'bg-green-600'
                 : 'bg-gray-200 dark:bg-gray-700'
@@ -829,7 +829,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                   (config?.UserConfig.Users.length || 0) > 0
                 }
                 onChange={toggleSelectAllUsers}
-                className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+                className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
               />
               全选 ({selectedUsers.size}/{config?.UserConfig.Users.length || 0})
             </label>
@@ -1024,7 +1024,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                             type='checkbox'
                             checked={selectedUsers.has(user.username)}
                             onChange={() => toggleSelectUser(user.username)}
-                            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+                            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
                           />
                         </td>
                         <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100'>
@@ -1036,15 +1036,15 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                               user.role === 'owner'
                                 ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300'
                                 : user.role === 'admin'
-                                ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'
-                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                                  ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'
+                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                             }`}
                           >
                             {user.role === 'owner'
                               ? '站长'
                               : user.role === 'admin'
-                              ? '管理员'
-                              : '普通用户'}
+                                ? '管理员'
+                                : '普通用户'}
                           </span>
                         </td>
                         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100'>
@@ -1054,7 +1054,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                           {user.lastOnline
                             ? new Date(user.lastOnline).toLocaleString(
                                 'zh-CN',
-                                { hour12: false }
+                                { hour12: false },
                               )
                             : '-'}
                         </td>
@@ -1167,7 +1167,7 @@ const VideoSourceConfig = ({
 
   // 批量操作相关状态
   const [selectedSources, setSelectedSources] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // dnd-kit 传感器
@@ -1182,7 +1182,7 @@ const VideoSourceConfig = ({
         delay: 150, // 长按 150ms 后触发，避免与滚动冲突
         tolerance: 5,
       },
-    })
+    }),
   );
 
   // 初始化
@@ -1354,7 +1354,7 @@ const VideoSourceConfig = ({
 
     // 检查是否有不可删除的源
     const deletableSources = sources.filter(
-      (s) => selectedSources.has(s.key) && s.from !== 'config'
+      (s) => selectedSources.has(s.key) && s.from !== 'config',
     );
     const nonDeletableCount = selectedSources.size - deletableSources.length;
 
@@ -1418,7 +1418,7 @@ const VideoSourceConfig = ({
             type='checkbox'
             checked={selectedSources.has(source.key)}
             onChange={() => toggleSelectSource(source.key)}
-            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+            className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
           />
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100'>
@@ -1511,7 +1511,7 @@ const VideoSourceConfig = ({
                     sources.length > 0
                   }
                   onChange={toggleSelectAll}
-                  className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
+                  className='w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded-sm focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600'
                 />
                 全选 ({selectedSources.size}/{sources.length})
               </label>
@@ -1694,7 +1694,7 @@ const CategoryConfig = ({
         delay: 150, // 长按 150ms 后触发，避免与滚动冲突
         tolerance: 5,
       },
-    })
+    }),
   );
 
   // 初始化
@@ -1770,10 +1770,10 @@ const CategoryConfig = ({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIndex = categories.findIndex(
-      (c) => `${c.query}:${c.type}` === active.id
+      (c) => `${c.query}:${c.type}` === active.id,
     );
     const newIndex = categories.findIndex(
-      (c) => `${c.query}:${c.type}` === over.id
+      (c) => `${c.query}:${c.type}` === over.id,
     );
     setCategories((prev) => arrayMove(prev, oldIndex, newIndex));
     setOrderChanged(true);
@@ -1882,11 +1882,7 @@ const CategoryConfig = ({
       <div className='flex items-center justify-between'>
         <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
           自定义分类列表
-          {false && (
-            <span className='ml-2 text-xs text-gray-500 dark:text-gray-400'>
-              (Upstash 环境下请通过配置文件修改)
-            </span>
-          )}
+          {/* Upstash 环境下请通过配置文件修改 */}
         </h4>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
@@ -2580,13 +2576,13 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
               type='button'
               onClick={() => setIsDoubanDropdownOpen(!isDoubanDropdownOpen)}
               disabled={isLocalStorage}
-              className={`w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 text-left ${
+              className={`w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xs hover:border-gray-400 dark:hover:border-gray-500 text-left ${
                 isLocalStorage ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             >
               {
                 doubanDataSourceOptions.find(
-                  (option) => option.value === siteSettings.DoubanProxyType
+                  (option) => option.value === siteSettings.DoubanProxyType,
                 )?.label
               }
             </button>
@@ -2619,7 +2615,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                   >
                     <span className='truncate'>{option.label}</span>
                     {siteSettings.DoubanProxyType === option.value && (
-                      <Check className='w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 ml-2' />
+                      <Check className='w-4 h-4 text-green-600 dark:text-green-400 shrink-0 ml-2' />
                     )}
                   </button>
                 ))}
@@ -2638,7 +2634,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                 onClick={() =>
                   window.open(
                     getThanksInfo(siteSettings.DoubanProxyType)!.url,
-                    '_blank'
+                    '_blank',
                   )
                 }
                 className='flex items-center justify-center gap-1.5 w-full px-3 text-xs text-gray-500 dark:text-gray-400 cursor-pointer'
@@ -2674,7 +2670,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                 }))
               }
               disabled={isLocalStorage}
-              className={`w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 ${
+              className={`w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 shadow-xs hover:border-gray-400 dark:hover:border-gray-500 ${
                 isLocalStorage ? 'opacity-50 cursor-not-allowed' : ''
               }`}
             />
@@ -2714,11 +2710,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
         <div>
           <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
             豆瓣图片代理
-            {false && (
-              <span className='ml-2 text-xs text-gray-500 dark:text-gray-400'>
-                (Upstash 环境下请通过环境变量修改)
-              </span>
-            )}
+            {/* Upstash 环境下请通过环境变量修改 */}
           </label>
           <div className='relative' data-dropdown='douban-image-proxy'>
             {/* 自定义下拉选择框 */}
@@ -2726,14 +2718,15 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
               type='button'
               onClick={() =>
                 setIsDoubanImageProxyDropdownOpen(
-                  !isDoubanImageProxyDropdownOpen
+                  !isDoubanImageProxyDropdownOpen,
                 )
               }
-              className='w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm hover:border-gray-400 dark:hover:border-gray-500 text-left'
+              className='w-full px-3 py-2.5 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-xs hover:border-gray-400 dark:hover:border-gray-500 text-left'
             >
               {
                 doubanImageProxyTypeOptions.find(
-                  (option) => option.value === siteSettings.DoubanImageProxyType
+                  (option) =>
+                    option.value === siteSettings.DoubanImageProxyType,
                 )?.label
               }
             </button>
@@ -2766,7 +2759,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                   >
                     <span className='truncate'>{option.label}</span>
                     {siteSettings.DoubanImageProxyType === option.value && (
-                      <Check className='w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 ml-2' />
+                      <Check className='w-4 h-4 text-green-600 dark:text-green-400 shrink-0 ml-2' />
                     )}
                   </button>
                 ))}
@@ -2785,7 +2778,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                 onClick={() =>
                   window.open(
                     getThanksInfo(siteSettings.DoubanImageProxyType)!.url,
-                    '_blank'
+                    '_blank',
                   )
                 }
                 className='flex items-center justify-center gap-1.5 w-full px-3 text-xs text-gray-500 dark:text-gray-400 cursor-pointer'
@@ -2815,7 +2808,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                   DoubanImageProxy: e.target.value,
                 }))
               }
-              className='w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 shadow-sm hover:border-gray-400 dark:hover:border-gray-500'
+              className='w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-200 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 shadow-xs hover:border-gray-400 dark:hover:border-gray-500'
             />
             <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
               自定义图片代理服务器地址
@@ -2867,11 +2860,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
         <div className='flex items-center justify-between'>
           <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
             禁用黄色过滤器
-            {false && (
-              <span className='ml-2 text-xs text-gray-500 dark:text-gray-400'>
-                (Upstash 环境下请通过环境变量修改)
-              </span>
-            )}
+            {/* Upstash 环境下请通过环境变量修改 */}
           </label>
           <button
             type='button'
@@ -2881,7 +2870,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                 DisableYellowFilter: !prev.DisableYellowFilter,
               }))
             }
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
               siteSettings.DisableYellowFilter
                 ? 'bg-green-600'
                 : 'bg-gray-200 dark:bg-gray-700'
@@ -2932,7 +2921,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                 }))
               }
               disabled={isLocalStorage}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-hidden focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
                 isLocalStorage ? 'opacity-50 cursor-not-allowed' : ''
               } ${
                 siteSettings.TVBoxEnabled
@@ -2978,7 +2967,7 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                         return `${
                           window.location.origin
                         }/api/tvbox/config?pwd=${encodeURIComponent(
-                          siteSettings.TVBoxPassword || ''
+                          siteSettings.TVBoxPassword || '',
                         )}${un ? `&un=${encodeURIComponent(un)}` : ''}`;
                       })()
                     : ''
@@ -3004,8 +2993,8 @@ const SiteConfigComponent = ({ config }: { config: AdminConfig | null }) => {
                       `${
                         window.location.origin
                       }/api/tvbox/config?pwd=${encodeURIComponent(
-                        siteSettings.TVBoxPassword || ''
-                      )}${un ? `&un=${encodeURIComponent(un)}` : ''}`
+                        siteSettings.TVBoxPassword || '',
+                      )}${un ? `&un=${encodeURIComponent(un)}` : ''}`,
                     );
                   }
                 }}

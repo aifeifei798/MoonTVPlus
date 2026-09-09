@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any,no-console */
+/* eslint-disable no-console */
 
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -20,9 +20,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('获取按用户过滤的视频源失败:', error);
-    return NextResponse.json(
-      { error: '获取视频源失败' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: '获取视频源失败' }, { status: 500 });
   }
 }

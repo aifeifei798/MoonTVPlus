@@ -3,7 +3,7 @@ import { assertSafeFetchUrl } from './ssrf';
 describe('assertSafeFetchUrl', () => {
   it('允许公网 https 地址', () => {
     expect(() =>
-      assertSafeFetchUrl('https://example.com/image.png')
+      assertSafeFetchUrl('https://example.com/image.png'),
     ).not.toThrow();
   });
 

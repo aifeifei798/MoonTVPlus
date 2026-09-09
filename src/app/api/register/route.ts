@@ -1,4 +1,4 @@
-/* eslint-disable no-console,@typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
 import { NextRequest, NextResponse } from 'next/server';
 
 import {
@@ -15,10 +15,7 @@ export const runtime = 'edge';
 // 读取存储类型环境变量，默认 localstorage
 const STORAGE_TYPE =
   (process.env.NEXT_PUBLIC_STORAGE_TYPE as
-    | 'localstorage'
-    | 'redis'
-    | 'upstash'
-    | undefined) || 'localstorage';
+    'localstorage' | 'redis' | 'upstash' | undefined) || 'localstorage';
 
 // 生成认证Cookie（带签名，绑定 role+timestamp，7 天过期由中间件校验）
 async function generateAuthCookie(username: string): Promise<string> {
@@ -26,10 +23,10 @@ async function generateAuthCookie(username: string): Promise<string> {
   const signingKey = process.env.PASSWORD || '';
   const signature = await generateSignature(
     `${username}:user:${timestamp}`,
-    signingKey
+    signingKey,
   );
   return encodeURIComponent(
-    JSON.stringify({ username, role: 'user', timestamp, signature })
+    JSON.stringify({ username, role: 'user', timestamp, signature }),
   );
 }
 
@@ -40,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (STORAGE_TYPE === 'localstorage') {
       return NextResponse.json(
         { error: '当前模式不支持注册' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -53,7 +50,7 @@ export async function POST(req: NextRequest) {
     if (!process.env.PASSWORD) {
       return NextResponse.json(
         { error: '服务端未配置 PASSWORD，拒绝注册' },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -70,13 +67,13 @@ export async function POST(req: NextRequest) {
     if (!/^[a-zA-Z0-9_-]{3,32}$/.test(cleanUsername)) {
       return NextResponse.json(
         { error: '用户名仅允许 3-32 位字母/数字/下划线/中划线' },
-        { status: 400 }
+        { status: 400 },
       );
     }
     if (password.length < 6 || password.length > 64) {
       return NextResponse.json(
         { error: '密码长度需为 6-64 位' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -111,14 +108,14 @@ export async function POST(req: NextRequest) {
       response.cookies.set(
         'auth',
         cookieValue,
-        getAuthCookieOptions(expires, secureCookie)
+        getAuthCookieOptions(expires, secureCookie),
       );
       response.cookies.set(
         'auth_info',
         encodeURIComponent(
-          JSON.stringify({ username: cleanUsername, role: 'user' })
+          JSON.stringify({ username: cleanUsername, role: 'user' }),
         ),
-        getAuthInfoCookieOptions(expires, secureCookie)
+        getAuthInfoCookieOptions(expires, secureCookie),
       );
 
       return response;

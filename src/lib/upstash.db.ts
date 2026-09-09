@@ -1,4 +1,4 @@
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any */
 
 import { Redis } from '@upstash/redis';
 
@@ -27,7 +27,7 @@ function ensureStringArray(value: any[]): string[] {
 // 添加Upstash Redis操作重试包装器
 async function withRetry<T>(
   operation: () => Promise<T>,
-  maxRetries = 3
+  maxRetries = 3,
 ): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -44,7 +44,7 @@ async function withRetry<T>(
 
       if (isConnectionError && !isLastAttempt) {
         console.log(
-          `Upstash Redis operation failed, retrying... (${i + 1}/${maxRetries})`
+          `Upstash Redis operation failed, retrying... (${i + 1}/${maxRetries})`,
         );
         console.error('Error:', err.message);
 
@@ -74,10 +74,10 @@ export class UpstashRedisStorage implements IStorage {
 
   async getPlayRecord(
     userName: string,
-    key: string
+    key: string,
   ): Promise<PlayRecord | null> {
     const val = await withRetry(() =>
-      this.client.get(this.prKey(userName, key))
+      this.client.get(this.prKey(userName, key)),
     );
     return val ? (val as PlayRecord) : null;
   }
@@ -85,19 +85,24 @@ export class UpstashRedisStorage implements IStorage {
   async setPlayRecord(
     userName: string,
     key: string,
-    record: PlayRecord
+    record: PlayRecord,
   ): Promise<void> {
     // 删除同名的旧记录
     if (record.title) {
       const pattern = `u:${userName}:pr:*`;
-      const allKeys: string[] = await withRetry(() => this.client.keys(pattern));
-      
+      const allKeys: string[] = await withRetry(() =>
+        this.client.keys(pattern),
+      );
+
       for (const fullKey of allKeys) {
         const val = await withRetry(() => this.client.get(fullKey));
         if (val) {
           const existingRecord = val as PlayRecord;
           // 如果找到同名但不是当前key的记录，则删除它
-          if (existingRecord.title === record.title && fullKey !== this.prKey(userName, key)) {
+          if (
+            existingRecord.title === record.title &&
+            fullKey !== this.prKey(userName, key)
+          ) {
             await withRetry(() => this.client.del(fullKey));
           }
         }
@@ -108,7 +113,7 @@ export class UpstashRedisStorage implements IStorage {
   }
 
   async getAllPlayRecords(
-    userName: string
+    userName: string,
   ): Promise<Record<string, PlayRecord>> {
     const pattern = `u:${userName}:pr:*`;
     const keys: string[] = await withRetry(() => this.client.keys(pattern));
@@ -137,7 +142,7 @@ export class UpstashRedisStorage implements IStorage {
 
   async getFavorite(userName: string, key: string): Promise<Favorite | null> {
     const val = await withRetry(() =>
-      this.client.get(this.favKey(userName, key))
+      this.client.get(this.favKey(userName, key)),
     );
     return val ? (val as Favorite) : null;
   }
@@ -145,10 +150,10 @@ export class UpstashRedisStorage implements IStorage {
   async setFavorite(
     userName: string,
     key: string,
-    favorite: Favorite
+    favorite: Favorite,
   ): Promise<void> {
     await withRetry(() =>
-      this.client.set(this.favKey(userName, key), favorite)
+      this.client.set(this.favKey(userName, key), favorite),
     );
   }
 
@@ -179,7 +184,7 @@ export class UpstashRedisStorage implements IStorage {
 
   async getFollowing(userName: string, key: string): Promise<Following | null> {
     const val = await withRetry(() =>
-      this.client.get(this.folKey(userName, key))
+      this.client.get(this.folKey(userName, key)),
     );
     return val ? (val as Following) : null;
   }
@@ -187,14 +192,14 @@ export class UpstashRedisStorage implements IStorage {
   async setFollowing(
     userName: string,
     key: string,
-    following: Following
+    following: Following,
   ): Promise<void> {
-    await withRetry(() => this.client.set(this.folKey(userName, key), following));
+    await withRetry(() =>
+      this.client.set(this.folKey(userName, key), following),
+    );
   }
 
-  async getAllFollowings(
-    userName: string
-  ): Promise<Record<string, Following>> {
+  async getAllFollowings(userName: string): Promise<Record<string, Following>> {
     const pattern = `u:${userName}:fol:*`;
     const keys: string[] = await withRetry(() => this.client.keys(pattern));
     if (keys.length === 0) return {};
@@ -226,7 +231,7 @@ export class UpstashRedisStorage implements IStorage {
 
   async verifyUser(userName: string, password: string): Promise<boolean> {
     const stored = await withRetry(() =>
-      this.client.get(this.userPwdKey(userName))
+      this.client.get(this.userPwdKey(userName)),
     );
     if (stored === null) return false;
     // 确保比较时都是字符串类型
@@ -237,7 +242,7 @@ export class UpstashRedisStorage implements IStorage {
   async checkUserExist(userName: string): Promise<boolean> {
     // 使用 EXISTS 判断 key 是否存在
     const exists = await withRetry(() =>
-      this.client.exists(this.userPwdKey(userName))
+      this.client.exists(this.userPwdKey(userName)),
     );
     return exists === 1;
   }
@@ -246,7 +251,7 @@ export class UpstashRedisStorage implements IStorage {
   async changePassword(userName: string, newPassword: string): Promise<void> {
     // 简单存储明文密码，生产环境应加密
     await withRetry(() =>
-      this.client.set(this.userPwdKey(userName), newPassword)
+      this.client.set(this.userPwdKey(userName), newPassword),
     );
   }
 
@@ -261,7 +266,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除播放记录
     const playRecordPattern = `u:${userName}:pr:*`;
     const playRecordKeys = await withRetry(() =>
-      this.client.keys(playRecordPattern)
+      this.client.keys(playRecordPattern),
     );
     if (playRecordKeys.length > 0) {
       await withRetry(() => this.client.del(...playRecordKeys));
@@ -270,7 +275,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除收藏夹
     const favoritePattern = `u:${userName}:fav:*`;
     const favoriteKeys = await withRetry(() =>
-      this.client.keys(favoritePattern)
+      this.client.keys(favoritePattern),
     );
     if (favoriteKeys.length > 0) {
       await withRetry(() => this.client.del(...favoriteKeys));
@@ -279,7 +284,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除追更
     const followingPattern = `u:${userName}:fol:*`;
     const followingKeys = await withRetry(() =>
-      this.client.keys(followingPattern)
+      this.client.keys(followingPattern),
     );
     if (followingKeys.length > 0) {
       await withRetry(() => this.client.del(...followingKeys));
@@ -288,7 +293,7 @@ export class UpstashRedisStorage implements IStorage {
     // 删除跳过片头片尾配置
     const skipConfigPattern = `u:${userName}:skip:*`;
     const skipConfigKeys = await withRetry(() =>
-      this.client.keys(skipConfigPattern)
+      this.client.keys(skipConfigPattern),
     );
     if (skipConfigKeys.length > 0) {
       await withRetry(() => this.client.del(...skipConfigKeys));
@@ -305,7 +310,7 @@ export class UpstashRedisStorage implements IStorage {
 
   async getSearchHistory(userName: string): Promise<string[]> {
     const result = await withRetry(() =>
-      this.client.lrange(this.shKey(userName), 0, -1)
+      this.client.lrange(this.shKey(userName), 0, -1),
     );
     // 确保返回的都是字符串类型
     return ensureStringArray(result as any[]);
@@ -363,10 +368,10 @@ export class UpstashRedisStorage implements IStorage {
   async getSkipConfig(
     userName: string,
     source: string,
-    id: string
+    id: string,
   ): Promise<SkipConfig | null> {
     const val = await withRetry(() =>
-      this.client.get(this.skipConfigKey(userName, source, id))
+      this.client.get(this.skipConfigKey(userName, source, id)),
     );
     return val ? (val as SkipConfig) : null;
   }
@@ -375,25 +380,25 @@ export class UpstashRedisStorage implements IStorage {
     userName: string,
     source: string,
     id: string,
-    config: SkipConfig
+    config: SkipConfig,
   ): Promise<void> {
     await withRetry(() =>
-      this.client.set(this.skipConfigKey(userName, source, id), config)
+      this.client.set(this.skipConfigKey(userName, source, id), config),
     );
   }
 
   async deleteSkipConfig(
     userName: string,
     source: string,
-    id: string
+    id: string,
   ): Promise<void> {
     await withRetry(() =>
-      this.client.del(this.skipConfigKey(userName, source, id))
+      this.client.del(this.skipConfigKey(userName, source, id)),
     );
   }
 
   async getAllSkipConfigs(
-    userName: string
+    userName: string,
   ): Promise<{ [key: string]: SkipConfig }> {
     const pattern = `u:${userName}:skip:*`;
     const keys = await withRetry(() => this.client.keys(pattern));
@@ -427,21 +432,19 @@ export class UpstashRedisStorage implements IStorage {
     return `u:${user}:today_updated`; // u:username:today_updated
   }
 
-  async getTodayUpdated(
-    userName: string
-  ): Promise<TodayUpdatedRecord | null> {
+  async getTodayUpdated(userName: string): Promise<TodayUpdatedRecord | null> {
     const val = await withRetry(() =>
-      this.client.get(this.todayUpdatedKey(userName))
+      this.client.get(this.todayUpdatedKey(userName)),
     );
     return val ? (val as TodayUpdatedRecord) : null;
   }
 
   async setTodayUpdated(
     userName: string,
-    record: TodayUpdatedRecord
+    record: TodayUpdatedRecord,
   ): Promise<void> {
     await withRetry(() =>
-      this.client.set(this.todayUpdatedKey(userName), record)
+      this.client.set(this.todayUpdatedKey(userName), record),
     );
   }
 
@@ -463,7 +466,7 @@ function getUpstashRedisClient(): Redis {
 
     if (!upstashUrl || !upstashToken) {
       throw new Error(
-        'UPSTASH_URL and UPSTASH_TOKEN env variables must be set'
+        'UPSTASH_URL and UPSTASH_TOKEN env variables must be set',
       );
     }
 

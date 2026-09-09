@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
           'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
           'Netlify-Vary': 'query',
         },
-      }
+      },
     );
   }
 
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
           error: `未找到指定的视频源: ${resourceId}`,
           result: null,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       query!,
       true,
       timeout,
-      config.SiteConfig.SearchDownstreamMaxPage
+      config.SiteConfig.SearchDownstreamMaxPage,
     )) {
       allResults.push(...batch);
     }
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
           error: '未找到结果',
           result: null,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
           'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
           'Netlify-Vary': 'query',
         },
-      }
+      },
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : '';
@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
         error: '搜索失败',
         result: null,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

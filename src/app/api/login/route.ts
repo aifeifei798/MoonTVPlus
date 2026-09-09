@@ -1,4 +1,4 @@
-/* eslint-disable no-console,@typescript-eslint/no-explicit-any */
+/* eslint-disable no-console */
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getConfig } from '@/lib/config';
@@ -9,10 +9,7 @@ export const runtime = 'edge';
 // 读取存储类型环境变量，默认 localstorage
 const STORAGE_TYPE =
   (process.env.NEXT_PUBLIC_STORAGE_TYPE as
-    | 'localstorage'
-    | 'redis'
-    | 'upstash'
-    | undefined) || 'localstorage';
+    'localstorage' | 'redis' | 'upstash' | undefined) || 'localstorage';
 
 import {
   generateSignature,
@@ -26,35 +23,35 @@ import {
 // 数据库模式: { username, role, timestamp, signature=HMAC(PASSWORD, `${username}:${role}:${timestamp}`) }
 async function generateAuthCookie(
   username?: string,
-  role?: 'owner' | 'admin' | 'user'
+  role?: 'owner' | 'admin' | 'user',
 ): Promise<string> {
   const secret = process.env.PASSWORD || '';
   const timestamp = Date.now();
   if (!username) {
     const signature = await generateSignature(
       `localstorage:${timestamp}`,
-      secret
+      secret,
     );
     return encodeURIComponent(
-      JSON.stringify({ role: role || 'user', timestamp, signature })
+      JSON.stringify({ role: role || 'user', timestamp, signature }),
     );
   }
   const finalRole = role || 'user';
   const signature = await generateSignature(
     `${username}:${finalRole}:${timestamp}`,
-    secret
+    secret,
   );
   return encodeURIComponent(
-    JSON.stringify({ username, role: finalRole, timestamp, signature })
+    JSON.stringify({ username, role: finalRole, timestamp, signature }),
   );
 }
 
 function buildAuthInfoCookie(
   username?: string,
-  role?: 'owner' | 'admin' | 'user'
+  role?: 'owner' | 'admin' | 'user',
 ): string {
   return encodeURIComponent(
-    JSON.stringify({ username: username || '', role: role || 'user' })
+    JSON.stringify({ username: username || '', role: role || 'user' }),
   );
 }
 
@@ -69,7 +66,7 @@ export async function POST(req: NextRequest) {
       if (!envPassword) {
         return NextResponse.json(
           { error: '服务端未配置 PASSWORD，拒绝登录' },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -81,7 +78,7 @@ export async function POST(req: NextRequest) {
       if (password !== envPassword) {
         return NextResponse.json(
           { ok: false, error: '密码错误' },
-          { status: 401 }
+          { status: 401 },
         );
       }
 
@@ -94,12 +91,12 @@ export async function POST(req: NextRequest) {
       response.cookies.set(
         'auth',
         cookieValue,
-        getAuthCookieOptions(expires, secureCookie)
+        getAuthCookieOptions(expires, secureCookie),
       );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie('', 'user'),
-        getAuthInfoCookieOptions(expires, secureCookie)
+        getAuthInfoCookieOptions(expires, secureCookie),
       );
 
       return response;
@@ -131,12 +128,12 @@ export async function POST(req: NextRequest) {
       response.cookies.set(
         'auth',
         cookieValue,
-        getAuthCookieOptions(expires, secureCookie)
+        getAuthCookieOptions(expires, secureCookie),
       );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie(username, 'owner'),
-        getAuthInfoCookieOptions(expires, secureCookie)
+        getAuthInfoCookieOptions(expires, secureCookie),
       );
 
       return response;
@@ -156,7 +153,7 @@ export async function POST(req: NextRequest) {
       if (!pass) {
         return NextResponse.json(
           { error: '用户名或密码错误' },
-          { status: 401 }
+          { status: 401 },
         );
       }
 
@@ -170,12 +167,12 @@ export async function POST(req: NextRequest) {
       response.cookies.set(
         'auth',
         cookieValue,
-        getAuthCookieOptions(expires, secureCookie)
+        getAuthCookieOptions(expires, secureCookie),
       );
       response.cookies.set(
         'auth_info',
         buildAuthInfoCookie(username, finalRole),
-        getAuthInfoCookieOptions(expires, secureCookie)
+        getAuthInfoCookieOptions(expires, secureCookie),
       );
 
       return response;

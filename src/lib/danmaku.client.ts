@@ -56,8 +56,8 @@ function parseJsonDanmaku(json: DanmakuResponse): DanmakuItem[] {
         comment.t !== undefined
           ? comment.t
           : pParts[0]
-          ? parseFloat(pParts[0])
-          : 0;
+            ? parseFloat(pParts[0])
+            : 0;
       const type = pParts[1] ? parseInt(pParts[1]) : 1; // 默认滚动弹幕
       const color = pParts[2] ? parseInt(pParts[2]) : 16777215; // 默认白色
       const size = 25; // 默认大小
@@ -128,7 +128,7 @@ function parseXmlDanmaku(xmlText: string): DanmakuItem[] {
  */
 export async function getDanmakuByCommentId(
   commentId: string,
-  format?: string
+  format?: string,
 ): Promise<DanmakuItem[]> {
   if (!commentId) {
     throw new Error('评论 ID 不能为空');
@@ -239,7 +239,7 @@ interface BangumiDetailResult {
  * @param keyword 搜索关键字（通常是视频标题）
  */
 export async function searchAnime(
-  keyword: string
+  keyword: string,
 ): Promise<AnimeSearchResult['data']> {
   if (!keyword) {
     throw new Error('搜索关键字不能为空');
@@ -247,7 +247,7 @@ export async function searchAnime(
 
   const baseUrl = getDanmakuApiBaseUrl();
   const url = `${baseUrl}/api/v2/search/anime?keyword=${encodeURIComponent(
-    keyword
+    keyword,
   )}`;
 
   try {
@@ -273,19 +273,19 @@ export async function searchAnime(
 
 export async function matchAnime(fileName: string, signal?: AbortSignal) {
   if (!fileName) {
-    throw new Error("fileName 不能为空");
+    throw new Error('fileName 不能为空');
   }
 
   const baseUrl = getDanmakuApiBaseUrl();
 
   try {
     const response = await fetch(`${baseUrl}/api/v2/match`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json"
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({ fileName }),
-      signal
+      signal,
     });
 
     if (!response.ok) {
@@ -298,7 +298,7 @@ export async function matchAnime(fileName: string, signal?: AbortSignal) {
     return json.matches || [];
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error("matchAnime 失败:", err);
+    console.error('matchAnime 失败:', err);
     throw err;
   }
 }
@@ -308,7 +308,7 @@ export async function matchAnime(fileName: string, signal?: AbortSignal) {
  * @param animeTitle 动漫标题（搜索关键字）
  */
 export async function searchEpisodes(
-  animeTitle: string
+  animeTitle: string,
 ): Promise<AnimeOption[]> {
   if (!animeTitle) {
     throw new Error('搜索关键字不能为空');
@@ -316,7 +316,7 @@ export async function searchEpisodes(
 
   const baseUrl = getDanmakuApiBaseUrl();
   const url = `${baseUrl}/api/v2/search/episodes?anime=${encodeURIComponent(
-    animeTitle
+    animeTitle,
   )}`;
 
   try {
@@ -353,7 +353,7 @@ export async function searchEpisodes(
  * @param animeId 动漫 ID
  */
 export async function getBangumiDetail(
-  animeId: string
+  animeId: string,
 ): Promise<BangumiDetailResult['data'] | undefined> {
   if (!animeId) {
     throw new Error('动漫 ID 不能为空');
@@ -470,7 +470,7 @@ export function extractEpisodeNumber(episodeTitle: string): number | null {
 export async function getDanmakuBySelectedAnime(
   selectedAnime: AnimeOption,
   episodeNumber: number,
-  format?: string
+  format?: string,
 ): Promise<string> {
   if (!selectedAnime) {
     throw new Error('未选择动漫');
@@ -481,7 +481,7 @@ export async function getDanmakuBySelectedAnime(
   // 直接使用集数索引（episodeNumber 是从弹幕选择器中选择的，已经是正确的索引）
   if (episodeNumber < 1 || episodeNumber > selectedAnime.episodes.length) {
     throw new Error(
-      `集数 ${episodeNumber} 超出范围（共 ${selectedAnime.episodes.length} 集）`
+      `集数 ${episodeNumber} 超出范围（共 ${selectedAnime.episodes.length} 集）`,
     );
   }
 

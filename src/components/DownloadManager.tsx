@@ -22,12 +22,7 @@ interface DownloadTask {
   url: string;
   title: string;
   status:
-    | 'waiting'
-    | 'downloading'
-    | 'paused'
-    | 'completed'
-    | 'error'
-    | 'merging';
+    'waiting' | 'downloading' | 'paused' | 'completed' | 'error' | 'merging';
   progress: number;
   current: number;
   total: number;
@@ -102,7 +97,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                 autoResume: wasDownloading,
                 abortController: undefined,
               };
-            }
+            },
           );
 
           setTasks(processedTasks);
@@ -119,7 +114,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
     if (hasAutoResumed.current) return;
 
     const tasksToResume = tasks.filter(
-      (t) => t.autoResume && t.status === 'paused'
+      (t) => t.autoResume && t.status === 'paused',
     );
 
     if (tasksToResume.length > 0) {
@@ -162,7 +157,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
             : undefined,
           // 保存原始状态，用于恢复时判断
           _originalStatus: rest.status,
-        })
+        }),
       );
       localStorage.setItem('downloadTasks', JSON.stringify(tasksToSave));
 
@@ -211,7 +206,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
       endSegment: number,
       streamMode: StreamSaverMode = 'disabled',
       maxRetries = 3,
-      completeStreamRef?: { current: (() => Promise<void>) | null }
+      completeStreamRef?: { current: (() => Promise<void>) | null },
     ) => {
       try {
         // 不要创建新对象，直接使用传入的 parsedTask
@@ -222,11 +217,11 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
           parsedTask.rangeDownload = {
             startSegment: Math.max(
               1,
-              Math.min(startSegment, parsedTask.tsUrlList.length)
+              Math.min(startSegment, parsedTask.tsUrlList.length),
             ),
             endSegment: Math.max(
               1,
-              Math.min(endSegment, parsedTask.tsUrlList.length)
+              Math.min(endSegment, parsedTask.tsUrlList.length),
             ),
             targetSegment: Math.abs(endSegment - startSegment) + 1,
           };
@@ -270,12 +265,12 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                     ? prog.status === 'done'
                       ? 'completed'
                       : prog.status === 'error'
-                      ? 'error'
-                      : 'downloading'
+                        ? 'error'
+                        : 'downloading'
                     : t.status,
                   parsedTask: updatedParsedTask,
                 };
-              })
+              }),
             );
           },
           controller.signal,
@@ -283,14 +278,14 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
           concurrency,
           streamMode,
           maxRetries,
-          completeStreamRef
+          completeStreamRef,
         );
 
         // 下载函数执行完成后，检查是否有失败片段
         const taskAfterDownload = tasksRef.current.find((t) => t.id === taskId);
         const hasFailedSegments =
           taskAfterDownload?.parsedTask?.finishList.some(
-            (item) => item.status === 'error'
+            (item) => item.status === 'error',
           );
 
         // 边下边存模式下，失败片段已被跳过并写入文件，无需等待重试
@@ -303,14 +298,14 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
           // 边下边存模式或全部成功，清除 abortController
           setTasks((prev) =>
             prev.map((t) =>
-              t.id === taskId ? { ...t, abortController: undefined } : t
-            )
+              t.id === taskId ? { ...t, abortController: undefined } : t,
+            ),
           );
 
           if (hasFailedSegments && streamMode !== 'disabled') {
             // eslint-disable-next-line no-console
             console.log(
-              `✅ 边下边存模式：任务 ${taskId} 已完成，失败片段已跳过`
+              `✅ 边下边存模式：任务 ${taskId} 已完成，失败片段已跳过`,
             );
           }
         }
@@ -337,8 +332,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                       status: 'paused' as const,
                       abortController: undefined,
                     }
-                  : t
-              )
+                  : t,
+              ),
             );
           }
         } else {
@@ -348,13 +343,13 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
             prev.map((t) =>
               t.id === taskId
                 ? { ...t, status: 'error' as const, abortController: undefined }
-                : t
-            )
+                : t,
+            ),
           );
         }
       }
     },
-    []
+    [],
   );
 
   // 从配置创建并开始下载任务
@@ -420,11 +415,11 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
           config.endSegment,
           config.streamMode,
           config.maxRetries || 3,
-          completeStreamRef
+          completeStreamRef,
         );
       }, 0);
     },
-    [executeDownload]
+    [executeDownload],
   );
 
   // 监听来自播放页面的添加下载任务事件
@@ -480,7 +475,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
           config.endSegment,
           config.streamMode,
           config.maxRetries ?? 3,
-          completeStreamRef
+          completeStreamRef,
         );
       }, 0);
     };
@@ -488,7 +483,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
     if (typeof window !== 'undefined') {
       window.addEventListener(
         'addDownloadTask',
-        handleAddTaskEvent as EventListener
+        handleAddTaskEvent as EventListener,
       );
     }
 
@@ -496,7 +491,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
       if (typeof window !== 'undefined') {
         window.removeEventListener(
           'addDownloadTask',
-          handleAddTaskEvent as EventListener
+          handleAddTaskEvent as EventListener,
         );
       }
     };
@@ -535,8 +530,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                 pauseResumeController: pauseResumeController,
                 completeStreamRef: completeStreamRef,
               }
-            : t
-        )
+            : t,
+        ),
       );
 
       executeDownload(
@@ -551,10 +546,10 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         endSegment,
         streamMode || 'disabled',
         maxRetries ?? 3,
-        completeStreamRef
+        completeStreamRef,
       );
     },
-    [executeDownload]
+    [executeDownload],
   );
 
   // 删除任务
@@ -579,7 +574,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         task.pauseResumeController.pause();
       }
       return prev.map((t) =>
-        t.id === taskId ? { ...t, status: 'paused' as const } : t
+        t.id === taskId ? { ...t, status: 'paused' as const } : t,
       );
     });
   }, []);
@@ -602,12 +597,12 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
       console.log(
         `📋 任务状态: ${
           taskToResume.status
-        }, abortController: ${!!taskToResume.abortController}`
+        }, abortController: ${!!taskToResume.abortController}`,
       );
 
       // 检查是否有失败片段
       const hasFailedSegments = taskToResume.parsedTask?.finishList.some(
-        (item) => item.status === 'error'
+        (item) => item.status === 'error',
       );
 
       // 如果任务正在下载中（有 abortController）且还有失败片段，不重复开始
@@ -631,8 +626,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         taskToResume.pauseResumeController.resume();
         setTasks((prev) =>
           prev.map((t) =>
-            t.id === taskId ? { ...t, status: 'downloading' as const } : t
-          )
+            t.id === taskId ? { ...t, status: 'downloading' as const } : t,
+          ),
         );
         return;
       }
@@ -662,7 +657,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
 
         // eslint-disable-next-line no-console
         console.log(
-          `✅ 使用已保存的 parsedTask，范围内片段: ${totalInRange}个，成功: ${successCount}，失败: ${errorCount}，待下载: ${pendingCount}，已保存数据: ${downloadedCount} 个, 边下边存: ${isStreamMode}`
+          `✅ 使用已保存的 parsedTask，范围内片段: ${totalInRange}个，成功: ${successCount}，失败: ${errorCount}，待下载: ${pendingCount}，已保存数据: ${downloadedCount} 个, 边下边存: ${isStreamMode}`,
         );
 
         // 如果范围内所有片段都已完成(没有pending)
@@ -680,8 +675,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                 prev.map((t) =>
                   t.id === taskId
                     ? { ...t, status: 'completed' as const, progress: 100 }
-                    : t
-                )
+                    : t,
+                ),
               );
               return;
             }
@@ -689,7 +684,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
             // 普通模式：需要合并片段数据
             // eslint-disable-next-line no-console
             console.log(
-              `📦 普通模式，开始合并 ${downloadedCount} 个片段数据...`
+              `📦 普通模式，开始合并 ${downloadedCount} 个片段数据...`,
             );
 
             // 先标记为合并中
@@ -697,8 +692,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
               prev.map((t) =>
                 t.id === taskId
                   ? { ...t, status: 'merging' as const, progress: 99 }
-                  : t
-              )
+                  : t,
+              ),
             );
 
             // 异步合并和下载
@@ -721,12 +716,10 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                 console.log(`📦 合并 ${segments.length} 个片段...`);
 
                 // 动态导入合并函数
-                const { mergeSegments, triggerDownload } = await import(
-                  '@/lib/m3u8-downloader'
-                );
-                const { transmuxTSToMP4 } = await import(
-                  '@/lib/mp4-transmuxer'
-                );
+                const { mergeSegments, triggerDownload } =
+                  await import('@/lib/m3u8-downloader');
+                const { transmuxTSToMP4 } =
+                  await import('@/lib/mp4-transmuxer');
 
                 // 如果是 MP4 格式，进行转码
                 const downloadType = taskToResume.config?.downloadType || 'TS';
@@ -754,8 +747,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                   prev.map((t) =>
                     t.id === taskId
                       ? { ...t, status: 'completed' as const, progress: 100 }
-                      : t
-                  )
+                      : t,
+                  ),
                 );
 
                 // eslint-disable-next-line no-console
@@ -765,8 +758,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                 console.error('合并下载失败:', error);
                 setTasks((prev) =>
                   prev.map((t) =>
-                    t.id === taskId ? { ...t, status: 'error' as const } : t
-                  )
+                    t.id === taskId ? { ...t, status: 'error' as const } : t,
+                  ),
                 );
               }
             }, 100);
@@ -809,8 +802,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                     parsedTask,
                   },
                 }
-              : t
-          )
+              : t,
+          ),
         );
 
         startTaskDownload(taskId, parsedTask);
@@ -819,12 +812,12 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         console.error('重新解析失败:', error);
         setTasks((prev) =>
           prev.map((t) =>
-            t.id === taskId ? { ...t, status: 'error' as const } : t
-          )
+            t.id === taskId ? { ...t, status: 'error' as const } : t,
+          ),
         );
       }
     },
-    [startTaskDownload]
+    [startTaskDownload],
   );
 
   // 全部暂停
@@ -836,7 +829,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         }
       });
       return prev.map((t) =>
-        t.status === 'downloading' ? { ...t, status: 'paused' as const } : t
+        t.status === 'downloading' ? { ...t, status: 'paused' as const } : t,
       );
     });
   }, []);
@@ -853,7 +846,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
         resumeTask(task.id);
       }
     });
-  }, [resumeTask]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resumeTask]);
 
   // 清空所有任务
   const clearAllTasks = useCallback(() => {
@@ -944,10 +937,10 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                       {/* 下载配置信息 */}
                       {task.config && (
                         <div className='flex flex-wrap gap-2 mt-2'>
-                          <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'>
+                          <span className='inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'>
                             {task.config.downloadType} 格式
                           </span>
-                          <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'>
+                          <span className='inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'>
                             {task.config.concurrency} 线程
                           </span>
                           {task.config.rangeMode &&
@@ -972,7 +965,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                               // 格式化
                               // 使用统一的 formatTime
                               return (
-                                <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'>
+                                <span className='inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'>
                                   范围: {task.config.startSegment}-
                                   {task.config.endSegment}
                                   {task.parsedTask &&
@@ -996,13 +989,13 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                               const filteredSegments =
                                 task.parsedTask.finishList.slice(
                                   startSegment - 1,
-                                  endSegment
+                                  endSegment,
                                 );
                               const errorCount = filteredSegments.filter(
-                                (item) => item.status === 'error'
+                                (item) => item.status === 'error',
                               ).length;
                               return errorCount > 0 ? (
-                                <span className='inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'>
+                                <span className='inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'>
                                   失败: {errorCount} 个片段
                                 </span>
                               ) : null;
@@ -1010,7 +1003,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                         </div>
                       )}
                     </div>
-                    <div className='flex items-center gap-2 flex-shrink-0'>
+                    <div className='flex items-center gap-2 shrink-0'>
                       {/* 立即保存按钮 */}
                       {task.parsedTask && (
                         <button
@@ -1045,8 +1038,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                     prev.map((t) =>
                                       t.id === task.id
                                         ? { ...t, isEarlyCompleting: true }
-                                        : t
-                                    )
+                                        : t,
+                                    ),
                                   );
 
                                   // 先取消后续下载，避免继续下载
@@ -1056,7 +1049,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
 
                                   // 等待一小段时间，确保 abort 信号已传播，错误处理已检查 isEarlyCompleting
                                   await new Promise((resolve) =>
-                                    setTimeout(resolve, 100)
+                                    setTimeout(resolve, 100),
                                   );
 
                                   // 然后完成流（这会调用 onProgress 更新进度为 100%）
@@ -1077,7 +1070,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                         };
                                       }
                                       return t;
-                                    })
+                                    }),
                                   );
 
                                   // 延迟清除 isEarlyCompleting 标记，确保错误处理已经检查过
@@ -1087,8 +1080,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                         t.id === task.id &&
                                         t.status === 'completed'
                                           ? { ...t, isEarlyCompleting: false }
-                                          : t
-                                      )
+                                          : t,
+                                      ),
                                     );
                                   }, 1000);
                                 } catch (error) {
@@ -1107,8 +1100,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                     prev.map((t) =>
                                       t.id === task.id
                                         ? { ...t, isEarlyCompleting: false }
-                                        : t
-                                    )
+                                        : t,
+                                    ),
                                   );
                                 }
                               } else {
@@ -1126,9 +1119,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                             try {
                               const { mergeSegments, triggerDownload } =
                                 await import('@/lib/m3u8-downloader');
-                              const { transmuxTSToMP4 } = await import(
-                                '@/lib/mp4-transmuxer'
-                              );
+                              const { transmuxTSToMP4 } =
+                                await import('@/lib/mp4-transmuxer');
                               const { startSegment, endSegment } =
                                 task.parsedTask.rangeDownload;
                               const downloadType =
@@ -1169,7 +1161,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                               triggerDownload(
                                 blob,
                                 task.parsedTask.title,
-                                downloadType
+                                downloadType,
                               );
                             } catch (e) {
                               Swal.fire({
@@ -1183,7 +1175,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                             } finally {
                               setTimeout(
                                 () => mergingTaskIds.current.delete(task.id),
-                                2000
+                                2000,
                               );
                             }
                           }}
@@ -1243,14 +1235,14 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                         {task.status === 'completed'
                           ? '已完成'
                           : task.status === 'merging'
-                          ? '合并中'
-                          : task.status === 'downloading'
-                          ? '下载中'
-                          : task.status === 'error'
-                          ? '下载失败'
-                          : task.status === 'paused'
-                          ? '已暂停'
-                          : '等待中'}
+                            ? '合并中'
+                            : task.status === 'downloading'
+                              ? '下载中'
+                              : task.status === 'error'
+                                ? '下载失败'
+                                : task.status === 'paused'
+                                  ? '已暂停'
+                                  : '等待中'}
                       </span>
                       <span className='text-gray-600 dark:text-gray-400'>
                         {Math.floor(task.progress)}%
@@ -1331,7 +1323,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                         if (mergingTaskIds.current.has(viewingSegmentsTaskId)) {
                           // eslint-disable-next-line no-console
                           console.log(
-                            `⚠️ 任务 ${viewingSegmentsTaskId} 已经在合并中，跳过`
+                            `⚠️ 任务 ${viewingSegmentsTaskId} 已经在合并中，跳过`,
                           );
                           return t;
                         }
@@ -1344,7 +1336,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                         console.log(
                           `✅ 范围内所有 ${totalInRange} 个片段重试成功！downloadedSegments 有 ${
                             t.parsedTask.downloadedSegments?.size || 0
-                          } 个片段，自动触发合并保存...`
+                          } 个片段，自动触发合并保存...`,
                         );
 
                         // 保存 taskId（闭包中的值）
@@ -1358,8 +1350,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                           prevTasks.map((task) =>
                             task.id === taskIdToResume
                               ? { ...task, abortController: undefined }
-                              : task
-                          )
+                              : task,
+                          ),
                         );
 
                         // 然后触发合并保存
@@ -1380,7 +1372,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                       };
                     }
                     return t;
-                  })
+                  }),
                 );
               }}
             />

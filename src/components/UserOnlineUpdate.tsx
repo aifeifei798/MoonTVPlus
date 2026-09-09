@@ -1,4 +1,4 @@
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable no-console */
 'use client';
 
 import { useEffect } from 'react';
@@ -45,5 +45,3 @@ export default function UserOnlineUpdate() {
 
   return null;
 }
-
-

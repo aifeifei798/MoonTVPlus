@@ -73,7 +73,7 @@ export function recordSourceFailure(key: string): void {
     console.warn(
       `源熔断: ${key} 连续失败 ${entry.fails} 次，冷却 ${
         getCircuitCooldownMs() / 1000
-      }s`
+      }s`,
     );
   }
   sourceHealth.set(key, entry);
@@ -99,7 +99,7 @@ const M3U8_PATTERN = /(https?:\/\/[^"'\s]+?\.m3u8)/g;
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
-  timeout = 30000
+  timeout = 30000,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -132,7 +132,7 @@ async function fetchWithTimeout(
  */
 function parseEpisodes(
   vod_play_url?: string,
-  fallbackContent?: string
+  fallbackContent?: string,
 ): { episodes: string[]; titles: string[] } {
   let episodes: string[] = [];
   let titles: string[] = [];
@@ -163,7 +163,7 @@ function parseEpisodes(
   // 2. 如果没有解析到，尝试 fallback 内容
   if (episodes.length === 0 && fallbackContent) {
     episodes = (fallbackContent.match(M3U8_PATTERN) ?? []).map((link: string) =>
-      link.replace(/^\$/, '')
+      link.replace(/^\$/, ''),
     );
     titles = episodes.map((_, i) => (i + 1).toString()); // 默认用序号作为标题
   }
@@ -175,11 +175,11 @@ function parseEpisodes(
 function mapItemToResult(
   item: ApiSearchItem,
   apiSite: ApiSite,
-  apiName: string
+  apiName: string,
 ): SearchResult {
   const { episodes, titles } = parseEpisodes(
     item.vod_play_url,
-    item.vod_content
+    item.vod_content,
   );
 
   return {
@@ -204,7 +204,7 @@ export async function* searchFromApiStream(
   query: string,
   parallel = true,
   timeout?: number,
-  maxPages?: number
+  maxPages?: number,
 ): AsyncGenerator<SearchResult[], void, unknown> {
   // 分页上限先确定（调用方透传则零读库），缓存 key 与之绑定
   const resolvedMaxPages =
@@ -231,7 +231,7 @@ export async function* searchFromApiStream(
     const response = await fetchWithTimeout(
       apiUrl,
       { headers: API_CONFIG.search.headers },
-      timeout
+      timeout,
     );
     if (!response.ok) return;
 
@@ -240,7 +240,7 @@ export async function* searchFromApiStream(
 
     // 第一页
     const firstBatch = data.list.map((item: ApiSearchItem) =>
-      mapItemToResult(item, apiSite, apiSite.name)
+      mapItemToResult(item, apiSite, apiSite.name),
     );
     collected.push(firstBatch);
     yield firstBatch;
@@ -268,7 +268,7 @@ export async function* searchFromApiStream(
             const pageRes = await fetchWithTimeout(
               pageUrl,
               { headers: API_CONFIG.search.headers },
-              timeout
+              timeout,
             );
             if (!pageRes.ok) return null;
 
@@ -276,7 +276,7 @@ export async function* searchFromApiStream(
             if (!Array.isArray(pageData?.list)) return null;
 
             const results = pageData.list.map((item: ApiSearchItem) =>
-              mapItemToResult(item, apiSite, apiSite.name)
+              mapItemToResult(item, apiSite, apiSite.name),
             );
             return { page, results };
           })();
@@ -288,7 +288,7 @@ export async function* searchFromApiStream(
         for (const res of settled
           .filter(
             (r): r is { page: number; results: SearchResult[] } =>
-              !!r && r.results.length > 0
+              !!r && r.results.length > 0,
           )
           .sort((a, b) => a.page - b.page)) {
           collected.push(res.results);
@@ -306,14 +306,14 @@ export async function* searchFromApiStream(
           const pageRes = await fetchWithTimeout(
             pageUrl,
             { headers: API_CONFIG.search.headers },
-            timeout
+            timeout,
           );
           if (!pageRes.ok) continue;
 
           const pageData = await pageRes.json();
           if (Array.isArray(pageData?.list)) {
             const results = pageData.list.map((item: ApiSearchItem) =>
-              mapItemToResult(item, apiSite, apiSite.name)
+              mapItemToResult(item, apiSite, apiSite.name),
             );
             if (results.length > 0) {
               collected.push(results);
@@ -333,7 +333,7 @@ export async function* searchFromApiStream(
         searchCache,
         cacheKey,
         { at: Date.now(), batches: collected },
-        SEARCH_CACHE_MAX
+        SEARCH_CACHE_MAX,
       );
     }
   }
@@ -342,7 +342,7 @@ export async function* searchFromApiStream(
 /** 获取详情（进程内 LRU，TTL 取站点接口缓存时间；追更/cron/播放页反复拉同一批剧集时省上游请求） */
 export async function getDetailFromApi(
   apiSite: ApiSite,
-  id: string
+  id: string,
 ): Promise<SearchResult> {
   const cacheKey = `d:${apiSite.key}:${id}`;
   const cached = detailCache.get(cacheKey);
@@ -360,14 +360,14 @@ export async function getDetailFromApi(
     detailCache,
     cacheKey,
     { at: Date.now(), data: fresh },
-    DETAIL_CACHE_MAX
+    DETAIL_CACHE_MAX,
   );
   return fresh;
 }
 
 async function fetchDetailFromApi(
   apiSite: ApiSite,
-  id: string
+  id: string,
 ): Promise<SearchResult> {
   const detailUrl = `${apiSite.api}${API_CONFIG.detail.path}${id}`;
   const response = await fetchWithTimeout(detailUrl, {
@@ -384,7 +384,7 @@ async function fetchDetailFromApi(
   const video = data.list[0];
   const { episodes, titles } = parseEpisodes(
     video.vod_play_url,
-    video.vod_content
+    video.vod_content,
   );
 
   return {
@@ -406,7 +406,7 @@ async function fetchDetailFromApi(
 /** 特殊站点详情处理 */
 async function handleSpecialSourceDetail(
   id: string,
-  apiSite: ApiSite
+  apiSite: ApiSite,
 ): Promise<SearchResult> {
   const detailUrl = `${apiSite.detail}/index.php/vod/detail/id/${id}.html`;
   const response = await fetchWithTimeout(detailUrl, {
@@ -422,7 +422,7 @@ async function handleSpecialSourceDetail(
   if (apiSite.key === 'ffzy') {
     matches =
       html.match(
-        /\$(https?:\/\/[^"'\s]+?\/\d{8}\/\d+_[a-f0-9]+\/index\.m3u8)/g
+        /\$(https?:\/\/[^"'\s]+?\/\d{8}\/\d+_[a-f0-9]+\/index\.m3u8)/g,
       ) || [];
   }
 
@@ -449,7 +449,7 @@ async function handleSpecialSourceDetail(
   const title = html.match(/<h1[^>]*>([^<]+)<\/h1>/)?.[1]?.trim() || '';
   const desc = cleanHtmlTags(
     html.match(/<div[^>]*class=["']sketch["'][^>]*>([\s\S]*?)<\/div>/)?.[1] ||
-      ''
+      '',
   );
   const cover = html.match(/(https?:\/\/[^"'\s]+?\.jpg)/)?.[0]?.trim() || '';
   const year = html.match(/>(\d{4})</)?.[1] || 'unknown';

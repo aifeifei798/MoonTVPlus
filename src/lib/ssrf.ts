@@ -41,7 +41,10 @@ function isPrivateIpv4(ip: string): boolean {
   );
 }
 
-export function assertSafeFetchUrl(raw: string, opts?: { allowHttp?: boolean }): URL {
+export function assertSafeFetchUrl(
+  raw: string,
+  opts?: { allowHttp?: boolean },
+): URL {
   let url: URL;
   try {
     url = new URL(raw);

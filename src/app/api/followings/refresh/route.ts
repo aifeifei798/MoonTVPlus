@@ -48,9 +48,7 @@ export async function POST(request: NextRequest) {
 
     const config = await getConfig();
     if (config.UserConfig.Users) {
-      const user = config.UserConfig.Users.find(
-        (u) => u.username === username
-      );
+      const user = config.UserConfig.Users.find((u) => u.username === username);
       if (user && user.banned) {
         return NextResponse.json({ error: '用户已被封禁' }, { status: 401 });
       }
@@ -78,7 +76,7 @@ export async function POST(request: NextRequest) {
     const getDetail = (
       source: string,
       id: string,
-      fallbackTitle: string
+      fallbackTitle: string,
     ): Promise<DetailResult> => {
       const cacheKey = `${source}+${id}`;
       let promise = detailCache.get(cacheKey);
@@ -110,8 +108,7 @@ export async function POST(request: NextRequest) {
           })
           .catch((err) => {
             console.error(`获取视频详情失败 (${source}+${id}):`, err);
-            const msg =
-              err instanceof Error ? err.message : String(err || '');
+            const msg = err instanceof Error ? err.message : String(err || '');
             return {
               following: null,
               reason: msg || '获取详情失败',
@@ -216,7 +213,7 @@ export async function POST(request: NextRequest) {
             const { following: detail, reason } = await getDetail(
               source,
               id,
-              fallbackTitle
+              fallbackTitle,
             );
             if (streamClosed) return;
 
@@ -257,7 +254,7 @@ export async function POST(request: NextRequest) {
               updated = true;
               updatedCount++;
               console.log(
-                `更新追更: ${item.title} (${item.total_episodes} -> ${episodeCount})`
+                `更新追更: ${item.title} (${item.total_episodes} -> ${episodeCount})`,
               );
             }
 
@@ -312,7 +309,9 @@ export async function POST(request: NextRequest) {
 
       cancel() {
         streamClosed = true;
-        console.log('Client disconnected, cancelling followings refresh stream');
+        console.log(
+          'Client disconnected, cancelling followings refresh stream',
+        );
       },
     });
 
@@ -330,7 +329,7 @@ export async function POST(request: NextRequest) {
     console.error('批量刷新追更失败', err);
     return NextResponse.json(
       { error: 'Internal Server Error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

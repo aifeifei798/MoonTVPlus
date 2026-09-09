@@ -59,7 +59,7 @@ function useFavoriteFollowing({
         const key = generateStorageKey(currentSource, currentId);
         const isFav = !!favorites[key];
         setFavorited(isFav);
-      }
+      },
     );
 
     return unsubscribe;
@@ -81,7 +81,7 @@ function useFavoriteFollowing({
       (followings) => {
         const key = generateStorageKey(currentSource, currentId);
         setFollowing(!!followings[key]);
-      }
+      },
     );
 
     return unsubscribe;

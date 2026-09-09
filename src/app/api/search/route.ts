@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
           query,
           true,
           timeout,
-          config.SiteConfig.SearchDownstreamMaxPage
+          config.SiteConfig.SearchDownstreamMaxPage,
         );
         for await (const pageResults of generator) {
           let filteredResults = pageResults;
@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
           query,
           true,
           timeout,
-          config.SiteConfig.SearchDownstreamMaxPage
+          config.SiteConfig.SearchDownstreamMaxPage,
         );
         let hasResults = false;
 

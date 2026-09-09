@@ -35,7 +35,7 @@ function SearchPageClient() {
     { name: string; key: string; error: string }[]
   >([]);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<string | null>(
-    null
+    null,
   );
   const historyRef = useRef<HTMLDivElement>(null);
   const [hasResetOnEmptyParams, setHasResetOnEmptyParams] = useState(true);
@@ -93,7 +93,7 @@ function SearchPageClient() {
       return sf === 'sources' || sf === 'episodes' || sf === 'year'
         ? sf
         : 'sources';
-    }
+    },
   );
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
     const so = searchParams.get('order');
@@ -227,7 +227,7 @@ function SearchPageClient() {
 
     const compare = (
       a: [string, SearchResult[]],
-      b: [string, SearchResult[]]
+      b: [string, SearchResult[]],
     ) => {
       const aVal = valueOf(a[1]);
       const bVal = valueOf(b[1]);
@@ -373,7 +373,7 @@ function SearchPageClient() {
     getSearchHistory().then(setSearchHistory);
     const unsubscribe = subscribeToDataUpdates(
       'searchHistoryUpdated',
-      setSearchHistory
+      setSearchHistory,
     );
     const handleScroll = () => {
       setShowBackToTop((document.body.scrollTop || 0) > 300);
@@ -405,7 +405,7 @@ function SearchPageClient() {
       {
         threshold: 0.1,
         rootMargin: '200px', // 提前200px开始加载，提供更流畅的体验
-      }
+      },
     );
 
     observer.observe(loadingMoreExactRef.current);
@@ -444,7 +444,7 @@ function SearchPageClient() {
       {
         threshold: 0.1,
         rootMargin: '200px', // 提前200px开始加载，提供更流畅的体验
-      }
+      },
     );
 
     observer.observe(loadingMoreOthersRef.current);
@@ -461,7 +461,7 @@ function SearchPageClient() {
   const currentQuery = useMemo(() => searchParams.get('q'), [searchParams]);
   const currentSources = useMemo(
     () => searchParams.get('sources'),
-    [searchParams]
+    [searchParams],
   );
 
   // 监听查询变化时重置分页
@@ -627,13 +627,13 @@ function SearchPageClient() {
 
   // 生成筛选选项
   const sourceOptions = Array.from(
-    new Set(searchResults.map((r) => r.source_name))
+    new Set(searchResults.map((r) => r.source_name)),
   ).sort();
   const titleOptions = Array.from(
-    new Set(searchResults.map((r) => r.title))
+    new Set(searchResults.map((r) => r.title)),
   ).sort();
   const yearOptions = Array.from(
-    new Set(searchResults.map((r) => r.year))
+    new Set(searchResults.map((r) => r.year)),
   ).sort();
 
   // 处理排序字段变化的包装函数
@@ -648,7 +648,7 @@ function SearchPageClient() {
         <div className='mb-7 max-w-2xl mx-auto md:hidden'>
           <div className='flex items-center'>
             {/* 搜索源选择器 - 在搜索框左侧，作为一个整体 */}
-            <div className='flex-shrink-0'>
+            <div className='shrink-0'>
               <SourceSelector
                 selectedSources={searchSources}
                 onChange={setSearchSources}
@@ -667,7 +667,7 @@ function SearchPageClient() {
                 onChange={handleInputChange}
                 onFocus={handleInputFocus}
                 placeholder='搜索电影、电视剧...'
-                className='w-full h-12 rounded-r-lg rounded-l-none bg-gray-50/80 py-3 pl-10 pr-4 text-base text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:bg-white border border-gray-200/50 border-l-0 shadow-sm dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:bg-gray-700 dark:border-gray-700 dark:border-l-0'
+                className='w-full h-12 rounded-r-lg rounded-l-none bg-gray-50/80 py-3 pl-10 pr-4 text-base text-gray-700 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-green-400 focus:bg-white border border-gray-200/50 border-l-0 shadow-xs dark:bg-gray-800 dark:text-gray-300 dark:placeholder:text-gray-500 dark:focus:bg-gray-700 dark:border-gray-700 dark:border-l-0'
               />
 
               <SearchSuggestions

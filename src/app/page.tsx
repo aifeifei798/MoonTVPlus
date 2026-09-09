@@ -142,7 +142,7 @@ function HomeClient() {
       const now = new Date();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
         2,
-        '0'
+        '0',
       )}-${String(now.getDate()).padStart(2, '0')}`;
       await saveTodayUpdated({ date, items });
     } catch (err) {
@@ -252,7 +252,7 @@ function HomeClient() {
 
   const updateFollowingItems = async (
     allFollowings: Record<string, any>,
-    providedPlayRecords?: Record<string, any>
+    providedPlayRecords?: Record<string, any>,
   ) => {
     const allPlayRecords =
       providedPlayRecords ??
@@ -297,7 +297,7 @@ function HomeClient() {
 
   // 更新进度（同步 ref 与 state，避免异步竞态）
   const updateProgress = (
-    patch: Partial<typeof refreshProgressRef.current>
+    patch: Partial<typeof refreshProgressRef.current>,
   ) => {
     refreshProgressRef.current = {
       ...refreshProgressRef.current,
@@ -310,7 +310,7 @@ function HomeClient() {
   const runFollowingRefresh = async (
     targetFollowings: Record<string, any>,
     playRecords: Record<string, any>,
-    isRetry: boolean
+    isRetry: boolean,
   ) => {
     const targetCount = Object.keys(targetFollowings).length;
     if (targetCount === 0) return;
@@ -407,7 +407,7 @@ function HomeClient() {
           };
           // 合并进“今日新更”：同一影片已存在则更新其记录，否则追加（保留一天）
           const existingIdx = todayUpdatedRef.current.findIndex(
-            (e) => e.source === entry.source && e.id === entry.id
+            (e) => e.source === entry.source && e.id === entry.id,
           );
           if (existingIdx >= 0) {
             todayUpdatedRef.current[existingIdx] = entry;
@@ -440,7 +440,7 @@ function HomeClient() {
 
   const refreshFollowingRecords = async (
     allFollowings?: Record<string, any>,
-    allPlayRecords?: Record<string, any>
+    allPlayRecords?: Record<string, any>,
   ) => {
     const followings = allFollowings ?? (await getAllFollowings());
     const playRecords =
@@ -506,7 +506,7 @@ function HomeClient() {
       'favoritesUpdated',
       (newFavorites: Record<string, any>) => {
         updateFavoriteItems(newFavorites);
-      }
+      },
     );
 
     return unsubscribe;
@@ -574,7 +574,7 @@ function HomeClient() {
         const current = todayUpdatedRef.current;
         if (current.length > 0) {
           const kept = current.filter(
-            (item) => !!newFollowings[`${item.source}+${item.id}`]
+            (item) => !!newFollowings[`${item.source}+${item.id}`],
           );
           if (kept.length !== current.length) {
             todayUpdatedRef.current = kept;
@@ -582,7 +582,7 @@ function HomeClient() {
             persistTodayUpdated(kept);
           }
         }
-      }
+      },
     );
 
     return unsubscribe;
@@ -622,7 +622,7 @@ function HomeClient() {
                           f.reason || '未知'
                         }</div>
                       </div>
-                    </div>`
+                    </div>`,
                )
                .join('')}
            </div>`
@@ -684,7 +684,7 @@ function HomeClient() {
             active={simpleMode && activeTab === 'home' ? 'history' : activeTab}
             onChange={(value) =>
               setActiveTab(
-                value as 'home' | 'history' | 'following' | 'favorites'
+                value as 'home' | 'history' | 'following' | 'favorites',
               )
             }
           />
@@ -705,7 +705,7 @@ function HomeClient() {
                   <button
                     onClick={handleManualRefresh}
                     disabled={refreshProgress.running}
-                    className='flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-green-500 dark:hover:text-green-400'
+                    className='flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-xs transition-colors hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-green-500 dark:hover:text-green-400'
                     title='手动刷新所有追更集数'
                   >
                     <svg
@@ -728,7 +728,7 @@ function HomeClient() {
                   {refreshProgress.total > 0 && (
                     <button
                       onClick={handleShowRefreshResult}
-                      className='group flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:border-green-400 hover:text-green-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-green-500 dark:hover:text-green-400'
+                      className='group flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 shadow-xs transition-colors hover:border-green-400 hover:text-green-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-green-500 dark:hover:text-green-400'
                       title='点击查看刷新明细'
                     >
                       {refreshProgress.running ? (
@@ -839,7 +839,7 @@ function HomeClient() {
                       </div>
                     </div>
                   ) : followingItems.filter(
-                      (item) => item.unwatchedEpisodes > 0
+                      (item) => item.unwatchedEpisodes > 0,
                     ).length > 0 ? (
                     <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
                       {followingItems
@@ -1072,7 +1072,7 @@ function HomeClient() {
                       // 找到当前星期对应的番剧数据
                       const todayAnimes =
                         bangumiCalendarData.find(
-                          (item) => item.weekday.en === currentWeekday
+                          (item) => item.weekday.en === currentWeekday,
                         )?.items || [];
 
                       return todayAnimes.map((anime, index) => (

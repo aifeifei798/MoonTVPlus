@@ -31,7 +31,7 @@ const SegmentViewer = ({
   streamMode = 'disabled',
 }: SegmentViewerProps) => {
   const [retryingSegments, setRetryingSegments] = useState<Set<number>>(
-    new Set()
+    new Set(),
   );
   const [, forceUpdate] = useState({});
 
@@ -57,7 +57,7 @@ const SegmentViewer = ({
         segmentData = aesDecrypt(
           segmentData,
           task.aesConf.key,
-          task.aesConf.iv
+          task.aesConf.iv,
         );
       }
 
@@ -116,7 +116,7 @@ const SegmentViewer = ({
 
     // eslint-disable-next-line no-console
     console.log(
-      `开始批量重试 ${failedIndices.length} 个失败片段，并发数: ${concurrency}`
+      `开始批量重试 ${failedIndices.length} 个失败片段，并发数: ${concurrency}`,
     );
 
     // 创建重试队列
@@ -150,7 +150,7 @@ const SegmentViewer = ({
 
       // 检查是否所有失败片段都已重试成功
       const remainingErrors = task.finishList.filter(
-        (item) => item.status === 'error'
+        (item) => item.status === 'error',
       ).length;
 
       // eslint-disable-next-line no-console
@@ -161,7 +161,7 @@ const SegmentViewer = ({
         console.log(
           `✅ 所有片段已成功！已保存 ${
             task.downloadedSegments?.size || 0
-          } 个片段数据，即将自动合并保存...`
+          } 个片段数据，即将自动合并保存...`,
         );
       }
     } catch (error) {
@@ -206,16 +206,16 @@ const SegmentViewer = ({
   // 使用统一的 formatTime
 
   const successCount = filteredSegments.filter(
-    (item) => item.status === 'success'
+    (item) => item.status === 'success',
   ).length;
   const errorCount = filteredSegments.filter(
-    (item) => item.status === 'error'
+    (item) => item.status === 'error',
   ).length;
   const downloadingCount = filteredSegments.filter(
-    (item) => item.status === 'downloading'
+    (item) => item.status === 'downloading',
   ).length;
   const pendingCount = filteredSegments.filter(
-    (item) => item.status === ''
+    (item) => item.status === '',
   ).length;
 
   return (
@@ -319,19 +319,19 @@ const SegmentViewer = ({
                 segment.status === 'success'
                   ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700'
                   : segment.status === 'error'
-                  ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700'
-                  : segment.status === 'downloading'
-                  ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
-                  : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600';
+                    ? 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700'
+                    : segment.status === 'downloading'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700'
+                      : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600';
 
               const textColor =
                 segment.status === 'success'
                   ? 'text-green-700 dark:text-green-300'
                   : segment.status === 'error'
-                  ? 'text-red-700 dark:text-red-300'
-                  : segment.status === 'downloading'
-                  ? 'text-blue-700 dark:text-blue-300'
-                  : 'text-gray-700 dark:text-gray-300';
+                    ? 'text-red-700 dark:text-red-300'
+                    : segment.status === 'downloading'
+                      ? 'text-blue-700 dark:text-blue-300'
+                      : 'text-gray-700 dark:text-gray-300';
 
               return (
                 <div
@@ -358,10 +358,10 @@ const SegmentViewer = ({
                         ? '边下边存模式无法重试失败片段'
                         : '点击重试'
                       : segment.status === 'success'
-                      ? '下载成功'
-                      : segment.status === 'downloading'
-                      ? '下载中'
-                      : '待下载'
+                        ? '下载成功'
+                        : segment.status === 'downloading'
+                          ? '下载中'
+                          : '待下载'
                   }
                 >
                   <div className='flex items-center justify-between'>
@@ -380,18 +380,18 @@ const SegmentViewer = ({
                     {segment.status === 'success'
                       ? '✓ 成功'
                       : segment.status === 'error'
-                      ? `✗ 失败${
-                          segment.retryCount
-                            ? ` (重试${segment.retryCount}次)`
-                            : ''
-                        }`
-                      : segment.status === 'downloading'
-                      ? `⟳ ${
-                          segment.retryCount && segment.retryCount > 0
-                            ? `重试中(第${segment.retryCount}次)`
-                            : '下载中'
-                        }`
-                      : '○ 待下载'}
+                        ? `✗ 失败${
+                            segment.retryCount
+                              ? ` (重试${segment.retryCount}次)`
+                              : ''
+                          }`
+                        : segment.status === 'downloading'
+                          ? `⟳ ${
+                              segment.retryCount && segment.retryCount > 0
+                                ? `重试中(第${segment.retryCount}次)`
+                                : '下载中'
+                            }`
+                          : '○ 待下载'}
                   </div>
                 </div>
               );

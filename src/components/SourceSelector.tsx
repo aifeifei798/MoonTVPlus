@@ -44,7 +44,7 @@ export default function SourceSelector({
         try {
           const sites = await getAvailableApiSitesClient();
           setAvailableSources(
-            sites.map((site) => ({ key: site.key, name: site.name }))
+            sites.map((site) => ({ key: site.key, name: site.name })),
           );
         } catch (error) {
           // eslint-disable-next-line no-console
@@ -111,7 +111,7 @@ export default function SourceSelector({
     window.dispatchEvent(
       new CustomEvent('searchSettingsChanged', {
         detail: { enableSearchSuggestions: newValue },
-      })
+      }),
     );
   };
 
@@ -124,7 +124,7 @@ export default function SourceSelector({
           const parsedSources = JSON.parse(savedSources);
           // 确保保存的源在可用源列表中
           const validSources = parsedSources.filter((source: string) =>
-            availableSources.some((avail) => avail.key === source)
+            availableSources.some((avail) => avail.key === source),
           );
 
           // 如果保存的源中有不存在的源，更新本地存储
@@ -147,7 +147,7 @@ export default function SourceSelector({
 
       // 加载搜索建议设置
       const savedEnableSearchSuggestions = localStorage.getItem(
-        'enableSearchSuggestions'
+        'enableSearchSuggestions',
       );
       if (savedEnableSearchSuggestions !== null) {
         setEnableSearchSuggestions(savedEnableSearchSuggestions === 'true');
@@ -235,7 +235,7 @@ export default function SourceSelector({
             {/* 保存按钮 */}
             <button
               onClick={handleSaveSources}
-              className='px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/50 flex items-center justify-center gap-1'
+              className='px-3 py-1 text-sm bg-green-100 text-green-700 rounded-sm hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-800/50 flex items-center justify-center gap-1'
               title='保存当前选中的搜索源和超时设置'
             >
               <Save className='w-3 h-3' />
@@ -245,7 +245,7 @@ export default function SourceSelector({
             {/* 清空按钮 */}
             <button
               onClick={handleClearAll}
-              className='px-2 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50 flex items-center justify-center gap-1'
+              className='px-2 py-1 text-sm bg-red-100 text-red-700 rounded-sm hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-800/50 flex items-center justify-center gap-1'
               title='清空所有选中的搜索源'
             >
               <X className='w-4 h-4' />
@@ -253,7 +253,7 @@ export default function SourceSelector({
             </button>
 
             {/* 超时时间设置 */}
-            <div className='flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-700 rounded px-2 py-1'>
+            <div className='flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-sm px-2 py-1'>
               <label className='text-xs text-gray-700 dark:text-gray-300 whitespace-nowrap'>
                 超时:
               </label>
@@ -264,10 +264,10 @@ export default function SourceSelector({
                 value={timeoutSeconds}
                 onChange={(e) =>
                   setTimeoutSeconds(
-                    Math.max(1, Math.min(60, Number(e.target.value) || 30))
+                    Math.max(1, Math.min(60, Number(e.target.value) || 30)),
                   )
                 }
-                className='w-12 px-1 py-0.5 text-sm bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-green-400'
+                className='w-12 px-1 py-0.5 text-sm bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-sm text-gray-700 dark:text-gray-300 focus:outline-hidden focus:ring-1 focus:ring-green-400'
                 title='请求超时时间（秒）'
               />
               <span className='text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap'>
@@ -276,7 +276,7 @@ export default function SourceSelector({
             </div>
 
             {/* 搜索建议开关 */}
-            <div className='flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-700 rounded px-2 py-1'>
+            <div className='flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-sm px-2 py-1'>
               <label className='text-xs text-gray-700 dark:text-gray-300 whitespace-nowrap'>
                 搜索建议
               </label>

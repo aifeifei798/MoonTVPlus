@@ -24,7 +24,7 @@ interface FetchVideoDetailOptions {
  *  - 仅当搜索无精确命中时，才调用详情接口兜底。
  */
 export async function fetchVideoDetail(
-  options: FetchVideoDetailOptions
+  options: FetchVideoDetailOptions,
 ): Promise<SearchResult> {
   const { source } = options;
   try {
@@ -66,7 +66,7 @@ async function fetchVideoDetailInner({
         apiSite,
         fallbackTitle.trim(),
         true,
-        timeout
+        timeout,
       )) {
         for (const item of results) {
           // 精确匹配 source+id 且有集数，立即返回

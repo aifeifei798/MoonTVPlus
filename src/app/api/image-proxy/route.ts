@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   } catch (e) {
     return NextResponse.json(
       { error: (e as Error).message || '非法 URL' },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     if (!imageResponse.ok) {
       return NextResponse.json(
         { error: imageResponse.statusText },
-        { status: imageResponse.status }
+        { status: imageResponse.status },
       );
     }
 
@@ -52,11 +52,11 @@ export async function GET(request: Request) {
       }
       return NextResponse.json(
         { error: '仅允许代理图片内容' },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const contentLength = Number(
-      imageResponse.headers.get('content-length') || '0'
+      imageResponse.headers.get('content-length') || '0',
     );
     if (contentLength > 10 * 1024 * 1024) {
       return NextResponse.json({ error: '图片过大' }, { status: 413 });
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     if (!imageResponse.body) {
       return NextResponse.json(
         { error: 'Image response has no body' },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -89,7 +89,7 @@ export async function GET(request: Request) {
   } catch (error) {
     return NextResponse.json(
       { error: 'Error fetching image' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

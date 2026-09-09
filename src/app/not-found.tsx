@@ -11,7 +11,7 @@ export default function NotFound() {
       </p>
       <Link
         href='/'
-        className='rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700'
+        className='rounded-sm bg-green-600 px-4 py-2 text-white hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700'
       >
         返回首页
       </Link>

@@ -49,7 +49,7 @@ function HomeSection({
                 <div className='relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-gray-200 animate-pulse dark:bg-gray-800'>
                   <div className='absolute inset-0 bg-gray-300 dark:bg-gray-700'></div>
                 </div>
-                <div className='mt-2 h-4 bg-gray-200 rounded animate-pulse dark:bg-gray-800'></div>
+                <div className='mt-2 h-4 bg-gray-200 rounded-sm animate-pulse dark:bg-gray-800'></div>
               </div>
             ))
           : children}

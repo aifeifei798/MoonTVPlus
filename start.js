@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* eslint-disable no-console,@typescript-eslint/no-var-requires */
+/* eslint-disable no-console */
 const http = require('http');
 const path = require('path');
 
@@ -12,7 +12,7 @@ function generateManifest() {
     const generateManifestScript = path.join(
       __dirname,
       'scripts',
-      'generate-manifest.js'
+      'generate-manifest.js',
     );
     require(generateManifestScript);
   } catch (error) {
@@ -46,9 +46,12 @@ const intervalId = setInterval(() => {
       // 然后按 CRON_INTERVAL_MINUTES 间隔执行（默认 60 分钟，0 表示只跑启动那一次）
       const intervalMinutes = Number(process.env.CRON_INTERVAL_MINUTES || 60);
       if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
-        setInterval(() => {
-          executeCronJob();
-        }, intervalMinutes * 60 * 1000);
+        setInterval(
+          () => {
+            executeCronJob();
+          },
+          intervalMinutes * 60 * 1000,
+        );
       } else {
         console.log('CRON_INTERVAL_MINUTES<=0，仅执行启动时的一次 cron 任务');
       }

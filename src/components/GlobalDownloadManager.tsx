@@ -15,7 +15,7 @@ const GlobalDownloadManager = () => {
   // 监听显示下载管理器的事件（从 TopNav 或 MobileHeader 触发）
   useEffect(() => {
     const handleShowEvent = () => setShowDownloadManager(true);
-    
+
     if (typeof window !== 'undefined') {
       window.addEventListener('showDownloadManager', handleShowEvent);
     }

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, no-console, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-explicit-any, no-console */
 
 import { getStorage } from '@/lib/db';
 
@@ -71,7 +71,6 @@ function getSiteNameEnv(): string {
 // Docker/nodejs 下从磁盘读取 config.json；失败时返回空结构而非抛错
 function loadFileConfigFromDisk(): ConfigFileStruct {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const _require = eval('require') as NodeJS.Require;
     const fs = _require('fs') as typeof import('fs');
     const path = _require('path') as typeof import('path');
@@ -101,11 +100,11 @@ function loadBuildTimeFileConfig(): ConfigFileStruct {
 
 function mergeSourceConfigs(
   adminConfig: AdminConfig,
-  file: ConfigFileStruct
+  file: ConfigFileStruct,
 ): void {
   const apiSiteEntries = Object.entries(file.api_site || {});
   const sourceConfigMap = new Map(
-    (adminConfig.SourceConfig || []).map((s) => [s.key, s])
+    (adminConfig.SourceConfig || []).map((s) => [s.key, s]),
   );
   apiSiteEntries.forEach(([key, site]) => {
     const existing = sourceConfigMap.get(key);
@@ -135,12 +134,12 @@ function mergeSourceConfigs(
 function mergeCustomCategories(
   adminConfig: AdminConfig,
   file: ConfigFileStruct,
-  onlyConfigFrom = false
+  onlyConfigFrom = false,
 ): void {
   const customCategories = file.custom_category || [];
   if (!adminConfig.CustomCategories) adminConfig.CustomCategories = [];
   const map = new Map(
-    adminConfig.CustomCategories.map((c) => [c.query + c.type, c])
+    adminConfig.CustomCategories.map((c) => [c.query + c.type, c]),
   );
   customCategories.forEach((category) => {
     const key = category.query + category.type;
@@ -183,7 +182,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   // 合并文件中的源信息
   const apiSiteEntries = Object.entries(fileConfig.api_site || []);
   const sourceConfigMap = new Map(
-    (adminConfig.SourceConfig || []).map((s) => [s.key, s])
+    (adminConfig.SourceConfig || []).map((s) => [s.key, s]),
   );
 
   apiSiteEntries.forEach(([key, site]) => {
@@ -221,7 +220,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   // 覆盖 CustomCategories
   const customCategories = fileConfig.custom_category || [];
   const customCategoriesMap = new Map(
-    (adminConfig.CustomCategories || []).map((c) => [c.query + c.type, c])
+    (adminConfig.CustomCategories || []).map((c) => [c.query + c.type, c]),
   );
 
   customCategories.forEach((category) => {
@@ -245,7 +244,7 @@ export function refineConfig(adminConfig: AdminConfig): AdminConfig {
 
   // 检查现有 CustomCategories 是否在 fileConfig.custom_category 中，如果不在则标记为 custom
   const customCategoriesKeys = new Set(
-    customCategories.map((c) => c.query + c.type)
+    customCategories.map((c) => c.query + c.type),
   );
   customCategoriesMap.forEach((category) => {
     if (!customCategoriesKeys.has(category.query + category.type)) {
@@ -313,7 +312,7 @@ async function initConfig() {
         mergeCustomCategories(adminConfig, fileConfig);
 
         const existedUsers = new Set(
-          (adminConfig.UserConfig.Users || []).map((u) => u.username)
+          (adminConfig.UserConfig.Users || []).map((u) => u.username),
         );
         userNames.forEach((uname) => {
           if (!existedUsers.has(uname)) {
@@ -327,7 +326,7 @@ async function initConfig() {
         const ownerUser = process.env.USERNAME;
         if (ownerUser) {
           adminConfig!.UserConfig.Users = adminConfig!.UserConfig.Users.filter(
-            (u) => u.username !== ownerUser
+            (u) => u.username !== ownerUser,
           );
           adminConfig!.UserConfig.Users.unshift({
             username: ownerUser,
@@ -404,7 +403,7 @@ async function initConfig() {
               detail: site.detail,
               from: 'config',
               disabled: false,
-            })
+            }),
           ),
           CustomCategories: (fileConfig.custom_category || []).map(
             (category) => ({
@@ -413,7 +412,7 @@ async function initConfig() {
               query: category.query,
               from: 'config',
               disabled: false,
-            })
+            }),
           ),
           SubscriptionConfig: {},
         };
@@ -465,7 +464,7 @@ async function initConfig() {
           detail: site.detail,
           from: 'config',
           disabled: false,
-        })
+        }),
       ),
       CustomCategories:
         fileConfig.custom_category?.map((category) => ({
@@ -666,7 +665,7 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
     return adminConfig;
   }
   const originalOwner = adminConfig.UserConfig.Users.find(
-    (u) => u.username === ownerUser
+    (u) => u.username === ownerUser,
   );
 
   // 去重
@@ -680,7 +679,7 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   });
   // 过滤站长
   adminConfig.UserConfig.Users = adminConfig.UserConfig.Users.filter(
-    (user) => user.username !== ownerUser
+    (user) => user.username !== ownerUser,
   );
   // 其他用户不得拥有 owner 权限
   adminConfig.UserConfig.Users.forEach((user) => {
@@ -716,7 +715,7 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
       }
       seenCustomCategoryKeys.add(category.query + category.type);
       return true;
-    }
+    },
   );
 
   return adminConfig;
@@ -823,7 +822,7 @@ export async function getCacheTime(): Promise<number> {
 }
 
 export async function getAvailableApiSites(
-  username?: string
+  username?: string,
 ): Promise<ApiSite[]> {
   const config = await getConfig();
   const all = config.SourceConfig.filter((s) => !s.disabled);

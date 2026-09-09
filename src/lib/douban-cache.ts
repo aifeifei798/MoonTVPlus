@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any,@typescript-eslint/no-non-null-assertion,no-console */
+/* eslint-disable no-console */
 
 import { getCacheTime } from '@/lib/config';
 import { DoubanResult } from '@/lib/types';
@@ -56,7 +56,6 @@ let nodeModules: NodeModules | null | undefined;
 
 function loadNodeModules(): NodeModules | null {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const _require = eval('require') as NodeJS.Require;
     if (typeof process === 'undefined' || !process.versions?.node) {
       return null;
@@ -93,7 +92,7 @@ const MAX_FILES = 500;
 
 export function buildDoubanCacheKey(
   scope: string,
-  params: Record<string, string>
+  params: Record<string, string>,
 ): string {
   const modules = getNodeModules();
   const canonical = Object.keys(params)
@@ -183,7 +182,7 @@ export function recommendsCacheKey(params: {
 }
 
 async function readEntryFromDisk(
-  key: string
+  key: string,
 ): Promise<DoubanCacheEntry | null> {
   const modules = getNodeModules();
   if (!modules) return null;
@@ -204,7 +203,7 @@ async function readEntryFromDisk(
  */
 export async function getDoubanCache(
   key: string,
-  allowStale = false
+  allowStale = false,
 ): Promise<DoubanResult | null> {
   const ttl = getDoubanCacheTtlMs();
   const now = Date.now();
@@ -230,7 +229,7 @@ export async function getDoubanCache(
 
 async function writeEntryToDisk(
   key: string,
-  entry: DoubanCacheEntry
+  entry: DoubanCacheEntry,
 ): Promise<boolean> {
   const modules = getNodeModules();
   if (!modules) return false;
@@ -262,7 +261,7 @@ function sweepExpiredFiles(): void {
     const stale = files.filter((f) => {
       try {
         const entry = JSON.parse(
-          modules.fs.readFileSync(modules.path.join(dir, f), 'utf-8')
+          modules.fs.readFileSync(modules.path.join(dir, f), 'utf-8'),
         ) as DoubanCacheEntry;
         return now - entry.savedAt > ttl;
       } catch {
@@ -288,7 +287,7 @@ function sweepExpiredFiles(): void {
       stale.push(
         ...fresh
           .slice(0, files.length - MAX_FILES - stale.length)
-          .map((d) => d.f)
+          .map((d) => d.f),
       );
     }
     stale.slice(0, files.length - MAX_FILES).forEach((f) => {
@@ -306,7 +305,7 @@ function sweepExpiredFiles(): void {
 /** 写入缓存（内存 + 磁盘）。list 为空时不缓存，避免把上游抖动固化 */
 export async function setDoubanCache(
   key: string,
-  data: DoubanResult
+  data: DoubanResult,
 ): Promise<void> {
   if (!data?.list || data.list.length === 0) return;
   const entry: DoubanCacheEntry = {
@@ -321,7 +320,7 @@ export async function setDoubanCache(
 /** 统一构造豆瓣接口的成功响应，fresh/hit/stale 走不同的 Cache-Control */
 export async function buildDoubanOkResponse(
   data: DoubanResult,
-  source: 'hit' | 'stale' | 'fresh'
+  source: 'hit' | 'stale' | 'fresh',
 ): Promise<Response> {
   let cacheTime = 60;
   if (source !== 'stale') {

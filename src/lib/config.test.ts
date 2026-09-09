@@ -4,7 +4,6 @@ jest.mock('@/lib/db', () => ({
   getStorage: jest.fn(),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getStorage } = require('@/lib/db');
 
 const baseAdminConfig = () => ({

@@ -16,7 +16,7 @@ export const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // 生成服务端签名的逐字节实现（Edge/Node 通用，依赖 WebCrypto）
 export async function generateSignature(
   data: string,
-  secret: string
+  secret: string,
 ): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -24,7 +24,7 @@ export async function generateSignature(
     encoder.encode(secret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign']
+    ['sign'],
   );
   const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
   return Array.from(new Uint8Array(sig))
@@ -35,7 +35,7 @@ export async function generateSignature(
 export async function verifySignature(
   data: string,
   signature: string,
-  secret: string
+  secret: string,
 ): Promise<boolean> {
   if (!data || !signature || !secret) return false;
   try {
@@ -45,17 +45,17 @@ export async function verifySignature(
       encoder.encode(secret),
       { name: 'HMAC', hash: 'SHA-256' },
       false,
-      ['verify']
+      ['verify'],
     );
     const sigBytes = new Uint8Array(
-      signature.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) || []
+      signature.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) || [],
     );
     if (sigBytes.length !== 32) return false;
     return await crypto.subtle.verify(
       'HMAC',
       key,
       sigBytes as unknown as ArrayBuffer,
-      encoder.encode(data)
+      encoder.encode(data),
     );
   } catch {
     return false;
@@ -71,7 +71,7 @@ export function isAuthExpired(timestamp?: number): boolean {
 
 // 服务端从 httpOnly 的 auth cookie 读取并验签
 export async function getVerifiedAuthInfo(
-  request: NextRequest
+  request: NextRequest,
 ): Promise<ServerAuthInfo | null> {
   const raw = getAuthInfoFromCookie(request);
   if (!raw) return null;
@@ -92,7 +92,7 @@ export async function getVerifiedAuthInfo(
     const ok = await verifySignature(
       `localstorage:${raw.timestamp}`,
       raw.signature,
-      secret
+      secret,
     );
     return ok ? raw : null;
   }
@@ -104,7 +104,7 @@ export async function getVerifiedAuthInfo(
   const ok = await verifySignature(
     `${raw.username}:${raw.role}:${raw.timestamp}`,
     raw.signature,
-    secret
+    secret,
   );
   return ok ? raw : null;
 }
@@ -148,7 +148,7 @@ export function getAuthInfoCookieOptions(expires?: Date, secure?: boolean) {
 
 // 从cookie获取认证信息 (服务端使用，原始解析，不验签；验签请用 getVerifiedAuthInfo)
 export function getAuthInfoFromCookie(
-  request: NextRequest
+  request: NextRequest,
 ): ServerAuthInfo | null {
   const authCookie = request.cookies.get('auth');
 
@@ -180,20 +180,23 @@ export function getAuthInfoFromBrowserCookie(): {
 
   try {
     // 解析 document.cookie
-    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
-      const trimmed = cookie.trim();
-      const firstEqualIndex = trimmed.indexOf('=');
+    const cookies = document.cookie.split(';').reduce(
+      (acc, cookie) => {
+        const trimmed = cookie.trim();
+        const firstEqualIndex = trimmed.indexOf('=');
 
-      if (firstEqualIndex > 0) {
-        const key = trimmed.substring(0, firstEqualIndex);
-        const value = trimmed.substring(firstEqualIndex + 1);
-        if (key && value) {
-          acc[key] = value;
+        if (firstEqualIndex > 0) {
+          const key = trimmed.substring(0, firstEqualIndex);
+          const value = trimmed.substring(firstEqualIndex + 1);
+          if (key && value) {
+            acc[key] = value;
+          }
         }
-      }
 
-      return acc;
-    }, {} as Record<string, string>);
+        return acc;
+      },
+      {} as Record<string, string>,
+    );
 
     // 新版：auth_info 仅含 username/role，无密钥；旧版回退读 auth
     const raw = cookies['auth_info'] || cookies['auth'];

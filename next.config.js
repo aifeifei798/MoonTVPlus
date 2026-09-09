@@ -1,12 +1,10 @@
 /** @type {import('next').NextConfig} */
-/* eslint-disable @typescript-eslint/no-var-requires */
 
 const nextConfig = {
   output: 'standalone',
   eslint: {
-    dirs: ['src'],
-    // 构建时不再忽略 lint，让 CI 分步失败可见；本地可用 pnpm lint 快速检查
-    ignoreDuringBuilds: false,
+    // Lint 由独立脚本/CI/pre-commit 处理；Next 16 起 build 不再自动跑 lint
+    ignoreDuringBuilds: true,
   },
 
   reactStrictMode: true,
@@ -20,10 +18,12 @@ const nextConfig = {
   webpack(config) {
     // Grab the existing rule that handles SVG imports
     const fileLoaderRule = config.module.rules.find((rule) =>
-      rule.test?.test?.('.svg')
+      rule.test?.test?.('.svg'),
     );
     if (!fileLoaderRule) {
-      throw new Error('未找到处理 .svg 的默认规则，升级 Next 后需同步调整 SVGR 配置');
+      throw new Error(
+        '未找到处理 .svg 的默认规则，升级 Next 后需同步调整 SVGR 配置',
+      );
     }
 
     config.module.rules.push(
@@ -43,7 +43,7 @@ const nextConfig = {
           dimensions: false,
           titleProp: true,
         },
-      }
+      },
     );
 
     // Modify the file loader rule to ignore *.svg, since we have it handled now.
@@ -67,7 +67,8 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // 检测是否为云平台构建
-const isCloudflarePages = process.env.CF_PAGES === '1' || 
+const isCloudflarePages =
+  process.env.CF_PAGES === '1' ||
   process.env.CLOUDFLARE_PAGES === '1' ||
   process.argv.includes('pages:build');
 

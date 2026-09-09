@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const config = await getConfig();
     if (config.UserConfig.Users) {
       const user = config.UserConfig.Users.find(
-        (u) => u.username === authInfo.username
+        (u) => u.username === authInfo.username,
       );
       if (user && user.banned) {
         return NextResponse.json({ error: '用户已被封禁' }, { status: 401 });
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       if (!source || !id) {
         return NextResponse.json(
           { error: 'Invalid key format' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       const following = await db.getFollowing(authInfo.username, source, id);
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     console.error('获取追更失败', err);
     return NextResponse.json(
       { error: 'Internal Server Error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const config = await getConfig();
     if (config.UserConfig.Users) {
       const user = config.UserConfig.Users.find(
-        (u) => u.username === authInfo.username
+        (u) => u.username === authInfo.username,
       );
       if (user && user.banned) {
         return NextResponse.json({ error: '用户已被封禁' }, { status: 401 });
@@ -86,14 +86,14 @@ export async function POST(request: NextRequest) {
     if (!key || !following) {
       return NextResponse.json(
         { error: 'Missing key or following' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!following.title || !following.source_name) {
       return NextResponse.json(
         { error: 'Invalid following data' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     if (!source || !id) {
       return NextResponse.json(
         { error: 'Invalid key format' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     console.error('保存追更失败', err);
     return NextResponse.json(
       { error: 'Internal Server Error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -138,7 +138,7 @@ export async function DELETE(request: NextRequest) {
     const config = await getConfig();
     if (config.UserConfig.Users) {
       const user = config.UserConfig.Users.find(
-        (u) => u.username === authInfo.username
+        (u) => u.username === authInfo.username,
       );
       if (user && user.banned) {
         return NextResponse.json({ error: '用户已被封禁' }, { status: 401 });
@@ -154,7 +154,7 @@ export async function DELETE(request: NextRequest) {
       if (!source || !id) {
         return NextResponse.json(
           { error: 'Invalid key format' },
-          { status: 400 }
+          { status: 400 },
         );
       }
       await db.deleteFollowing(username, source, id);
@@ -164,7 +164,7 @@ export async function DELETE(request: NextRequest) {
         Object.keys(all).map(async (k) => {
           const [s, i] = k.split('+');
           if (s && i) await db.deleteFollowing(username, s, i);
-        })
+        }),
       );
     }
 
@@ -173,7 +173,7 @@ export async function DELETE(request: NextRequest) {
     console.error('删除追更失败', err);
     return NextResponse.json(
       { error: 'Internal Server Error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

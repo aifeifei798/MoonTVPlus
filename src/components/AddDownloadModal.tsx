@@ -88,13 +88,11 @@ const AddDownloadModal = ({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedDownloadType = localStorage.getItem('downloadType') as
-        | 'TS'
-        | 'MP4'
-        | null;
+        'TS' | 'MP4' | null;
       const savedConcurrency = localStorage.getItem('concurrency');
       const savedMaxRetries = localStorage.getItem('maxRetries');
       const savedStreamMode = localStorage.getItem(
-        'streamMode'
+        'streamMode',
       ) as StreamSaverMode | null;
 
       if (savedDownloadType) setDownloadType(savedDownloadType);
@@ -177,14 +175,14 @@ const AddDownloadModal = ({
         }
         outroSegment = Math.max(
           1,
-          Math.min(task.tsUrlList.length, outroSegment)
+          Math.min(task.tsUrlList.length, outroSegment),
         );
       }
 
       setStartSegment(introSegment);
       setEndSegment(outroSegment);
     }
-  }, [task, syncWithSkipConfig, skipConfig]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [task, syncWithSkipConfig, skipConfig]);
 
   // 解析 M3U8
   const handleParse = async () => {
@@ -542,8 +540,8 @@ const AddDownloadModal = ({
                                 introSegment = Math.min(
                                   totalSegments,
                                   Math.ceil(
-                                    skipConfig.intro_time / segmentDuration
-                                  ) + 1
+                                    skipConfig.intro_time / segmentDuration,
+                                  ) + 1,
                                 );
                               }
 
@@ -559,8 +557,8 @@ const AddDownloadModal = ({
                                   1,
                                   Math.min(
                                     totalSegments,
-                                    Math.floor(actualEndTime / segmentDuration)
-                                  )
+                                    Math.floor(actualEndTime / segmentDuration),
+                                  ),
                                 );
                               }
 
@@ -596,7 +594,7 @@ const AddDownloadModal = ({
                             v = Math.max(1, Math.min(task.tsUrlList.length, v));
                             setStartSegment(v);
                           }}
-                          className='w-20 px-2 py-1 rounded text-sm bg-[#f5f5f5] dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none border-none focus:outline-none focus:border-none focus:ring-0 ml-1'
+                          className='w-20 px-2 py-1 rounded-sm text-sm bg-[#f5f5f5] dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-hidden border-none focus:outline-hidden focus:border-none focus:ring-0 ml-1'
                         />
                       </div>
                       <input
@@ -615,7 +613,7 @@ const AddDownloadModal = ({
                             ? task.segmentDurations
                                 .slice(0, startSegment - 1)
                                 .reduce((a, b) => a + b, 0)
-                            : 0
+                            : 0,
                         )}
                       </div>
                     </div>
@@ -635,7 +633,7 @@ const AddDownloadModal = ({
                             v = Math.max(1, Math.min(task.tsUrlList.length, v));
                             setEndSegment(v);
                           }}
-                          className='w-20 px-2 py-1 rounded text-sm bg-[#f5f5f5] dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none border-none focus:outline-none focus:border-none focus:ring-0 ml-1'
+                          className='w-20 px-2 py-1 rounded-sm text-sm bg-[#f5f5f5] dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-hidden border-none focus:outline-hidden focus:border-none focus:ring-0 ml-1'
                         />
                       </div>
                       <input
@@ -654,7 +652,7 @@ const AddDownloadModal = ({
                             ? task.segmentDurations
                                 .slice(0, endSegment)
                                 .reduce((a, b) => a + b, 0)
-                            : 0
+                            : 0,
                         )}
                       </div>
                     </div>

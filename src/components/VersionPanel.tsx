@@ -58,7 +58,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
   const fetchRemoteChangelog = async () => {
     try {
       const response = await fetch(
-        'https://raw.githubusercontent.com/aifeifei798/MoonTVPlus/main/CHANGELOG'
+        'https://raw.githubusercontent.com/aifeifei798/MoonTVPlus/main/CHANGELOG',
       );
       if (response.ok) {
         const content = await response.text();
@@ -70,14 +70,14 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
           const latest = parsed[0];
           setLatestVersion(latest.version);
           setIsHasUpdate(
-            compareVersions(latest.version) === UpdateStatus.HAS_UPDATE
+            compareVersions(latest.version) === UpdateStatus.HAS_UPDATE,
           );
         }
       } else {
         console.error(
           '获取远程变更日志失败:',
           response.status,
-          response.statusText
+          response.statusText,
         );
       }
     } catch (error) {
@@ -98,7 +98,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
 
       // 匹配版本行: ## [X.Y.Z] - YYYY-MM-DD
       const versionMatch = trimmedLine.match(
-        /^## \[([\d.]+)\] - (\d{4}-\d{2}-\d{2})$/
+        /^## \[([\d.]+)\] - (\d{4}-\d{2}-\d{2})$/,
       );
       if (versionMatch) {
         if (currentVersion) {
@@ -157,7 +157,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
   const renderChangelogEntry = (
     entry: ChangelogEntry | RemoteChangelogEntry,
     isCurrentVersion = false,
-    isRemote = false
+    isRemote = false,
   ) => {
     const isUpdate = isRemote && hasUpdate && entry.version === latestVersion;
 
@@ -168,8 +168,8 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
           isCurrentVersion
             ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
             : isUpdate
-            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-            : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700'
+              ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+              : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700'
         }`}
       >
         {/* 版本标题 */}
@@ -209,7 +209,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     key={index}
                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                   >
-                    <span className='w-1.5 h-1.5 bg-green-500 rounded-full mt-2 flex-shrink-0'></span>
+                    <span className='w-1.5 h-1.5 bg-green-500 rounded-full mt-2 shrink-0'></span>
                     {item}
                   </li>
                 ))}
@@ -229,7 +229,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     key={index}
                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                   >
-                    <span className='w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0'></span>
+                    <span className='w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 shrink-0'></span>
                     {item}
                   </li>
                 ))}
@@ -249,7 +249,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     key={index}
                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                   >
-                    <span className='w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 flex-shrink-0'></span>
+                    <span className='w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 shrink-0'></span>
                     {item}
                   </li>
                 ))}
@@ -308,7 +308,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
               <div className='bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 sm:p-4'>
                 <div className='flex flex-col gap-3'>
                   <div className='flex items-center gap-2 sm:gap-3'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 bg-yellow-100 dark:bg-yellow-800/40 rounded-full flex items-center justify-center flex-shrink-0'>
+                    <div className='w-8 h-8 sm:w-10 sm:h-10 bg-yellow-100 dark:bg-yellow-800/40 rounded-full flex items-center justify-center shrink-0'>
                       <Download className='w-4 h-4 sm:w-5 sm:h-5 text-yellow-600 dark:text-yellow-400' />
                     </div>
                     <div className='min-w-0 flex-1'>
@@ -324,7 +324,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     href='https://github.com/aifeifei798/MoonTVPlus'
                     target='_blank'
                     rel='noopener noreferrer'
-                    className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-sm w-full'
+                    className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-xs w-full'
                   >
                     <Download className='w-3 h-3 sm:w-4 sm:h-4' />
                     前往仓库
@@ -338,7 +338,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
               <div className='bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 sm:p-4'>
                 <div className='flex flex-col gap-3'>
                   <div className='flex items-center gap-2 sm:gap-3'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 bg-green-100 dark:bg-green-800/40 rounded-full flex items-center justify-center flex-shrink-0'>
+                    <div className='w-8 h-8 sm:w-10 sm:h-10 bg-green-100 dark:bg-green-800/40 rounded-full flex items-center justify-center shrink-0'>
                       <CheckCircle className='w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400' />
                     </div>
                     <div className='min-w-0 flex-1'>
@@ -354,7 +354,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     href='https://github.com/aifeifei798/MoonTVPlus'
                     target='_blank'
                     rel='noopener noreferrer'
-                    className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-sm w-full'
+                    className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-xs w-full'
                   >
                     <CheckCircle className='w-3 h-3 sm:w-4 sm:h-4' />
                     前往仓库
@@ -395,7 +395,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                       .filter((entry) => {
                         // 找到第一个本地版本，过滤掉本地已有的版本
                         const localVersions = changelog.map(
-                          (local) => local.version
+                          (local) => local.version,
                         );
                         return !localVersions.includes(entry.version);
                       })
@@ -436,7 +436,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                                     key={itemIndex}
                                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                                   >
-                                    <span className='w-1.5 h-1.5 bg-green-400 rounded-full mt-2 flex-shrink-0'></span>
+                                    <span className='w-1.5 h-1.5 bg-green-400 rounded-full mt-2 shrink-0'></span>
                                     {item}
                                   </li>
                                 ))}
@@ -456,7 +456,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                                     key={itemIndex}
                                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                                   >
-                                    <span className='w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 flex-shrink-0'></span>
+                                    <span className='w-1.5 h-1.5 bg-blue-400 rounded-full mt-2 shrink-0'></span>
                                     {item}
                                   </li>
                                 ))}
@@ -476,7 +476,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                                     key={itemIndex}
                                     className='text-sm text-gray-700 dark:text-gray-300 flex items-start gap-2'
                                   >
-                                    <span className='w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 flex-shrink-0'></span>
+                                    <span className='w-1.5 h-1.5 bg-purple-500 rounded-full mt-2 shrink-0'></span>
                                     {item}
                                   </li>
                                 ))}
@@ -502,8 +502,8 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                   renderChangelogEntry(
                     entry,
                     entry.version === CURRENT_VERSION,
-                    false
-                  )
+                    false,
+                  ),
                 )}
               </div>
             </div>

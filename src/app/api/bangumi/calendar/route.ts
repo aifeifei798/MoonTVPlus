@@ -81,7 +81,7 @@ export async function GET() {
     }
     return NextResponse.json(
       { error: '获取 Bangumi 放送表失败', details: (error as Error).message },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }

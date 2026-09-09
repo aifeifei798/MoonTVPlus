@@ -46,7 +46,7 @@ export interface IStorage {
   setPlayRecord(
     userName: string,
     key: string,
-    record: PlayRecord
+    record: PlayRecord,
   ): Promise<void>;
   getAllPlayRecords(userName: string): Promise<{ [key: string]: PlayRecord }>;
   deletePlayRecord(userName: string, key: string): Promise<void>;
@@ -62,7 +62,7 @@ export interface IStorage {
   setFollowing(
     userName: string,
     key: string,
-    following: Following
+    following: Following,
   ): Promise<void>;
   getAllFollowings(userName: string): Promise<{ [key: string]: Following }>;
   deleteFollowing(userName: string, key: string): Promise<void>;
@@ -93,23 +93,20 @@ export interface IStorage {
   getSkipConfig(
     userName: string,
     source: string,
-    id: string
+    id: string,
   ): Promise<SkipConfig | null>;
   setSkipConfig(
     userName: string,
     source: string,
     id: string,
-    config: SkipConfig
+    config: SkipConfig,
   ): Promise<void>;
   deleteSkipConfig(userName: string, source: string, id: string): Promise<void>;
   getAllSkipConfigs(userName: string): Promise<{ [key: string]: SkipConfig }>;
 
   // “今日新更”相关（保留一天、跟随账号跨设备）
   getTodayUpdated(userName: string): Promise<TodayUpdatedRecord | null>;
-  setTodayUpdated(
-    userName: string,
-    record: TodayUpdatedRecord
-  ): Promise<void>;
+  setTodayUpdated(userName: string, record: TodayUpdatedRecord): Promise<void>;
 
   // 数据清理
   clearAllData(): Promise<void>;

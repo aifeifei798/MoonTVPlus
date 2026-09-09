@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 const SvgMock = React.forwardRef<SVGSVGElement, React.SVGProps<SVGSVGElement>>(
-  (props, ref) => <svg ref={ref} {...props} />
+  (props, ref) => <svg ref={ref} {...props} />,
 );
 SvgMock.displayName = 'SvgMock';
 

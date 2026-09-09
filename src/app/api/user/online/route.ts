@@ -3,7 +3,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
-import { configSelfCheck, getConfig, invalidateConfigCache } from '@/lib/config';
+import {
+  configSelfCheck,
+  getConfig,
+  invalidateConfigCache,
+} from '@/lib/config';
 import { getStorage } from '@/lib/db';
 
 export const runtime = 'edge';
@@ -13,7 +17,7 @@ export async function POST(request: NextRequest) {
   if (storageType === 'localstorage') {
     return NextResponse.json(
       { ok: false, reason: 'localstorage 模式不支持管理员配置写入' },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -26,7 +30,9 @@ export async function POST(request: NextRequest) {
     const username = auth.username;
     const adminConfig = await getConfig();
 
-    const userEntry = adminConfig.UserConfig.Users.find((u) => u.username === username);
+    const userEntry = adminConfig.UserConfig.Users.find(
+      (u) => u.username === username,
+    );
     if (!userEntry) {
       return NextResponse.json({ error: '用户不存在' }, { status: 404 });
     }
@@ -42,13 +48,15 @@ export async function POST(request: NextRequest) {
       invalidateConfigCache();
     }
 
-    return NextResponse.json({ ok: true, lastOnline: userEntry.lastOnline }, { status: 200 });
+    return NextResponse.json(
+      { ok: true, lastOnline: userEntry.lastOnline },
+      { status: 200 },
+    );
   } catch (error) {
     console.error('更新用户上线时间失败:', error);
     return NextResponse.json(
       { error: '更新用户上线时间失败', details: (error as Error).message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
