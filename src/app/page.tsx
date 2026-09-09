@@ -30,7 +30,6 @@ import CapsuleSwitch from '@/components/CapsuleSwitch';
 import ContinueWatching from '@/components/ContinueWatching';
 import HomeSection from '@/components/HomeSection';
 import { useNavigationLoading } from '@/components/NavigationLoadingProvider';
-import PageLayout from '@/components/PageLayout';
 import { useSite } from '@/components/SiteProvider';
 import VideoCard from '@/components/VideoCard';
 
@@ -663,7 +662,7 @@ function HomeClient() {
   };
 
   return (
-    <PageLayout>
+    <>
       <div className='px-2 sm:px-10 py-4 sm:py-8 overflow-visible'>
         {/* 顶部 Tab 切换 */}
         <div className='mb-8 flex justify-center'>
@@ -1167,7 +1166,7 @@ function HomeClient() {
           </div>
         </div>
       )}
-    </PageLayout>
+    </>
   );
 }
 

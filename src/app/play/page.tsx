@@ -29,7 +29,6 @@ import DanmakuSelector from '@/components/DanmakuSelector';
 import EpisodeSelector from '@/components/EpisodeSelector';
 import { FollowingIconButton } from '@/components/FollowingIcon';
 import { triggerGlobalError } from '@/components/GlobalErrorIndicator';
-import PageLayout from '@/components/PageLayout';
 
 import { useFavoriteFollowing } from './useFavoriteFollowing';
 
@@ -2375,166 +2374,160 @@ function PlayPageClient() {
 
   if (loading) {
     return (
-      <PageLayout activePath='/play'>
-        <div className='flex items-center justify-center min-h-screen bg-transparent'>
-          <div className='text-center max-w-md mx-auto px-6'>
-            {/* 动画影院图标 */}
-            <div className='relative mb-8'>
-              <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
-                <div className='text-white text-4xl'>
-                  {loadingStage === 'searching' && '🔍'}
-                  {loadingStage === 'preferring' && '⚡'}
-                  {loadingStage === 'fetching' && '🎬'}
-                  {loadingStage === 'ready' && '✨'}
-                </div>
-                {/* 旋转光环 */}
-                <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
+      <div className='flex items-center justify-center min-h-screen bg-transparent'>
+        <div className='text-center max-w-md mx-auto px-6'>
+          {/* 动画影院图标 */}
+          <div className='relative mb-8'>
+            <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+              <div className='text-white text-4xl'>
+                {loadingStage === 'searching' && '🔍'}
+                {loadingStage === 'preferring' && '⚡'}
+                {loadingStage === 'fetching' && '🎬'}
+                {loadingStage === 'ready' && '✨'}
               </div>
-
-              {/* 浮动粒子效果 */}
-              <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
-                <div className='absolute top-2 left-2 w-2 h-2 bg-green-400 rounded-full animate-bounce'></div>
-                <div
-                  className='absolute top-4 right-4 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce'
-                  style={{ animationDelay: '0.5s' }}
-                ></div>
-                <div
-                  className='absolute bottom-3 left-6 w-1 h-1 bg-lime-400 rounded-full animate-bounce'
-                  style={{ animationDelay: '1s' }}
-                ></div>
-              </div>
+              {/* 旋转光环 */}
+              <div className='absolute -inset-2 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 animate-spin'></div>
             </div>
 
-            {/* 进度指示器 */}
-            <div className='mb-6 w-80 mx-auto'>
-              <div className='flex justify-center space-x-2 mb-4'>
-                <div
-                  className={`w-3 h-3 rounded-full transition-all duration-500 ${
-                    loadingStage === 'searching' || loadingStage === 'fetching'
-                      ? 'bg-green-500 scale-125'
-                      : loadingStage === 'preferring' ||
-                        loadingStage === 'ready'
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
-                  }`}
-                ></div>
-                <div
-                  className={`w-3 h-3 rounded-full transition-all duration-500 ${
-                    loadingStage === 'preferring'
-                      ? 'bg-green-500 scale-125'
-                      : loadingStage === 'ready'
-                      ? 'bg-green-500'
-                      : 'bg-gray-300'
-                  }`}
-                ></div>
-                <div
-                  className={`w-3 h-3 rounded-full transition-all duration-500 ${
-                    loadingStage === 'ready'
-                      ? 'bg-green-500 scale-125'
-                      : 'bg-gray-300'
-                  }`}
-                ></div>
-              </div>
-
-              {/* 进度条 */}
-              <div className='w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden'>
-                <div
-                  className='h-full bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000 ease-out'
-                  style={{
-                    width:
-                      loadingStage === 'searching' ||
-                      loadingStage === 'fetching'
-                        ? '33%'
-                        : loadingStage === 'preferring'
-                        ? '66%'
-                        : '100%',
-                  }}
-                ></div>
-              </div>
-            </div>
-
-            {/* 加载消息 */}
-            <div className='space-y-2'>
-              <p className='text-xl font-semibold text-gray-800 dark:text-gray-200 animate-pulse'>
-                {loadingMessage}
-              </p>
+            {/* 浮动粒子效果 */}
+            <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
+              <div className='absolute top-2 left-2 w-2 h-2 bg-green-400 rounded-full animate-bounce'></div>
+              <div
+                className='absolute top-4 right-4 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce'
+                style={{ animationDelay: '0.5s' }}
+              ></div>
+              <div
+                className='absolute bottom-3 left-6 w-1 h-1 bg-lime-400 rounded-full animate-bounce'
+                style={{ animationDelay: '1s' }}
+              ></div>
             </div>
           </div>
+
+          {/* 进度指示器 */}
+          <div className='mb-6 w-80 mx-auto'>
+            <div className='flex justify-center space-x-2 mb-4'>
+              <div
+                className={`w-3 h-3 rounded-full transition-all duration-500 ${
+                  loadingStage === 'searching' || loadingStage === 'fetching'
+                    ? 'bg-green-500 scale-125'
+                    : loadingStage === 'preferring' || loadingStage === 'ready'
+                    ? 'bg-green-500'
+                    : 'bg-gray-300'
+                }`}
+              ></div>
+              <div
+                className={`w-3 h-3 rounded-full transition-all duration-500 ${
+                  loadingStage === 'preferring'
+                    ? 'bg-green-500 scale-125'
+                    : loadingStage === 'ready'
+                    ? 'bg-green-500'
+                    : 'bg-gray-300'
+                }`}
+              ></div>
+              <div
+                className={`w-3 h-3 rounded-full transition-all duration-500 ${
+                  loadingStage === 'ready'
+                    ? 'bg-green-500 scale-125'
+                    : 'bg-gray-300'
+                }`}
+              ></div>
+            </div>
+
+            {/* 进度条 */}
+            <div className='w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden'>
+              <div
+                className='h-full bg-gradient-to-r from-green-500 to-emerald-600 rounded-full transition-all duration-1000 ease-out'
+                style={{
+                  width:
+                    loadingStage === 'searching' || loadingStage === 'fetching'
+                      ? '33%'
+                      : loadingStage === 'preferring'
+                      ? '66%'
+                      : '100%',
+                }}
+              ></div>
+            </div>
+          </div>
+
+          {/* 加载消息 */}
+          <div className='space-y-2'>
+            <p className='text-xl font-semibold text-gray-800 dark:text-gray-200 animate-pulse'>
+              {loadingMessage}
+            </p>
+          </div>
         </div>
-      </PageLayout>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <PageLayout activePath='/play'>
-        <div className='flex items-center justify-center min-h-screen bg-transparent'>
-          <div className='text-center max-w-md mx-auto px-6'>
-            {/* 错误图标 */}
-            <div className='relative mb-8'>
-              <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
-                <div className='text-white text-4xl'>😵</div>
-                {/* 脉冲效果 */}
-                <div className='absolute -inset-2 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl opacity-20 animate-pulse'></div>
-              </div>
-
-              {/* 浮动错误粒子 */}
-              <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
-                <div className='absolute top-2 left-2 w-2 h-2 bg-red-400 rounded-full animate-bounce'></div>
-                <div
-                  className='absolute top-4 right-4 w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce'
-                  style={{ animationDelay: '0.5s' }}
-                ></div>
-                <div
-                  className='absolute bottom-3 left-6 w-1 h-1 bg-yellow-400 rounded-full animate-bounce'
-                  style={{ animationDelay: '1s' }}
-                ></div>
-              </div>
+      <div className='flex items-center justify-center min-h-screen bg-transparent'>
+        <div className='text-center max-w-md mx-auto px-6'>
+          {/* 错误图标 */}
+          <div className='relative mb-8'>
+            <div className='relative mx-auto w-24 h-24 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-transform duration-300'>
+              <div className='text-white text-4xl'>😵</div>
+              {/* 脉冲效果 */}
+              <div className='absolute -inset-2 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl opacity-20 animate-pulse'></div>
             </div>
 
-            {/* 错误信息 */}
-            <div className='space-y-4 mb-8'>
-              <h2 className='text-2xl font-bold text-gray-800 dark:text-gray-200'>
-                哎呀，出现了一些问题
-              </h2>
-              <div className='bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4'>
-                <p className='text-red-600 dark:text-red-400 font-medium'>
-                  {error}
-                </p>
-              </div>
-              <p className='text-sm text-gray-500 dark:text-gray-400'>
-                请检查网络连接或尝试刷新页面
-              </p>
-            </div>
-
-            {/* 操作按钮 */}
-            <div className='space-y-3'>
-              <button
-                onClick={() =>
-                  videoTitle
-                    ? router.push(`/search?q=${encodeURIComponent(videoTitle)}`)
-                    : router.back()
-                }
-                className='w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl'
-              >
-                {videoTitle ? '🔍 返回搜索' : '← 返回上页'}
-              </button>
-
-              <button
-                onClick={() => window.location.reload()}
-                className='w-full px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200'
-              >
-                🔄 重新尝试
-              </button>
+            {/* 浮动错误粒子 */}
+            <div className='absolute top-0 left-0 w-full h-full pointer-events-none'>
+              <div className='absolute top-2 left-2 w-2 h-2 bg-red-400 rounded-full animate-bounce'></div>
+              <div
+                className='absolute top-4 right-4 w-1.5 h-1.5 bg-orange-400 rounded-full animate-bounce'
+                style={{ animationDelay: '0.5s' }}
+              ></div>
+              <div
+                className='absolute bottom-3 left-6 w-1 h-1 bg-yellow-400 rounded-full animate-bounce'
+                style={{ animationDelay: '1s' }}
+              ></div>
             </div>
           </div>
+
+          {/* 错误信息 */}
+          <div className='space-y-4 mb-8'>
+            <h2 className='text-2xl font-bold text-gray-800 dark:text-gray-200'>
+              哎呀，出现了一些问题
+            </h2>
+            <div className='bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4'>
+              <p className='text-red-600 dark:text-red-400 font-medium'>
+                {error}
+              </p>
+            </div>
+            <p className='text-sm text-gray-500 dark:text-gray-400'>
+              请检查网络连接或尝试刷新页面
+            </p>
+          </div>
+
+          {/* 操作按钮 */}
+          <div className='space-y-3'>
+            <button
+              onClick={() =>
+                videoTitle
+                  ? router.push(`/search?q=${encodeURIComponent(videoTitle)}`)
+                  : router.back()
+              }
+              className='w-full px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transform hover:scale-105 transition-all duration-200 shadow-lg hover:shadow-xl'
+            >
+              {videoTitle ? '🔍 返回搜索' : '← 返回上页'}
+            </button>
+
+            <button
+              onClick={() => window.location.reload()}
+              className='w-full px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200'
+            >
+              🔄 重新尝试
+            </button>
+          </div>
         </div>
-      </PageLayout>
+      </div>
     );
   }
 
   return (
-    <PageLayout activePath='/play'>
+    <>
       <div className='flex flex-col px-0 lg:px-[5rem] 2xl:px-32'>
         {/* 播放器和选集 */}
         <div>
@@ -2798,7 +2791,7 @@ function PlayPageClient() {
         }`}
         skipConfig={skipConfig}
       />
-    </PageLayout>
+    </>
   );
 }
 
