@@ -2,7 +2,7 @@
 
 'use client';
 
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
@@ -1013,7 +1013,7 @@ function HomeClient() {
                         <ChevronRight className='w-4 h-4 ml-1' />
                       </Link>
                     </div>
-                    <ScrollableRow>
+                    <ScrollableRow emptyText='暂无热门电影，请稍后重试'>
                       {loading
                         ? // 加载状态显示灰色占位数据
                           Array.from({ length: 8 }).map((_, index) => (
@@ -1062,7 +1062,7 @@ function HomeClient() {
                         <ChevronRight className='w-4 h-4 ml-1' />
                       </Link>
                     </div>
-                    <ScrollableRow>
+                    <ScrollableRow emptyText='暂无热门剧集，请稍后重试'>
                       {loading
                         ? // 加载状态显示灰色占位数据
                           Array.from({ length: 8 }).map((_, index) => (
@@ -1110,7 +1110,7 @@ function HomeClient() {
                         <ChevronRight className='w-4 h-4 ml-1' />
                       </Link>
                     </div>
-                    <ScrollableRow>
+                    <ScrollableRow emptyText='今日暂无新番更新'>
                       {loading
                         ? // 加载状态显示灰色占位数据
                           Array.from({ length: 8 }).map((_, index) => (
@@ -1186,7 +1186,7 @@ function HomeClient() {
                         <ChevronRight className='w-4 h-4 ml-1' />
                       </Link>
                     </div>
-                    <ScrollableRow>
+                    <ScrollableRow emptyText='暂无热门综艺，请稍后重试'>
                       {loading
                         ? // 加载状态显示灰色占位数据
                           Array.from({ length: 8 }).map((_, index) => (
@@ -1226,7 +1226,7 @@ function HomeClient() {
       </div>
       {announcement && showAnnouncement && (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm dark:bg-black/70 p-4 transition-opacity duration-300 ${
+          className={`fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm dark:bg-black/70 p-4 transition-opacity duration-300 ${
             showAnnouncement ? '' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -1239,7 +1239,9 @@ function HomeClient() {
                 onClick={() => handleCloseAnnouncement(announcement)}
                 className='text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-white transition-colors'
                 aria-label='关闭'
-              ></button>
+              >
+                <X className='h-5 w-5' />
+              </button>
             </div>
             <div className='mb-6'>
               <div className='relative overflow-hidden rounded-lg mb-4 bg-green-50 dark:bg-green-900/20'>

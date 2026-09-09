@@ -1,14 +1,16 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Children, useEffect, useRef, useState } from 'react';
 
 interface ScrollableRowProps {
   children: React.ReactNode;
   scrollDistance?: number;
+  emptyText?: string;
 }
 
 export default function ScrollableRow({
   children,
   scrollDistance = 1000,
+  emptyText,
 }: ScrollableRowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
@@ -105,11 +107,17 @@ export default function ScrollableRow({
         className='flex space-x-6 overflow-x-auto scrollbar-hide py-1 sm:py-2 pb-12 sm:pb-14 px-4 sm:px-6'
         onScroll={checkScroll}
       >
-        {children}
+        {Children.count(children) === 0 && emptyText ? (
+          <div className='flex w-full items-center justify-center px-4 py-10 text-sm text-gray-400 dark:text-gray-500'>
+            {emptyText}
+          </div>
+        ) : (
+          children
+        )}
       </div>
       {showLeftScroll && (
         <div
-          className={`hidden sm:flex absolute left-0 top-0 bottom-0 w-16 items-center justify-center z-[600] transition-opacity duration-200 ${
+          className={`hidden sm:flex absolute left-0 top-0 bottom-0 w-16 items-center justify-center z-[500] transition-opacity duration-200 ${
             isHovered ? 'opacity-100' : 'opacity-0'
           }`}
           style={{
@@ -138,7 +146,7 @@ export default function ScrollableRow({
 
       {showRightScroll && (
         <div
-          className={`hidden sm:flex absolute right-0 top-0 bottom-0 w-16 items-center justify-center z-[600] transition-opacity duration-200 ${
+          className={`hidden sm:flex absolute right-0 top-0 bottom-0 w-16 items-center justify-center z-[500] transition-opacity duration-200 ${
             isHovered ? 'opacity-100' : 'opacity-0'
           }`}
           style={{
