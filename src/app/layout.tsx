@@ -25,7 +25,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 // 动态生成 metadata，支持配置更新后的标题变化
 export async function generateMetadata(): Promise<Metadata> {
-  let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV';
+  let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV Plus';
   if (process.env.NEXT_PUBLIC_STORAGE_TYPE !== 'localstorage') {
     const config = await getConfig();
     siteName = config.SiteConfig.SiteName;
@@ -49,7 +49,7 @@ export default async function RootLayout({
 }) {
   const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
 
-  let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV';
+  let siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'MoonTV Plus';
   let announcement =
     process.env.ANNOUNCEMENT ||
     '本网站仅提供影视信息搜索服务，所有内容均来自第三方网站。本站不存储任何视频资源，不对任何内容的准确性、合法性、完整性负责。';
@@ -61,9 +61,7 @@ export default async function RootLayout({
   let doubanImageProxy = process.env.NEXT_PUBLIC_DOUBAN_IMAGE_PROXY || '';
   let disableYellowFilter =
     process.env.NEXT_PUBLIC_DISABLE_YELLOW_FILTER === 'true';
-  let danmakuApiBaseUrl =
-    process.env.NEXT_PUBLIC_DANMU_API_BASE_URL ||
-    '';
+  let danmakuApiBaseUrl = process.env.NEXT_PUBLIC_DANMU_API_BASE_URL || '';
   let autoUpdateEnabled = false;
   if (storageType !== 'localstorage') {
     const config = await getConfig();
@@ -122,13 +120,13 @@ export default async function RootLayout({
             <SiteProvider siteName={siteName} announcement={announcement}>
               <NavigationLoadingIndicator />
               <UserOnlineUpdate />
-              
+
               {/* 条件导航栏 - 根据路径自动判断是否显示 */}
               <ConditionalNav />
-              
+
               {/* 全局下载管理器 - 只渲染一次，被所有导航栏共享 */}
               <GlobalDownloadManager />
-              
+
               {/* 页面内容 */}
               <div className='relative w-full'>
                 <main
@@ -140,7 +138,7 @@ export default async function RootLayout({
                   {children}
                 </main>
               </div>
-              
+
               <GlobalErrorIndicator />
               {autoUpdateEnabled && <SubscriptionAutoUpdate />}
             </SiteProvider>

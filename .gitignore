@@ -46,3 +46,6 @@ sitemap-*.xml
 # generated files
 src/lib/runtime.ts
 public/manifest.json
+
+# next-pwa 生成的 workbox 产物（自定义 sw.js 已在版本库中）
+public/workbox-*.js

@@ -63,7 +63,9 @@ export function invalidateConfigCache(): void {
 }
 
 function getSiteNameEnv(): string {
-  return process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME || 'MoonTV';
+  return (
+    process.env.NEXT_PUBLIC_SITE_NAME || process.env.SITE_NAME || 'MoonTV Plus'
+  );
 }
 
 // Docker/nodejs 下从磁盘读取 config.json；失败时返回空结构而非抛错

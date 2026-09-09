@@ -243,7 +243,10 @@ export async function getDoubanCategories(
   const serverApi = () =>
     fetch(
       `/api/douban/categories?${new URLSearchParams(serverParams).toString()}`
-    ).then((response) => response.json());
+    ).then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    });
   const warm = (data: DoubanResult) =>
     warmDoubanCache('categories', serverParams, data);
   switch (proxyType) {
@@ -305,7 +308,10 @@ export async function getDoubanList(
   };
   const serverApi = () =>
     fetch(`/api/douban?${new URLSearchParams(serverParams).toString()}`).then(
-      (response) => response.json()
+      (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }
     );
   const warm = (data: DoubanResult) =>
     warmDoubanCache('list', serverParams, data);
@@ -464,7 +470,10 @@ export async function getDoubanRecommends(
   const serverApi = () =>
     fetch(
       `/api/douban/recommends?${new URLSearchParams(serverParams).toString()}`
-    ).then((response) => response.json());
+    ).then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    });
   const warm = (data: DoubanResult) =>
     warmDoubanCache('recommends', serverParams, data);
   switch (proxyType) {

@@ -36,7 +36,9 @@ import { useSite } from '@/components/SiteProvider';
 import VideoCard from '@/components/VideoCard';
 
 function HomeClient() {
-  const [activeTab, setActiveTab] = useState<'home' | 'history' | 'following' | 'favorites'>('home');
+  const [activeTab, setActiveTab] = useState<
+    'home' | 'history' | 'following' | 'favorites'
+  >('home');
   const [hotMovies, setHotMovies] = useState<DoubanItem[]>([]);
   const [hotTvShows, setHotTvShows] = useState<DoubanItem[]>([]);
   const [hotVarietyShows, setHotVarietyShows] = useState<DoubanItem[]>([]);
@@ -48,7 +50,7 @@ function HomeClient() {
   const { startLoading } = useNavigationLoading();
 
   const [showAnnouncement, setShowAnnouncement] = useState(false);
-  
+
   // 检查是否启用简洁模式
   const [simpleMode, setSimpleMode] = useState(false);
   const [isClient, setIsClient] = useState(false);
@@ -124,18 +126,15 @@ function HomeClient() {
     updated: 0,
     running: false,
   });
-  const [refreshFailedItems, setRefreshFailedItems] = useState<
-    FollowingRefreshItem[]
-  >([]);
   const refreshFailedRef = useRef<FollowingRefreshItem[]>([]);
   // 本轮刷新中“集数有更新”的追更条目（今日有新集数，页面展示）
   type TodayUpdatedItem = FollowingItem & {
     oldEpisodes: number;
     newEpisodes: number;
   };
-  const [todayUpdatedItems, setTodayUpdatedItems] = useState<TodayUpdatedItem[]>(
-    []
-  );
+  const [todayUpdatedItems, setTodayUpdatedItems] = useState<
+    TodayUpdatedItem[]
+  >([]);
   const todayUpdatedRef = useRef<TodayUpdatedItem[]>([]);
   // 记录“今日新更”列表当前所属日期，用于跨天时自动清空
   const todayUpdatedDateRef = useRef<string>('');
@@ -164,7 +163,9 @@ function HomeClient() {
 
         // 检查是否启用简洁模式
         const savedSimpleMode = localStorage.getItem('simpleMode');
-        const isSimpleMode = savedSimpleMode ? JSON.parse(savedSimpleMode) : false;
+        const isSimpleMode = savedSimpleMode
+          ? JSON.parse(savedSimpleMode)
+          : false;
 
         if (isSimpleMode) {
           // 简洁模式下跳过豆瓣数据获取
@@ -172,9 +173,10 @@ function HomeClient() {
           return;
         }
 
-        // 并行获取热门电影、热门剧集和热门综艺
-        const [moviesData, tvShowsData, varietyShowsData, bangumiCalendarData] =
-          await Promise.all([
+        // 并行获取热门电影、热门剧集、新番放送和热门综艺
+        // 使用 Promise.allSettled 确保单个板块失败不影响其他板块
+        const [moviesResult, tvShowsResult, varietyShowsResult, bangumiResult] =
+          await Promise.allSettled([
             getDoubanCategories({
               kind: 'movie',
               category: '热门',
@@ -185,19 +187,30 @@ function HomeClient() {
             GetBangumiCalendarData(),
           ]);
 
-        if (moviesData.code === 200) {
-          setHotMovies(moviesData.list);
+        if (
+          moviesResult.status === 'fulfilled' &&
+          moviesResult.value.code === 200
+        ) {
+          setHotMovies(moviesResult.value.list);
         }
 
-        if (tvShowsData.code === 200) {
-          setHotTvShows(tvShowsData.list);
+        if (
+          tvShowsResult.status === 'fulfilled' &&
+          tvShowsResult.value.code === 200
+        ) {
+          setHotTvShows(tvShowsResult.value.list);
         }
 
-        if (varietyShowsData.code === 200) {
-          setHotVarietyShows(varietyShowsData.list);
+        if (
+          varietyShowsResult.status === 'fulfilled' &&
+          varietyShowsResult.value.code === 200
+        ) {
+          setHotVarietyShows(varietyShowsResult.value.list);
         }
 
-        setBangumiCalendarData(bangumiCalendarData);
+        if (bangumiResult.status === 'fulfilled') {
+          setBangumiCalendarData(bangumiResult.value);
+        }
       } catch (error) {
         console.error('获取推荐数据失败:', error);
       } finally {
@@ -244,7 +257,9 @@ function HomeClient() {
     providedPlayRecords?: Record<string, any>
   ) => {
     const allPlayRecords =
-      providedPlayRecords ?? latestPlayRecordsRef.current ?? (await getAllPlayRecords());
+      providedPlayRecords ??
+      latestPlayRecordsRef.current ??
+      (await getAllPlayRecords());
     latestPlayRecordsRef.current = allPlayRecords;
 
     const sorted = Object.entries(allFollowings)
@@ -272,7 +287,10 @@ function HomeClient() {
           unwatchedEpisodes,
           source_name: item.source_name,
           year: item.year && item.year !== 'unknown' ? item.year : '',
-          search_title: item.search_title && item.search_title !== item.title ? item.search_title : '',
+          search_title:
+            item.search_title && item.search_title !== item.title
+              ? item.search_title
+              : '',
           save_time: item.save_time,
         } as FollowingItem;
       });
@@ -280,7 +298,9 @@ function HomeClient() {
   };
 
   // 更新进度（同步 ref 与 state，避免异步竞态）
-  const updateProgress = (patch: Partial<typeof refreshProgressRef.current>) => {
+  const updateProgress = (
+    patch: Partial<typeof refreshProgressRef.current>
+  ) => {
     refreshProgressRef.current = {
       ...refreshProgressRef.current,
       ...patch,
@@ -309,7 +329,6 @@ function HomeClient() {
 
     // 失败列表每轮清空；“今日新更”仅跨天清空，同一天内再次刷新保留当天记录
     refreshFailedRef.current = [];
-    setRefreshFailedItems([]);
     const todayStr = new Date().toDateString();
     if (todayStr !== todayUpdatedDateRef.current) {
       todayUpdatedDateRef.current = todayStr;
@@ -368,7 +387,8 @@ function HomeClient() {
           const id = item.key.slice(plusIndex + 1);
           const watchedEpisodes =
             playRecords[item.key]?.index ?? updated?.watched_episodes ?? 0;
-          const newEpisodes = item.total_episodes || updated?.total_episodes || 0;
+          const newEpisodes =
+            item.total_episodes || updated?.total_episodes || 0;
           const entry: TodayUpdatedItem = {
             id,
             source,
@@ -402,13 +422,11 @@ function HomeClient() {
         }
         updateProgress({
           success: refreshProgressRef.current.success + 1,
-          updated:
-            refreshProgressRef.current.updated + (item.updated ? 1 : 0),
+          updated: refreshProgressRef.current.updated + (item.updated ? 1 : 0),
         });
       },
       onItemFailed: (item) => {
         refreshFailedRef.current = [...refreshFailedRef.current, item];
-        setRefreshFailedItems(refreshFailedRef.current);
         updateProgress({
           failed: refreshProgressRef.current.failed + 1,
         });
@@ -428,7 +446,9 @@ function HomeClient() {
   ) => {
     const followings = allFollowings ?? (await getAllFollowings());
     const playRecords =
-      allPlayRecords ?? latestPlayRecordsRef.current ?? (await getAllPlayRecords());
+      allPlayRecords ??
+      latestPlayRecordsRef.current ??
+      (await getAllPlayRecords());
     latestPlayRecordsRef.current = playRecords;
     latestFollowingsRef.current = { ...followings };
 
@@ -578,19 +598,31 @@ function HomeClient() {
   // 点击进度圆圈：展示刷新结果（成功/失败明细），失败时可重试
   const handleShowRefreshResult = () => {
     const failed = refreshFailedRef.current;
-    const { success, failed: failedCount, updated, total, running } = refreshProgress;
+    const {
+      success,
+      failed: failedCount,
+      updated,
+      total,
+      running,
+    } = refreshProgress;
 
     const failedHtml =
       failed.length > 0
         ? `<div class="mt-3 text-left max-h-60 overflow-y-auto rounded-lg bg-gray-100 dark:bg-gray-800 p-3">
-             <div class="text-sm font-semibold mb-2 text-red-500">未成功获取集数 (${failed.length})：</div>
+             <div class="text-sm font-semibold mb-2 text-red-500">未成功获取集数 (${
+               failed.length
+             })：</div>
              ${failed
                .map(
                  (f) =>
                    `<div class="flex items-start justify-between gap-2 py-1.5 text-xs border-b border-gray-200 dark:border-gray-700 last:border-0">
                       <div class="flex-1 min-w-0">
-                        <div class="text-gray-700 dark:text-gray-300 truncate">${f.title || f.key}</div>
-                        <div class="text-red-400 mt-0.5">原因：${f.reason || '未知'}</div>
+                        <div class="text-gray-700 dark:text-gray-300 truncate">${
+                          f.title || f.key
+                        }</div>
+                        <div class="text-red-400 mt-0.5">原因：${
+                          f.reason || '未知'
+                        }</div>
                       </div>
                     </div>`
                )
@@ -605,7 +637,11 @@ function HomeClient() {
       html: `
         <div class="text-sm text-gray-600 dark:text-gray-300">
           <div class="flex items-center justify-center gap-2 mb-2">
-            ${running ? '<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>' : ''}
+            ${
+              running
+                ? '<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>'
+                : ''
+            }
             <span>成功获取 <b class="text-green-600">${success}</b> / ${total}</span>
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -633,18 +669,26 @@ function HomeClient() {
         {/* 顶部 Tab 切换 */}
         <div className='mb-8 flex justify-center'>
           <CapsuleSwitch
-            options={simpleMode ? [
-              { label: '历史', value: 'history' },
-              { label: '追更', value: 'following' },
-              { label: '收藏夹', value: 'favorites' },
-            ] : [
-              { label: '首页', value: 'home' },
-              { label: '历史', value: 'history' },
-              { label: '追更', value: 'following' },
-              { label: '收藏夹', value: 'favorites' },
-            ]}
+            options={
+              simpleMode
+                ? [
+                    { label: '历史', value: 'history' },
+                    { label: '追更', value: 'following' },
+                    { label: '收藏夹', value: 'favorites' },
+                  ]
+                : [
+                    { label: '首页', value: 'home' },
+                    { label: '历史', value: 'history' },
+                    { label: '追更', value: 'following' },
+                    { label: '收藏夹', value: 'favorites' },
+                  ]
+            }
             active={simpleMode && activeTab === 'home' ? 'history' : activeTab}
-            onChange={(value) => setActiveTab(value as 'home' | 'history' | 'following' | 'favorites')}
+            onChange={(value) =>
+              setActiveTab(
+                value as 'home' | 'history' | 'following' | 'favorites'
+              )
+            }
           />
         </div>
 
@@ -667,7 +711,9 @@ function HomeClient() {
                     title='手动刷新所有追更集数'
                   >
                     <svg
-                      className={`h-3.5 w-3.5 ${refreshProgress.running ? 'animate-spin' : ''}`}
+                      className={`h-3.5 w-3.5 ${
+                        refreshProgress.running ? 'animate-spin' : ''
+                      }`}
                       viewBox='0 0 24 24'
                       fill='none'
                       stroke='currentColor'
@@ -747,12 +793,19 @@ function HomeClient() {
                   ) : todayUpdatedItems.length > 0 ? (
                     <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
                       {todayUpdatedItems.map((item) => (
-                        <div key={`${item.source}-${item.id}-updated`} className='w-full'>
+                        <div
+                          key={`${item.source}-${item.id}-updated`}
+                          className='w-full'
+                        >
                           <VideoCard
                             id={item.id}
                             title={item.title}
                             poster={item.poster}
-                            year={item.year && item.year !== 'unknown' ? item.year : ''}
+                            year={
+                              item.year && item.year !== 'unknown'
+                                ? item.year
+                                : ''
+                            }
                             source={item.source}
                             source_name={item.source_name}
                             episodes={item.episodes}
@@ -761,7 +814,8 @@ function HomeClient() {
                             type={item.episodes > 1 ? 'tv' : ''}
                           />
                           <div className='mt-2 text-center text-xs font-medium text-green-600 dark:text-green-400'>
-                            新更新 {item.newEpisodes - item.oldEpisodes} 集（{item.oldEpisodes} → {item.newEpisodes}）
+                            新更新 {item.newEpisodes - item.oldEpisodes} 集（
+                            {item.oldEpisodes} → {item.newEpisodes}）
                           </div>
                         </div>
                       ))}
@@ -778,14 +832,17 @@ function HomeClient() {
                     有未观看
                   </h3>
                   {(followingUpdatesLoading || refreshProgress.running) &&
-                  followingItems.filter((item) => item.unwatchedEpisodes > 0).length === 0 ? (
+                  followingItems.filter((item) => item.unwatchedEpisodes > 0)
+                    .length === 0 ? (
                     <div className='flex justify-center py-8'>
                       <div className='flex items-center gap-2 text-gray-500 dark:text-gray-400'>
                         <div className='animate-spin rounded-full h-5 w-5 border-b-2 border-green-500'></div>
                         <span className='text-sm'>加载中...</span>
                       </div>
                     </div>
-                  ) : followingItems.filter((item) => item.unwatchedEpisodes > 0).length > 0 ? (
+                  ) : followingItems.filter(
+                      (item) => item.unwatchedEpisodes > 0
+                    ).length > 0 ? (
                     <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
                       {followingItems
                         .filter((item) => item.unwatchedEpisodes > 0)
@@ -795,7 +852,11 @@ function HomeClient() {
                               id={item.id}
                               title={item.title}
                               poster={item.poster}
-                              year={item.year && item.year !== 'unknown' ? item.year : ''}
+                              year={
+                                item.year && item.year !== 'unknown'
+                                  ? item.year
+                                  : ''
+                              }
                               source={item.source}
                               source_name={item.source_name}
                               episodes={item.episodes}
@@ -830,12 +891,19 @@ function HomeClient() {
                   ) : (
                     <div className='justify-start grid grid-cols-3 gap-x-2 gap-y-14 sm:gap-y-20 px-0 sm:px-2 sm:grid-cols-[repeat(auto-fill,_minmax(11rem,_1fr))] sm:gap-x-8'>
                       {followingItems.map((item) => (
-                        <div key={`${item.source}-${item.id}-all`} className='w-full'>
+                        <div
+                          key={`${item.source}-${item.id}-all`}
+                          className='w-full'
+                        >
                           <VideoCard
                             id={item.id}
                             title={item.title}
                             poster={item.poster}
-                            year={item.year && item.year !== 'unknown' ? item.year : ''}
+                            year={
+                              item.year && item.year !== 'unknown'
+                                ? item.year
+                                : ''
+                            }
                             source={item.source}
                             source_name={item.source_name}
                             episodes={item.episodes}
