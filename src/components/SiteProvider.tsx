@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, useMemo } from 'react';
 
 const SiteContext = createContext<{ siteName: string; announcement?: string }>({
   // 默认值
@@ -20,9 +20,9 @@ export function SiteProvider({
   siteName: string;
   announcement?: string;
 }) {
-  return (
-    <SiteContext.Provider value={{ siteName, announcement }}>
-      {children}
-    </SiteContext.Provider>
+  const value = useMemo(
+    () => ({ siteName, announcement }),
+    [siteName, announcement],
   );
+  return <SiteContext.Provider value={value}>{children}</SiteContext.Provider>;
 }

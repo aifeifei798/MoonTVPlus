@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { memo, useEffect, useState } from 'react';
 
 import { getCustomCategories } from '@/lib/config.client';
+import { useLocalStorage } from '@/lib/useLocalStorage';
 
 import { useNavigationLoading } from './NavigationLoadingProvider';
 
@@ -49,17 +50,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
   ]);
 
   // 检查是否启用简洁模式 - 使用状态管理
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode] = useLocalStorage('simpleMode', false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    if (typeof window !== 'undefined') {
-      const savedSimpleMode = localStorage.getItem('simpleMode');
-      if (savedSimpleMode !== null) {
-        setSimpleMode(JSON.parse(savedSimpleMode));
-      }
-    }
   }, []);
 
   useEffect(() => {
@@ -126,7 +121,7 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
               <Link
                 href={item.href}
                 className='flex flex-col items-center justify-center w-full h-14 gap-1 text-xs'
-                onClick={(e) => {
+                onClick={() => {
                   // 如果不是当前激活的链接，则触发加载动画
                   if (!active) {
                     startLoading();

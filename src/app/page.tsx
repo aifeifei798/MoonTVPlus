@@ -25,6 +25,7 @@ import {
 import { getDoubanCategories } from '@/lib/douban.client';
 import { computeUnwatchedEpisodes } from '@/lib/following';
 import { DoubanItem } from '@/lib/types';
+import { useLocalStorage } from '@/lib/useLocalStorage';
 
 import CapsuleSwitch from '@/components/CapsuleSwitch';
 import ContinueWatching from '@/components/ContinueWatching';
@@ -50,17 +51,11 @@ function HomeClient() {
   const [showAnnouncement, setShowAnnouncement] = useState(false);
 
   // 检查是否启用简洁模式
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode] = useLocalStorage('simpleMode', false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    if (typeof window !== 'undefined') {
-      const savedSimpleMode = localStorage.getItem('simpleMode');
-      if (savedSimpleMode !== null) {
-        setSimpleMode(JSON.parse(savedSimpleMode));
-      }
-    }
   }, []);
 
   // 检查公告弹窗状态

@@ -22,9 +22,9 @@ import {
   addSearchHistory,
   clearSearchHistory,
   deleteSearchHistory,
-  getSearchHistory,
-  subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { useLocalStorage } from '@/lib/useLocalStorage';
+import { useSearchHistory } from '@/lib/useSearchHistory';
 
 import { useNavigationLoading } from './NavigationLoadingProvider';
 import SearchSuggestions from './SearchSuggestions';
@@ -54,7 +54,7 @@ const TopNav = ({ activePath }: TopNavProps) => {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
   // 历史记录状态
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const searchHistory = useSearchHistory();
   const [showHistory, setShowHistory] = useState(false);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   const historyPopupRef = useRef<HTMLDivElement>(null);
@@ -121,28 +121,11 @@ const TopNav = ({ activePath }: TopNavProps) => {
   }, []);
 
   // 检查是否启用简洁模式
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode] = useLocalStorage('simpleMode', false);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-    if (typeof window !== 'undefined') {
-      const savedSimpleMode = localStorage.getItem('simpleMode');
-      if (savedSimpleMode !== null) {
-        setSimpleMode(JSON.parse(savedSimpleMode));
-      }
-    }
-
-    // 加载搜索历史
-    getSearchHistory().then(setSearchHistory);
-    const unsubscribe = subscribeToDataUpdates(
-      'searchHistoryUpdated',
-      setSearchHistory,
-    );
-
-    return () => {
-      unsubscribe();
-    };
   }, []);
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -54,10 +55,13 @@ export function NavigationLoadingProvider({
     return () => clearTimeout(timer);
   }, [pathname, searchParams]);
 
+  const value = useMemo(
+    () => ({ isLoading, startLoading, stopLoading }),
+    [isLoading, startLoading, stopLoading],
+  );
+
   return (
-    <NavigationLoadingContext.Provider
-      value={{ isLoading, startLoading, stopLoading }}
-    >
+    <NavigationLoadingContext.Provider value={value}>
       {children}
     </NavigationLoadingContext.Provider>
   );

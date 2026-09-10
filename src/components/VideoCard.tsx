@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   deleteFavorite,
@@ -144,20 +144,32 @@ export default function VideoCard({
       const fav = await isFavorited(actualSource, actualId);
       setFavorited(fav);
       setFavoriteChecked(true);
-
-      // 延迟订阅收藏更新
-      const storageKey = generateStorageKey(actualSource, actualId);
-      subscribeToDataUpdates(
-        'favoritesUpdated',
-        (newFavorites: Record<string, any>) => {
-          const isNowFavorited = !!newFavorites[storageKey];
-          setFavorited(isNowFavorited);
-        },
-      );
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('检查收藏状态失败', err);
     }
+  }, [from, actualSource, actualId]);
+
+  // 订阅收藏/追更变更（带清理，避免 hover 检查重复订阅泄漏）
+  useEffect(() => {
+    if (from === 'douban' || !actualSource || !actualId) return;
+    const storageKey = generateStorageKey(actualSource, actualId);
+    const unsubscribeFav = subscribeToDataUpdates(
+      'favoritesUpdated',
+      (newFavorites: Record<string, any>) => {
+        setFavorited(!!newFavorites[storageKey]);
+      },
+    );
+    const unsubscribeFollow = subscribeToDataUpdates(
+      'followingsUpdated',
+      (newFollowings: Record<string, any>) => {
+        setFollowing(!!newFollowings[storageKey]);
+      },
+    );
+    return () => {
+      unsubscribeFav();
+      unsubscribeFollow();
+    };
   }, [from, actualSource, actualId]);
 
   const handleToggleFavorite = useCallback(
@@ -206,15 +218,8 @@ export default function VideoCard({
       const isFollowed = await isFollowing(actualSource, actualId);
       setFollowing(isFollowed);
       setFollowingChecked(true);
-
-      const storageKey = generateStorageKey(actualSource, actualId);
-      subscribeToDataUpdates(
-        'followingsUpdated',
-        (newFollowings: Record<string, any>) => {
-          setFollowing(!!newFollowings[storageKey]);
-        },
-      );
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('检查追更状态失败', err);
     }
   }, [from, actualSource, actualId]);
@@ -244,6 +249,7 @@ export default function VideoCard({
           setFollowing(true);
         }
       } catch (err) {
+        // eslint-disable-next-line no-console
         console.error('切换追更状态失败', err);
       }
     },

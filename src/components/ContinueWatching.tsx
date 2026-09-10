@@ -10,6 +10,7 @@ import {
   getAllPlayRecords,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
+import { useLocalStorage } from '@/lib/useLocalStorage';
 
 import ScrollableRow from '@/components/ScrollableRow';
 import VideoCard from '@/components/VideoCard';
@@ -29,18 +30,12 @@ export default function ContinueWatching({
     (PlayRecord & { key: string })[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode] = useLocalStorage('simpleMode', false);
   const [isClient, setIsClient] = useState(false);
 
   // 检查是否启用简洁模式
   useEffect(() => {
     setIsClient(true);
-    if (typeof window !== 'undefined') {
-      const savedSimpleMode = localStorage.getItem('simpleMode');
-      if (savedSimpleMode !== null) {
-        setSimpleMode(JSON.parse(savedSimpleMode));
-      }
-    }
   }, []);
 
   // 处理播放记录数据更新的函数

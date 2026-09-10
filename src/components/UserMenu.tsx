@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
+import { useLocalStorage } from '@/lib/useLocalStorage';
 import { checkForUpdates, CURRENT_VERSION, UpdateStatus } from '@/lib/version';
 
 import { useNavigationLoading } from './NavigationLoadingProvider';
@@ -49,7 +50,7 @@ export const UserMenu: React.FC = () => {
   // 设置相关状态
   const [defaultAggregateSearch, setDefaultAggregateSearch] = useState(true);
   const [defaultStreamSearch, setDefaultStreamSearch] = useState(true);
-  const [simpleMode, setSimpleMode] = useState(false);
+  const [simpleMode, setSimpleMode] = useLocalStorage('simpleMode', false);
   const [doubanProxyUrl, setDoubanProxyUrl] = useState('');
 
   const [doubanDataSource, setDoubanDataSource] = useState('direct');
@@ -182,11 +183,6 @@ export const UserMenu: React.FC = () => {
       );
       if (savedDefaultStreamSearch !== null) {
         setDefaultStreamSearch(JSON.parse(savedDefaultStreamSearch));
-      }
-
-      const savedSimpleMode = localStorage.getItem('simpleMode');
-      if (savedSimpleMode !== null) {
-        setSimpleMode(JSON.parse(savedSimpleMode));
       }
 
       const savedDoubanDataSource = localStorage.getItem('doubanDataSource');
@@ -325,6 +321,8 @@ export const UserMenu: React.FC = () => {
     } catch (error) {
       console.error('注销请求失败:', error);
     }
+    // 登出后整页刷新以清空客户端状态，故意不用 router.push
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/';
   };
 
@@ -390,7 +388,7 @@ export const UserMenu: React.FC = () => {
       // 修改成功，关闭弹窗并登出
       setIsChangePasswordOpen(false);
       await handleLogout();
-    } catch (error) {
+    } catch {
       setPasswordError('网络错误，请稍后重试');
     } finally {
       setPasswordLoading(false);
@@ -446,9 +444,6 @@ export const UserMenu: React.FC = () => {
 
   const handleSimpleModeToggle = (value: boolean) => {
     setSimpleMode(value);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('simpleMode', JSON.stringify(value));
-    }
     // 简洁模式变化时关闭设置并刷新页面
     setIsSettingsOpen(false);
     setTimeout(() => {
@@ -530,7 +525,6 @@ export const UserMenu: React.FC = () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('defaultAggregateSearch', JSON.stringify(true));
       localStorage.setItem('defaultStreamSearch', JSON.stringify(true));
-      localStorage.setItem('simpleMode', JSON.stringify(false));
 
       localStorage.setItem('doubanProxyUrl', defaultDoubanProxy);
       localStorage.setItem('doubanDataSource', defaultDoubanProxyType);

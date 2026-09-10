@@ -9,10 +9,9 @@ import {
   addSearchHistory,
   clearSearchHistory,
   deleteSearchHistory,
-  getSearchHistory,
-  subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
+import { useSearchHistory } from '@/lib/useSearchHistory';
 import { getRequestTimeout } from '@/lib/utils';
 
 import FailedSourcesDisplay from '@/components/FailedSourcesDisplay';
@@ -22,7 +21,7 @@ import SourceSelector from '@/components/SourceSelector';
 import VideoCard from '@/components/VideoCard';
 
 function SearchPageClient() {
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const searchHistory = useSearchHistory();
   const [showBackToTop, setShowBackToTop] = useState(false);
 
   const searchParams = useSearchParams();
@@ -370,17 +369,11 @@ function SearchPageClient() {
 
   // 初始化：搜索历史、滚动监听
   useEffect(() => {
-    getSearchHistory().then(setSearchHistory);
-    const unsubscribe = subscribeToDataUpdates(
-      'searchHistoryUpdated',
-      setSearchHistory,
-    );
     const handleScroll = () => {
       setShowBackToTop((document.body.scrollTop || 0) > 300);
     };
     document.body.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
-      unsubscribe();
       document.body.removeEventListener('scroll', handleScroll);
     };
   }, []);
