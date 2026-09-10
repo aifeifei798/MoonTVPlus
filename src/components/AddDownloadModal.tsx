@@ -133,13 +133,6 @@ const AddDownloadModal = ({
     }
   }, [isOpen, initialTitle]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 当添加窗口打开且有URL时，自动执行解析
-  useEffect(() => {
-    if (isOpen && editableUrl && !task && !isLoading) {
-      handleParse();
-    }
-  }, [isOpen, editableUrl]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // 当task解析完成且syncWithSkipConfig为true时，自动执行同步逻辑
   useEffect(() => {
     if (task && syncWithSkipConfig && skipConfig) {
@@ -197,12 +190,19 @@ const AddDownloadModal = ({
       parsedTask.type = downloadType;
       setTask(parsedTask);
       setEndSegment(parsedTask.tsUrlList.length);
-    } catch (error) {
+    } catch {
       // 解析失败，静默处理
     } finally {
       setIsLoading(false);
     }
   };
+
+  // 当添加窗口打开且有URL时，自动执行解析
+  useEffect(() => {
+    if (isOpen && editableUrl && !task && !isLoading) {
+      handleParse();
+    }
+  }, [isOpen, editableUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 添加下载任务
   const handleAdd = () => {

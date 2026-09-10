@@ -62,12 +62,15 @@ const SegmentViewer = ({
       }
 
       // 保存片段数据到任务的 downloadedSegments 中
+      // 高频下载进度直接写共享可变 task 对象（另有强制视图更新），不走 immutable 重建
       if (!task.downloadedSegments) {
+        // eslint-disable-next-line react-hooks/immutability
         task.downloadedSegments = new Map();
       }
       task.downloadedSegments.set(index, segmentData);
 
       // 更新片段状态
+      // eslint-disable-next-line react-hooks/immutability
       task.finishList[index].status = 'success';
       task.finishNum++;
       task.errorNum = Math.max(0, task.errorNum - 1);

@@ -48,13 +48,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
   }, []);
 
   // 获取远程变更日志
-  useEffect(() => {
-    if (isOpen) {
-      fetchRemoteChangelog();
-    }
-  }, [isOpen]);
-
-  // 获取远程变更日志
+  // 注意：react-hooks v7 按源码顺序检查，effect 必须位于函数定义之后
   const fetchRemoteChangelog = async () => {
     try {
       const response = await fetch(
@@ -152,6 +146,13 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
 
     return versions;
   };
+
+  // 获取远程变更日志
+  useEffect(() => {
+    if (isOpen) {
+      fetchRemoteChangelog();
+    }
+  }, [isOpen]);
 
   // 渲染变更日志条目
   const renderChangelogEntry = (

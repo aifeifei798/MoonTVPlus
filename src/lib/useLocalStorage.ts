@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 function readStoredValue<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
@@ -23,19 +23,18 @@ export function useLocalStorage<T>(
   defaultValue: T,
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(defaultValue);
-  const defaultRef = useRef(defaultValue);
-  defaultRef.current = defaultValue;
 
   useEffect(() => {
-    setValue(readStoredValue(key, defaultRef.current));
+    setValue(readStoredValue(key, defaultValue));
     const onStorage = (event: StorageEvent) => {
       if (event.key === key) {
-        setValue(readStoredValue(key, defaultRef.current));
+        setValue(readStoredValue(key, defaultValue));
       }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [key]);
+    // defaultValue 要求传入稳定值（字面量/常量），避免重复订阅
+  }, [key, defaultValue]);
 
   const setStoredValue = useCallback(
     (next: T | ((prev: T) => T)) => {

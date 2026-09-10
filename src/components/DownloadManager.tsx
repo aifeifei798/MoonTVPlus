@@ -123,6 +123,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
       // 延迟一点时间后开始恢复下载，确保组件已完全加载
       setTimeout(() => {
         tasksToResume.forEach((task) => {
+          // resumeTask 在组件下方声明；effect 顺序关乎挂载时序，不上移
+          // eslint-disable-next-line react-hooks/immutability
           resumeTask(task.id);
         });
 
@@ -580,7 +582,9 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
   }, []);
 
   // 继续下载任务
+  // 大状态机回调：手动 useCallback 语义被多处 effect 依赖，暂不交由 Compiler 推导
   const resumeTask = useCallback(
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
     async (taskId: string) => {
       // eslint-disable-next-line no-console
       console.log(`🔄 resumeTask 被调用: taskId=${taskId}`);
@@ -1356,6 +1360,8 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
 
                         // 然后触发合并保存
                         setTimeout(() => {
+                          // 延迟回调内调用，不在 render 期读 ref，规则误报
+                          // eslint-disable-next-line react-hooks/refs
                           resumeTask(taskIdToResume);
                           // 3秒后清除标记，允许下次触发
                           setTimeout(() => {

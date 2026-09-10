@@ -46,13 +46,11 @@ export default tseslint.config(
         { props: 'never', children: 'never' },
       ],
 
-      // eslint-config-next@16 自带 react-hooks v7 新规则，旧版并未开启。
-      // 这些规则针对 React Compiler 时代的代码模式，迁移（阶段 6）完成后再启用。
+      // 41 处 set-state-in-effect 全是「挂载时从存储/接口 hydrate 后 setState」
+      // 的既有模式，逐个改 lazy-initializer/key-reset 是独立大改造，暂缓；
+      // 其余 react-hooks v7 规则（immutability/refs/preserve-manual-memoization
+      // /no-mock-updates）已启用。
       'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/immutability': 'off',
-      'react-hooks/refs': 'off',
-      'react-hooks/preserve-manual-memoization': 'off',
-      'react-hooks/no-mock-updates': 'off',
 
       //#region  //*=========== Unused Import ===========
       'unused-imports/no-unused-imports': 'warn',
