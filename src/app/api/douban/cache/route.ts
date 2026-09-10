@@ -57,14 +57,14 @@ export async function POST(request: Request) {
 
   let key: string;
   if (scope === 'list') {
-    key = listCacheKey({
+    key = await listCacheKey({
       type: p('type'),
       tag: p('tag'),
       pageSize: p('pageSize'),
       pageStart: p('pageStart'),
     });
   } else if (scope === 'categories') {
-    key = categoriesCacheKey({
+    key = await categoriesCacheKey({
       kind: p('kind'),
       category: p('category'),
       type: p('type'),
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       start: p('start'),
     });
   } else if (scope === 'recommends') {
-    key = recommendsCacheKey({
+    key = await recommendsCacheKey({
       kind: p('kind'),
       limit: p('limit'),
       start: p('start'),

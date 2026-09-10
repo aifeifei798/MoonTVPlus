@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 跳过不需要认证的路径
@@ -75,7 +75,7 @@ function shouldSkipAuth(pathname: string): boolean {
   return skipPaths.some((path) => pathname.startsWith(path));
 }
 
-// 配置middleware匹配规则
+// 配置 proxy 匹配规则
 // 注意：api/admin/tvbox 不再放行，必须走鉴权；api/cron 纳入中间件做 CRON_SECRET 校验
 export const config = {
   matcher: [

@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const cacheKey = listCacheKey({
+  const cacheKey = await listCacheKey({
     type,
     tag,
     pageSize: pageSize.toString(),

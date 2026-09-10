@@ -53,26 +53,28 @@ interface NodeModules {
 }
 
 let nodeModules: NodeModules | null | undefined;
+let nodeModulesPromise: Promise<NodeModules | null> | null = null;
 
-function loadNodeModules(): NodeModules | null {
+async function loadNodeModules(): Promise<NodeModules | null> {
   try {
-    const _require = eval('require') as NodeJS.Require;
     if (typeof process === 'undefined' || !process.versions?.node) {
       return null;
     }
-    return {
-      fs: _require('fs') as typeof import('fs'),
-      path: _require('path') as typeof import('path'),
-      crypto: _require('crypto') as typeof import('crypto'),
-    };
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const crypto = await import('node:crypto');
+    return { fs, path, crypto };
   } catch {
     return null;
   }
 }
 
-function getNodeModules(): NodeModules | null {
+async function getNodeModules(): Promise<NodeModules | null> {
   if (nodeModules === undefined) {
-    nodeModules = loadNodeModules();
+    if (!nodeModulesPromise) {
+      nodeModulesPromise = loadNodeModules();
+    }
+    nodeModules = await nodeModulesPromise;
   }
   return nodeModules;
 }
@@ -90,11 +92,11 @@ function getDoubanCacheDir(): string {
 
 const MAX_FILES = 500;
 
-export function buildDoubanCacheKey(
+export async function buildDoubanCacheKey(
   scope: string,
   params: Record<string, string>,
-): string {
-  const modules = getNodeModules();
+): Promise<string> {
+  const modules = await getNodeModules();
   const canonical = Object.keys(params)
     .sort()
     .map((k) => `${k}=${params[k]}`)
@@ -119,12 +121,12 @@ export function buildDoubanCacheKey(
 }
 
 // ---------- 各列表接口的缓存 key 构造函数（GET 路由与暖缓存接口共用，保证 key 一致） ----------
-export function listCacheKey(params: {
+export async function listCacheKey(params: {
   type?: string;
   tag?: string;
   pageSize?: string;
   pageStart?: string;
-}): string {
+}): Promise<string> {
   return buildDoubanCacheKey('list', {
     type: String(params.type ?? ''),
     tag: String(params.tag ?? ''),
@@ -133,13 +135,13 @@ export function listCacheKey(params: {
   });
 }
 
-export function categoriesCacheKey(params: {
+export async function categoriesCacheKey(params: {
   kind?: string;
   category?: string;
   type?: string;
   limit?: string;
   start?: string;
-}): string {
+}): Promise<string> {
   return buildDoubanCacheKey('categories', {
     kind: String(params.kind ?? ''),
     category: String(params.category ?? ''),
@@ -160,7 +162,7 @@ export function recommendsCacheKey(params: {
   platform?: string;
   sort?: string;
   label?: string;
-}): string {
+}): Promise<string> {
   // 与 recommends 路由的归一化保持一致：category/format/label/region/year/platform 的 'all'
   // 和 sort 的 'T' 都会归一为空
   const field = (v?: string) =>
@@ -184,7 +186,7 @@ export function recommendsCacheKey(params: {
 async function readEntryFromDisk(
   key: string,
 ): Promise<DoubanCacheEntry | null> {
-  const modules = getNodeModules();
+  const modules = await getNodeModules();
   if (!modules) return null;
   try {
     const file = modules.path.join(getDoubanCacheDir(), `${key}.json`);
@@ -231,7 +233,7 @@ async function writeEntryToDisk(
   key: string,
   entry: DoubanCacheEntry,
 ): Promise<boolean> {
-  const modules = getNodeModules();
+  const modules = await getNodeModules();
   if (!modules) return false;
   try {
     const dir = getDoubanCacheDir();
@@ -249,8 +251,8 @@ async function writeEntryToDisk(
 }
 
 /** 磁盘文件超过上限时清理（先删除过期项，过期项不足则删最旧），防止目录长期膨胀 */
-function sweepExpiredFiles(): void {
-  const modules = getNodeModules();
+async function sweepExpiredFiles(): Promise<void> {
+  const modules = await getNodeModules();
   if (!modules) return;
   try {
     const dir = getDoubanCacheDir();
@@ -314,7 +316,7 @@ export async function setDoubanCache(
   };
   setMemoryWithCap(key, entry);
   await writeEntryToDisk(key, entry);
-  sweepExpiredFiles();
+  await sweepExpiredFiles();
 }
 
 /** 统一构造豆瓣接口的成功响应，fresh/hit/stale 走不同的 Cache-Control */

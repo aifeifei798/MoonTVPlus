@@ -48,30 +48,30 @@ describe('豆瓣缓存', () => {
     }
   });
 
-  it('缓存 key 与参数顺序无关', () => {
-    const a = buildDoubanCacheKey('list', {
+  it('缓存 key 与参数顺序无关', async () => {
+    const a = await buildDoubanCacheKey('list', {
       type: 'movie',
       tag: '热门',
       ps: '16',
     });
-    const b = buildDoubanCacheKey('list', {
+    const b = await buildDoubanCacheKey('list', {
       ps: '16',
       tag: '热门',
       type: 'movie',
     });
     expect(a).toBe(b);
-    expect(buildDoubanCacheKey('categories', { kind: 'tv' })).not.toBe(a);
+    expect(await buildDoubanCacheKey('categories', { kind: 'tv' })).not.toBe(a);
   });
 
-  it('各接口 key 构造函数与 buildDoubanCacheKey 一致（路由与暖缓存不漂移）', () => {
+  it('各接口 key 构造函数与 buildDoubanCacheKey 一致（路由与暖缓存不漂移）', async () => {
     const listParams = {
       type: 'movie',
       tag: '热门',
       pageSize: '20',
       pageStart: '0',
     };
-    expect(listCacheKey(listParams)).toBe(
-      buildDoubanCacheKey('list', listParams),
+    expect(await listCacheKey(listParams)).toBe(
+      await buildDoubanCacheKey('list', listParams),
     );
     const catParams = {
       kind: 'tv',
@@ -80,8 +80,8 @@ describe('豆瓣缓存', () => {
       limit: '20',
       start: '0',
     };
-    expect(categoriesCacheKey(catParams)).toBe(
-      buildDoubanCacheKey('categories', catParams),
+    expect(await categoriesCacheKey(catParams)).toBe(
+      await buildDoubanCacheKey('categories', catParams),
     );
     const recParams = {
       kind: 'movie',
@@ -107,14 +107,19 @@ describe('豆瓣缓存', () => {
       sort: '',
       label: '',
     };
-    expect(recommendsCacheKey(recParams)).toBe(
-      buildDoubanCacheKey('recommends', norm),
+    expect(await recommendsCacheKey(recParams)).toBe(
+      await buildDoubanCacheKey('recommends', norm),
     );
-    expect(recommendsCacheKey(recParams)).toBe(recommendsCacheKey(norm));
+    expect(await recommendsCacheKey(recParams)).toBe(
+      await recommendsCacheKey(norm),
+    );
   });
 
   it('set 后可从缓存读到同一数据', async () => {
-    const key = buildDoubanCacheKey('list', { type: 'movie', tag: '热门' });
+    const key = await buildDoubanCacheKey('list', {
+      type: 'movie',
+      tag: '热门',
+    });
     const data = makeResult(3);
     await setDoubanCache(key, data);
     const got = await getDoubanCache(key);
@@ -122,7 +127,10 @@ describe('豆瓣缓存', () => {
   });
 
   it('磁盘文件被真实写入且可被读取', async () => {
-    const key = buildDoubanCacheKey('list', { type: 'movie', tag: '热门' });
+    const key = await buildDoubanCacheKey('list', {
+      type: 'movie',
+      tag: '热门',
+    });
     const data = makeResult(2);
     await setDoubanCache(key, data);
 
@@ -133,7 +141,10 @@ describe('豆瓣缓存', () => {
     expect(entry.savedAt).toBeGreaterThan(0);
 
     // 仅磁盘命中（进程内缓存没写过的 key）也能读回
-    const diskOnlyKey = buildDoubanCacheKey('list', { type: 'tv', tag: '冷' });
+    const diskOnlyKey = await buildDoubanCacheKey('list', {
+      type: 'tv',
+      tag: '冷',
+    });
     writeFileSync(
       join(tmpDir, `${diskOnlyKey}.json`),
       JSON.stringify({ savedAt: Date.now(), data: data }),
@@ -143,7 +154,7 @@ describe('豆瓣缓存', () => {
   });
 
   it('TTL 过期后 getDoubanCache 返回 null，allowStale 时返回过期数据', async () => {
-    const key = buildDoubanCacheKey('recommends', { kind: 'movie' });
+    const key = await buildDoubanCacheKey('recommends', { kind: 'movie' });
     const data = makeResult(1);
     await setDoubanCache(key, data);
     process.env.DOUBAN_CACHE_TTL = '0';
@@ -153,7 +164,7 @@ describe('豆瓣缓存', () => {
   });
 
   it('空列表不写入缓存，避免固化上游抖动', async () => {
-    const key = buildDoubanCacheKey('categories', { kind: 'movie' });
+    const key = await buildDoubanCacheKey('categories', { kind: 'movie' });
     await setDoubanCache(key, { code: 200, message: '获取成功', list: [] });
     expect(await getDoubanCache(key)).toBeNull();
   });

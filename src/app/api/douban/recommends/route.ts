@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '非法 kind 参数' }, { status: 400 });
   }
 
-  const cacheKey = recommendsCacheKey({
+  const cacheKey = await recommendsCacheKey({
     kind,
     limit: pageLimit.toString(),
     start: pageStart.toString(),

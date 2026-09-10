@@ -69,13 +69,12 @@ function getSiteNameEnv(): string {
 }
 
 // Docker/nodejs 下从磁盘读取 config.json；失败时返回空结构而非抛错
-function loadFileConfigFromDisk(): ConfigFileStruct {
+async function loadFileConfigFromDisk(): Promise<ConfigFileStruct> {
   try {
-    const _require = eval('require') as NodeJS.Require;
-    const fs = _require('fs') as typeof import('fs');
-    const path = _require('path') as typeof import('path');
-    const configPath = path.join(process.cwd(), 'config.json');
-    const raw = fs.readFileSync(configPath, 'utf-8');
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const configPath = join(process.cwd(), 'config.json');
+    const raw = readFileSync(configPath, 'utf-8');
     const parsed = JSON.parse(raw) as ConfigFileStruct;
     console.log('load dynamic config success');
     return {
@@ -176,7 +175,7 @@ function mergeCustomCategories(
 export function refineConfig(adminConfig: AdminConfig): AdminConfig {
   try {
     fileConfig = JSON.parse(adminConfig.ConfigFile) as ConfigFileStruct;
-  } catch (e) {
+  } catch {
     fileConfig = {} as ConfigFileStruct;
   }
   // 合并文件中的源信息
@@ -269,7 +268,7 @@ async function initConfig() {
   }
 
   if (process.env.DOCKER_ENV === 'true') {
-    fileConfig = loadFileConfigFromDisk();
+    fileConfig = await loadFileConfigFromDisk();
   } else {
     // 默认使用编译时生成的配置
     fileConfig = loadBuildTimeFileConfig();
@@ -350,7 +349,7 @@ async function initConfig() {
       } else {
         // 数据库中没有配置，使用默认的运行时配置
         if (process.env.DOCKER_ENV === 'true') {
-          fileConfig = loadFileConfigFromDisk();
+          fileConfig = await loadFileConfigFromDisk();
         } else {
           // 默认使用编译时生成的配置
           fileConfig = loadBuildTimeFileConfig();
@@ -734,7 +733,7 @@ export async function resetConfig() {
   }
 
   if (process.env.DOCKER_ENV === 'true') {
-    fileConfig = loadFileConfigFromDisk();
+    fileConfig = await loadFileConfigFromDisk();
   } else {
     // 默认使用编译时生成的配置
     fileConfig = loadBuildTimeFileConfig();

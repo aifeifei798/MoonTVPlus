@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const cacheKey = categoriesCacheKey({
+  const cacheKey = await categoriesCacheKey({
     kind,
     category,
     type,
