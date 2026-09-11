@@ -1,3 +1,35 @@
+## [4.0.0] - 2026-09-11
+
+### Added
+- 密码哈希存储（SHA-256 + 每用户随机盐，旧明文登录时自动升级）
+- SSRF 纵深防御：safeFetch 手动跟跳转逐跳复检，拦截十六/十/八进制变形 IP 与 IPv6 映射地址
+- 统一日志门面 src/lib/logger.ts（LOG_LEVEL 门控，生产默认仅 warn/error）
+- Docker 稳健 runtime 替换脚本（兼容单双引号与空格，残留 edge 即 fail-fast）
+- engines 锁定 Node 22 + pnpm 10.14，typecheck/test 前自动 gen
+
+### Changed
+- 【不兼容】cron 鉴权只认 x-cron-secret 请求头，不再接受 ?secret=（防 URL/日志/CDN 泄露）
+- 用户相关搜索/资源接口缓存改为 private + no-store，防 CDN 跨用户串味
+- Upstash 清数据改为命名空间 scan 删除，不再 flushall 影响共享实例
+- 边下边存模式分片失败即中断（不再静默跳片产出损坏文件）
+- MP4 批量转码仅首片带 initSegment，避免重复 moov
+- Dockerfile 基座 node:20 → 22，与 .nvmrc/CI 对齐
+- 移除零引用的 @vidstack/react 依赖
+- TVBox 分类内调豆瓣不再经 HTTP 回环（防 Host 投毒 SSRF）
+- lint:strict 清零（bare catch、logger 收敛、无用依赖清理）
+
+### Fixed
+- 变形 IP（0x7f/0177/大整数/混合点分）与 IPv6 内网/映射地址 SSRF 绕过
+- image-proxy 302 跳转到内网/元数据地址
+- 下游 fetch 无 SSRF 校验，分页单页失败丢弃首批结果
+- 订阅接口无 SSRF/超时/体积限制
+- cron 日志打印 request.url 泄露 secret、刷新任务不 await
+- D1 存储键含 + 时错位解析，cron 同类问题
+- m3u8 相对 URL 拼接错误、EXTINF 非法值污染时长、分片无超时、SAMPLE-AES 误解密、Key 拉取无超时、重试无退避、pendingWrites 无界
+- mp4 转码 data 竞态、reset 泄漏/丢 writeError、finish 吞错、TS 格式误判（仅 188 字节）
+- 豆瓣 tag/category 未编码、AbortError 与下游超时口径不一、Edge 缓存哈希碰撞率高
+- release/docker/version-manager 工作流断点（产物路径、action 版本、git add 范围）
+
 ## [3.9.5] - 2026-09-03
 
 ### Added
