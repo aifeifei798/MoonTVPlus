@@ -21,6 +21,7 @@ import {
   savePlayRecord,
   saveSkipConfig,
 } from '@/lib/db.client';
+import { filterAdsFromM3U8 } from '@/lib/m3u8-filter';
 import { SearchResult } from '@/lib/types';
 import { getRequestTimeout, getVideoResolutionFromM3u8 } from '@/lib/utils';
 
@@ -379,7 +380,7 @@ function PlayPageClient() {
 
     try {
       inst.config({ visible: false });
-    } catch (_) {
+    } catch {
       // ignore
     }
 
@@ -387,7 +388,7 @@ function PlayPageClient() {
       if (typeof inst.visible === 'boolean') {
         inst.visible = false;
       }
-    } catch (_) {
+    } catch {
       // ignore
     }
   };
@@ -440,7 +441,7 @@ function PlayPageClient() {
               source,
               testResult,
             };
-          } catch (error) {
+          } catch {
             return null;
           }
         }),
@@ -730,7 +731,7 @@ function PlayPageClient() {
         if (boostSourceRef.current) {
           try {
             boostSourceRef.current.disconnect();
-          } catch (_) {
+          } catch {
             // ignore
           }
           boostSourceRef.current = null;
@@ -760,7 +761,7 @@ function PlayPageClient() {
     if (boostSourceRef.current) {
       try {
         boostSourceRef.current.disconnect();
-      } catch (_) {
+      } catch {
         // ignore
       }
       boostSourceRef.current = null;
@@ -851,71 +852,14 @@ function PlayPageClient() {
           toggleAudioBoost();
         },
       });
-    } catch (_) {
+    } catch {
       // ignore
     }
     boostBtnRef.current = el;
     updateBoostButtonStyle();
   };
 
-  // 去广告相关函数
-  function filterAdsFromM3U8(m3u8Content: string): string {
-    if (!m3u8Content) return '';
-
-    const lines = m3u8Content.split('\n');
-    const filteredLines: string[] = [];
-
-    const MAX_AD_DURATION_SECONDS = 300;
-    const isDiscontinuity = (line: string) =>
-      line.trim() === '#EXT-X-DISCONTINUITY';
-    const isSegmentLine = (line: string) => {
-      const t = line.trim();
-      if (t === '') return true;
-      if (t.startsWith('#EXTINF')) return true;
-      return !t.startsWith('#');
-    };
-
-    let inAdBlock = false;
-    let pendingLines: string[] = [];
-    let pendingDuration = 0;
-    let pendingClean = true;
-
-    for (const line of lines) {
-      if (isDiscontinuity(line)) {
-        if (inAdBlock) {
-          if (!pendingClean || pendingDuration > MAX_AD_DURATION_SECONDS) {
-            filteredLines.push(...pendingLines);
-          }
-          pendingLines = [];
-          pendingDuration = 0;
-          pendingClean = true;
-          inAdBlock = false;
-        } else {
-          inAdBlock = true;
-        }
-        filteredLines.push(line);
-        continue;
-      }
-
-      if (inAdBlock) {
-        if (line.includes('#EXTINF:')) {
-          const match = line.match(/#EXTINF:\s*([\d.]+)/);
-          if (match) pendingDuration += parseFloat(match[1]);
-        }
-        if (!isSegmentLine(line)) pendingClean = false;
-        pendingLines.push(line);
-        continue;
-      }
-
-      filteredLines.push(line);
-    }
-
-    if (inAdBlock) {
-      filteredLines.push(...pendingLines);
-    }
-
-    return filteredLines.join('\n');
-  }
+  // 去广告相关函数（实现见 src/lib/m3u8-filter.ts，含误删熔断）
 
   // 跳过片头片尾配置相关函数
   const handleSkipConfigChange = async (newConfig: {
@@ -2023,7 +1967,7 @@ function PlayPageClient() {
                 setBlockAdEnabled(newVal);
                 setIsDanmakuPluginReady(false);
                 setIsBlockAdChanged(true);
-              } catch (_) {
+              } catch {
                 // ignore
               }
               return newVal ? '当前开启' : '当前关闭';
@@ -2136,7 +2080,7 @@ function PlayPageClient() {
           if (danmukuPluginInstanceRef.current) {
             try {
               danmukuPluginInstanceRef.current.config(danmakuConfigRef.current);
-            } catch (_) {
+            } catch {
               // ignore
             }
           }
@@ -2155,7 +2099,7 @@ function PlayPageClient() {
               artPlayerRef.current.fullscreen = true;
             }, 0);
           }
-        } catch (_) {
+        } catch {
           // ignore
         }
       });
