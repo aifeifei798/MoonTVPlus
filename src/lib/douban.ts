@@ -31,6 +31,8 @@ export async function fetchDoubanData<T>(url: string): Promise<T> {
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
+    // 与 downstream 口径对齐：超时统一为“请求超时”，便于熔断统计
+    if ((error as Error).name === 'AbortError') throw new Error('请求超时');
     throw error;
   }
 }

@@ -15,13 +15,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(apiSites, {
       headers: {
-        'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-        'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-        'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+        // 按用户过滤的资源列表，禁止 CDN 跨用户共享
+        'Cache-Control': `private, max-age=${cacheTime}`,
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
         'Netlify-Vary': 'query',
       },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: '获取资源失败' }, { status: 500 });
   }
 }

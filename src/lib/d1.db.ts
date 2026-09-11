@@ -1,6 +1,7 @@
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any */
 
 import { AdminConfig } from './admin.types';
+import { hashPassword, verifyPassword } from './password';
 import {
   Favorite,
   Following,
@@ -12,6 +13,13 @@ import {
 
 // 搜索历史最大条数
 const SEARCH_HISTORY_LIMIT = 20;
+
+// 存储键为 `${source}+${id}`，id 本身可能含 `+`，必须按首个 `+` 切分
+function splitStorageKey(key: string): [string, string] {
+  const sep = key.indexOf('+');
+  if (sep < 0) return ['', ''];
+  return [key.slice(0, sep), key.slice(sep + 1)];
+}
 
 // D1 数据库类型定义
 interface D1Database {
@@ -78,19 +86,34 @@ export class D1Storage implements IStorage {
   }
 
   async registerUser(userName: string, password: string): Promise<void> {
+    const hashed = await hashPassword(password);
     await this.db
       .prepare('INSERT INTO users (username, password) VALUES (?, ?)')
-      .bind(userName, password)
+      .bind(userName, hashed)
       .run();
   }
 
   async verifyUser(userName: string, password: string): Promise<boolean> {
-    const result = await this.db
-      .prepare('SELECT id FROM users WHERE username = ? AND password = ?')
-      .bind(userName, password)
-      .first();
-
-    return !!result;
+    const row = await this.db
+      .prepare('SELECT id, password FROM users WHERE username = ?')
+      .bind(userName)
+      .first<{ id: number; password: string }>();
+    if (!row) return false;
+    const { ok, needsUpgrade } = await verifyPassword(
+      password,
+      String(row.password || ''),
+    );
+    if (ok && needsUpgrade) {
+      const hashed = await hashPassword(password).catch(() => null);
+      if (hashed) {
+        await this.db
+          .prepare('UPDATE users SET password = ? WHERE id = ?')
+          .bind(hashed, row.id)
+          .run()
+          .catch(() => undefined);
+      }
+    }
+    return ok;
   }
 
   async checkUserExist(userName: string): Promise<boolean> {
@@ -106,9 +129,10 @@ export class D1Storage implements IStorage {
     const userId = await this.getUserId(userName);
     if (!userId) throw new Error('User not found');
 
+    const hashed = await hashPassword(newPassword);
     await this.db
       .prepare('UPDATE users SET password = ? WHERE id = ?')
-      .bind(newPassword, userId)
+      .bind(hashed, userId)
       .run();
   }
 
@@ -155,7 +179,7 @@ export class D1Storage implements IStorage {
     userName: string,
     key: string,
   ): Promise<PlayRecord | null> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return null;
     }
@@ -193,7 +217,7 @@ export class D1Storage implements IStorage {
     key: string,
     record: PlayRecord,
   ): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       throw new Error('Invalid key format for play record');
     }
@@ -284,7 +308,7 @@ export class D1Storage implements IStorage {
   }
 
   async deletePlayRecord(userName: string, key: string): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return;
     }
@@ -301,7 +325,7 @@ export class D1Storage implements IStorage {
 
   // ---------- 收藏 ----------
   async getFavorite(userName: string, key: string): Promise<Favorite | null> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return null;
     }
@@ -333,7 +357,7 @@ export class D1Storage implements IStorage {
     key: string,
     favorite: Favorite,
   ): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       throw new Error('Invalid key format for favorite');
     }
@@ -398,7 +422,7 @@ export class D1Storage implements IStorage {
   }
 
   async deleteFavorite(userName: string, key: string): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return;
     }
@@ -415,7 +439,7 @@ export class D1Storage implements IStorage {
 
   // ---------- 追更 ----------
   async getFollowing(userName: string, key: string): Promise<Following | null> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return null;
     }
@@ -448,7 +472,7 @@ export class D1Storage implements IStorage {
     key: string,
     following: Following,
   ): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       throw new Error('Invalid key format for following');
     }
@@ -517,7 +541,7 @@ export class D1Storage implements IStorage {
   }
 
   async deleteFollowing(userName: string, key: string): Promise<void> {
-    const [source, videoId] = key.split('+');
+    const [source, videoId] = splitStorageKey(key);
     if (!source || !videoId) {
       return;
     }

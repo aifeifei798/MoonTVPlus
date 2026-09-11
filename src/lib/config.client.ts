@@ -2,6 +2,8 @@
 
 'use client';
 
+import { logger } from './logger';
+
 export async function getCustomCategories(): Promise<
   {
     name: string;
@@ -42,7 +44,7 @@ export async function getAvailableApiSitesClient(): Promise<ApiSite[]> {
       detail: site.detail,
     }));
   } catch (error) {
-    console.error('Failed to fetch available API sites:', error);
+    logger.debug('Failed to fetch available API sites:', error);
     return [];
   }
 }

@@ -28,7 +28,7 @@ try {
   if (isSecureContext && !('serviceWorker' in navigator)) {
     useBlobFallback = true;
   }
-} catch (err) {
+} catch {
   useBlobFallback = true;
 }
 
@@ -41,7 +41,7 @@ try {
   mc.port1.close();
   mc.port2.close();
   supportsTransformStream = true;
-} catch (err) {
+} catch {
   // TransformStream 不支持，使用降级方案
   supportsTransformStream = false;
 }
@@ -197,12 +197,14 @@ export function createWriteStream(filename: string) {
                 controller.enqueue(chunk);
 
                 if (downloadUrl) {
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- service-worker 下载触发，非 Next 路由跳转
                   location.href = downloadUrl;
                   downloadUrl = null;
                 }
               },
               flush() {
                 if (downloadUrl) {
+                  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- service-worker 下载触发，非 Next 路由跳转
                   location.href = downloadUrl;
                 }
               },

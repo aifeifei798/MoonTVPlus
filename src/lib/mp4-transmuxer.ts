@@ -16,6 +16,7 @@ export class TSToMP4Transmuxer {
   private transmuxer: any;
   private mp4Segments: Uint8Array[] = [];
   private isInitialized = false;
+  private isFirstSegment = true;
   private duration: number;
 
   constructor(duration?: number) {
@@ -25,14 +26,19 @@ export class TSToMP4Transmuxer {
       duration: this.duration,
     });
 
-    // 监听数据事件
+    // 监听数据事件：仅首个片段带 initSegment，避免重复 moov 导致臃肿/非法
     this.transmuxer.on('data', (segment: any) => {
-      const data = new Uint8Array(
-        segment.initSegment.byteLength + segment.data.byteLength,
-      );
-      data.set(segment.initSegment, 0);
-      data.set(segment.data, segment.initSegment.byteLength);
-      this.mp4Segments.push(data);
+      if (this.isFirstSegment && segment.initSegment) {
+        const data = new Uint8Array(
+          segment.initSegment.byteLength + segment.data.byteLength,
+        );
+        data.set(segment.initSegment, 0);
+        data.set(segment.data, segment.initSegment.byteLength);
+        this.mp4Segments.push(data);
+        this.isFirstSegment = false;
+      } else if (segment.data) {
+        this.mp4Segments.push(new Uint8Array(segment.data));
+      }
     });
 
     // 监听完成事件
@@ -85,22 +91,33 @@ export class TSToMP4Transmuxer {
    * 重置转码器
    */
   reset(): void {
+    try {
+      this.transmuxer?.dispose?.();
+    } catch {
+      // ignore
+    }
     this.mp4Segments = [];
     this.isInitialized = false;
+    this.isFirstSegment = true;
     // 创建新的 transmuxer 实例
     this.transmuxer = new muxjs.mp4.Transmuxer({
       keepOriginalTimestamps: true,
       duration: this.duration,
     });
 
-    // 重新绑定事件
+    // 重新绑定事件（仅首片带 init）
     this.transmuxer.on('data', (segment: any) => {
-      const data = new Uint8Array(
-        segment.initSegment.byteLength + segment.data.byteLength,
-      );
-      data.set(segment.initSegment, 0);
-      data.set(segment.data, segment.initSegment.byteLength);
-      this.mp4Segments.push(data);
+      if (this.isFirstSegment && segment.initSegment) {
+        const data = new Uint8Array(
+          segment.initSegment.byteLength + segment.data.byteLength,
+        );
+        data.set(segment.initSegment, 0);
+        data.set(segment.data, segment.initSegment.byteLength);
+        this.mp4Segments.push(data);
+        this.isFirstSegment = false;
+      } else if (segment.data) {
+        this.mp4Segments.push(new Uint8Array(segment.data));
+      }
     });
 
     this.transmuxer.on('done', () => {
@@ -170,35 +187,40 @@ export class StreamingTransmuxer {
       duration: this.duration,
     });
 
-    // 监听数据事件 - 直接写入流
-    this.transmuxer.on('data', async (segment: any) => {
+    // 监听数据事件 - 直接写入流（跟踪 promise 以便 pushAndTransmux 等待）
+    this.transmuxer.on('data', (segment: any) => {
       // 如果已经有写入错误，不再处理新的数据
       if (this.writeError) {
         return;
       }
 
-      try {
-        // 对于第一个片段，需要写入初始化段
-        if (this.isFirstSegment && segment.initSegment) {
-          if (this.writer) {
-            await this.writer.write(new Uint8Array(segment.initSegment));
+      const p = (async () => {
+        try {
+          // 对于第一个片段，需要写入初始化段
+          if (this.isFirstSegment && segment.initSegment) {
+            if (this.writer) {
+              await this.writer.write(new Uint8Array(segment.initSegment));
+            }
+            this.isFirstSegment = false;
           }
-          this.isFirstSegment = false;
-        }
 
-        // 写入数据段
-        if (segment.data && this.writer) {
-          await this.writer.write(new Uint8Array(segment.data));
-        }
+          // 写入数据段
+          if (segment.data && this.writer) {
+            await this.writer.write(new Uint8Array(segment.data));
+          }
 
-        this.segmentCount++;
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('写入 MP4 数据失败:', error);
-        this.writeError =
-          error instanceof Error ? error : new Error(String(error));
-        throw error;
-      }
+          this.segmentCount++;
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error('写入 MP4 数据失败:', error);
+          this.writeError =
+            error instanceof Error ? error : new Error(String(error));
+          throw error;
+        }
+      })();
+      this.pendingWrites.push(p);
+      // 防止未处理 rejection 刷屏：错误统一经 writeError 冒泡
+      p.catch(() => undefined);
     });
   }
 
@@ -221,9 +243,18 @@ export class StreamingTransmuxer {
     this.transmuxer.push(tsData);
     this.transmuxer.flush();
 
-    // 等待一小段时间，让 data 事件有机会执行并捕获错误
-    // 注意：这是一个折中方案，因为 muxjs 的 data 事件是异步的
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 等待本轮 data 事件触发的写入完成（而非固定 setTimeout 竞态）
+    const pending = [...this.pendingWrites];
+    if (pending.length > 0) {
+      await Promise.all(pending);
+      // 清理已完成的写入跟踪，避免数组无限增长
+      this.pendingWrites = this.pendingWrites.filter(
+        (p) => pending.indexOf(p) === -1,
+      );
+    } else {
+      // 无写入事件（如空数据）仍让出一个微任务，保证错误冒泡
+      await Promise.resolve();
+    }
 
     // 再次检查是否有写入错误
     if (this.writeError) {
@@ -237,12 +268,19 @@ export class StreamingTransmuxer {
   async finish(): Promise<void> {
     this.transmuxer.flush();
 
+    if (this.pendingWrites.length > 0) {
+      await Promise.allSettled(this.pendingWrites);
+      this.pendingWrites = [];
+    }
+    if (this.writeError) throw this.writeError;
+
     if (this.writer) {
       try {
         await this.writer.close();
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('关闭写入流失败:', error);
+        throw error instanceof Error ? error : new Error(String(error));
       }
     }
   }
@@ -258,33 +296,47 @@ export class StreamingTransmuxer {
    * 重置转码器
    */
   reset(): void {
+    try {
+      this.transmuxer?.dispose?.();
+    } catch {
+      // ignore
+    }
     this.segmentCount = 0;
     this.isFirstSegment = true;
+    this.writeError = null;
+    this.pendingWrites = [];
     this.transmuxer = new muxjs.mp4.Transmuxer({
       keepOriginalTimestamps: true,
       duration: this.duration,
     });
 
-    // 重新绑定事件
-    this.transmuxer.on('data', async (segment: any) => {
-      try {
-        if (this.isFirstSegment && segment.initSegment) {
-          if (this.writer) {
-            await this.writer.write(new Uint8Array(segment.initSegment));
+    // 重新绑定事件（含 writeError 跟踪，与构造一致）
+    this.transmuxer.on('data', (segment: any) => {
+      if (this.writeError) return;
+      const p = (async () => {
+        try {
+          if (this.isFirstSegment && segment.initSegment) {
+            if (this.writer) {
+              await this.writer.write(new Uint8Array(segment.initSegment));
+            }
+            this.isFirstSegment = false;
           }
-          this.isFirstSegment = false;
-        }
 
-        if (segment.data && this.writer) {
-          await this.writer.write(new Uint8Array(segment.data));
-        }
+          if (segment.data && this.writer) {
+            await this.writer.write(new Uint8Array(segment.data));
+          }
 
-        this.segmentCount++;
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('写入 MP4 数据失败:', error);
-        throw error;
-      }
+          this.segmentCount++;
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error('写入 MP4 数据失败:', error);
+          this.writeError =
+            error instanceof Error ? error : new Error(String(error));
+          throw error;
+        }
+      })();
+      this.pendingWrites.push(p);
+      p.catch(() => undefined);
     });
   }
 }
@@ -295,14 +347,20 @@ export class StreamingTransmuxer {
  * @returns 是否为 TS 格式
  */
 export function isTSFormat(data: Uint8Array): boolean {
-  // TS 文件以 0x47 (sync byte) 开头
-  // 通常每 188 字节有一个 sync byte
+  // TS 包长 188/192/204 均常见；检查前 3 个包头均为 0x47 且包长一致
   if (data.length < 188) {
     return false;
   }
-
-  // 检查前几个 sync byte
-  return data[0] === 0x47 && (data.length < 188 || data[188] === 0x47);
+  if (data[0] !== 0x47) return false;
+  const candidates = [188, 192, 204];
+  for (const size of candidates) {
+    if (data.length >= size * 3) {
+      if (data[size] === 0x47 && data[size * 2] === 0x47) return true;
+    } else if (data.length >= size + 1) {
+      if (data[size] === 0x47) return true;
+    }
+  }
+  return false;
 }
 
 /**

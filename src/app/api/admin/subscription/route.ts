@@ -46,18 +46,50 @@ function decodeBase58(str: string): string {
 
 // 从 URL 获取并解析订阅数据
 async function fetchSubscriptionData(url: string): Promise<any> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-  const text = await response.text();
-  // 尝试 Base58 解码
+  const { assertSafeFetchUrl } = await import('@/lib/ssrf');
+  assertSafeFetchUrl(url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const decoded = decodeBase58(text);
-    return JSON.parse(decoded);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'manual',
+    });
+    // 订阅只跟一次手动跳转并复检，防止借订阅打内网
+    const status = response.status;
+    let finalRes = response;
+    if ([301, 302, 303, 307, 308].includes(status)) {
+      const location = response.headers.get('location');
+      if (!location) throw new Error('重定向缺少 Location');
+      try {
+        await response.arrayBuffer().catch(() => undefined);
+      } catch {
+        // ignore
+      }
+      const next = new URL(location, url).href;
+      assertSafeFetchUrl(next);
+      finalRes = await fetch(next, { signal: controller.signal });
+    }
+    if (!finalRes.ok) {
+      throw new Error(`HTTP ${finalRes.status}: ${finalRes.statusText}`);
+    }
+    const length = Number(finalRes.headers.get('content-length') || '0');
+    if (length > 2 * 1024 * 1024) throw new Error('订阅文件过大');
+    const text = await finalRes.text();
+    if (text.length > 2 * 1024 * 1024) throw new Error('订阅文件过大');
+    // 尝试 Base58 解码
+    try {
+      const decoded = decodeBase58(text);
+      return JSON.parse(decoded);
+    } catch {
+      // 如果不是 Base58，直接解析为 JSON
+      return JSON.parse(text);
+    }
   } catch (e) {
-    // 如果不是 Base58，直接解析为 JSON
-    return JSON.parse(text);
+    if ((e as Error).name === 'AbortError') throw new Error('订阅请求超时');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -92,7 +124,7 @@ function importSources(
         configFileObj.custom_category =
           parsed.custom_category ?? defaultConfig.custom_category;
       }
-    } catch (e) {
+    } catch {
       // 解析失败，使用默认值
     }
     // 确保 api_site 为空对象

@@ -11,13 +11,11 @@ export async function proxy(request: NextRequest) {
   }
 
   // 定时任务：如配置 CRON_SECRET 则必须携带 x-cron-secret 头，避免匿名触发全量刷新
+  // 仅接受 header，不再接受 query ?secret=（避免 URL/历史/CDN 日志泄露）
   if (pathname.startsWith('/api/cron')) {
     const secret = process.env.CRON_SECRET || '';
     if (secret) {
-      const provided =
-        request.headers.get('x-cron-secret') ||
-        request.nextUrl.searchParams.get('secret') ||
-        '';
+      const provided = request.headers.get('x-cron-secret') || '';
       if (provided !== secret) {
         return new NextResponse('Unauthorized', { status: 401 });
       }

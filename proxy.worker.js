@@ -1,8 +1,43 @@
-/* eslint-disable */
+// 已废弃：Cloudflare Pages 路径已移除，仓库无 wrangler.toml，此文件无部署入口。
+// 若手动部署，务必先配置 ALLOWED_HOSTS 白名单，否则为开放代理（SSRF/匿名出口风险）。
+// 现代 wrangler 需 `export default { fetch }`，下方同时兼容旧 addEventListener 语法。
 
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+const ALLOWED_HOSTS = []; // 例：['movie.douban.com', 'cdn.example.com']，为空则拒绝全部代理请求
+
+function isBlockedTarget(raw) {
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return 'URL 非法';
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:')
+    return '仅允许 http/https';
+  if (u.username || u.password) return 'URL 不得携带认证信息';
+  const host = (u.hostname || '').toLowerCase().replace(/\.$/, '');
+  if (!host) return '主机名非法';
+  if (
+    host === 'localhost' ||
+    host === 'metadata.google.internal' ||
+    host === 'metadata.google' ||
+    host.includes('metadata') ||
+    host.includes('instance-data')
+  ) {
+    return '禁止请求的内网地址';
+  }
+  if (
+    /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|169\.254\.|0\.)/.test(
+      host,
+    )
+  ) {
+    return '禁止请求的内网地址';
+  }
+  if (ALLOWED_HOSTS.length > 0 && !ALLOWED_HOSTS.includes(host)) {
+    return '目标域名不在白名单';
+  }
+  if (ALLOWED_HOSTS.length === 0) return '未配置代理白名单，拒绝开放代理';
+  return null;
+}
 
 async function handleRequest(request) {
   try {
@@ -26,10 +61,19 @@ async function handleRequest(request) {
     // 保留查询参数
     actualUrlStr += url.search;
 
-    // 创建新 Headers 对象，排除以 'cf-' 开头的请求头
+    const blocked = isBlockedTarget(actualUrlStr);
+    if (blocked) {
+      return jsonResponse({ error: blocked }, 403);
+    }
+
+    // 创建新 Headers 对象：去掉 cf-* 与敏感凭证头，避免凭证泄露到目标站
     const newHeaders = filterHeaders(
       request.headers,
-      (name) => !name.startsWith('cf-'),
+      (name) =>
+        !name.toLowerCase().startsWith('cf-') &&
+        !['cookie', 'authorization', 'proxy-authorization'].includes(
+          name.toLowerCase(),
+        ),
     );
 
     // 创建一个新的请求以访问目标 URL
@@ -92,36 +136,61 @@ function ensureProtocol(url, defaultProtocol) {
 
 // 处理重定向
 function handleRedirect(response, body) {
-  const location = new URL(response.headers.get('location'));
-  const modifiedLocation = `/${encodeURIComponent(location.toString())}`;
+  let modifiedLocation = '/';
+  try {
+    const raw = response.headers.get('location');
+    if (!raw) return new Response(body, { status: 502 });
+    // 兼容相对 Location
+    const location = new URL(raw, 'https://placeholder.local');
+    const blocked = isBlockedTarget(
+      location.protocol.startsWith('http')
+        ? location.toString()
+        : `https://${location.toString()}`,
+    );
+    if (blocked) return jsonResponse({ error: blocked }, 403);
+    modifiedLocation = `/${encodeURIComponent(location.toString())}`;
+  } catch {
+    return new Response(body, { status: 502 });
+  }
+  const headers = new Headers(response.headers);
+  headers.set('Location', modifiedLocation);
   return new Response(body, {
     status: response.status,
     statusText: response.statusText,
-    headers: {
-      ...response.headers,
-      Location: modifiedLocation,
-    },
+    headers,
   });
 }
 
 // 处理 HTML 内容中的相对路径
 async function handleHtmlContent(response, protocol, host, actualUrlStr) {
   const originalText = await response.text();
-  const regex = new RegExp('((href|src|action)=["\'])/(?!/)', 'g');
-  let modifiedText = replaceRelativePaths(
+  let origin = '';
+  try {
+    origin = new URL(actualUrlStr).origin;
+  } catch {
+    origin = '';
+  }
+  const modifiedText = replaceRelativePaths(
     originalText,
     protocol,
     host,
-    new URL(actualUrlStr).origin,
+    origin,
   );
 
   return modifiedText;
 }
 
-// 替换 HTML 内容中的相对路径
+// 替换 HTML 内容中的相对路径（含 srcset/data-src）
 function replaceRelativePaths(text, protocol, host, origin) {
-  const regex = new RegExp('((href|src|action)=["\'])/(?!/)', 'g');
-  return text.replace(regex, `$1${protocol}//${host}/${origin}/`);
+  let out = text.replace(
+    /((href|src|action)=["'])\/(?!\/)/g,
+    `$1${protocol}//${host}/${origin}/`,
+  );
+  out = out.replace(
+    /((srcset|data-src)=["'])\/(?!\/)/g,
+    `$1${protocol}//${host}/${origin}/`,
+  );
+  return out;
 }
 
 // 返回 JSON 格式的响应
@@ -149,6 +218,12 @@ function setCorsHeaders(headers) {
   headers.set('Access-Control-Allow-Origin', '*');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
   headers.set('Access-Control-Allow-Headers', '*');
+}
+
+if (typeof addEventListener !== 'undefined') {
+  addEventListener('fetch', (event) => {
+    event.respondWith(handleRequest(event.request));
+  });
 }
 
 // 返回根目录的 HTML

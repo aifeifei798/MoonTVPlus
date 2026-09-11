@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getVerifiedAuthInfo } from '@/lib/auth';
+import { getConfig } from '@/lib/config';
 import { getStorage } from '@/lib/db';
 import { IStorage } from '@/lib/types';
 
@@ -50,6 +51,17 @@ export async function POST(request: NextRequest) {
         { error: '站长不能通过此接口修改密码' },
         { status: 403 },
       );
+    }
+
+    // 被封禁用户禁止改密续命
+    try {
+      const cfg = await getConfig();
+      const entry = cfg.UserConfig.Users.find((u) => u.username === username);
+      if (entry?.banned) {
+        return NextResponse.json({ error: '用户已被封禁' }, { status: 403 });
+      }
+    } catch {
+      // 配置读取失败不阻塞改密，按原流程继续
     }
 
     // 获取存储实例

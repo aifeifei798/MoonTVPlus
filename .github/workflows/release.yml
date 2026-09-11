@@ -20,12 +20,12 @@ jobs:
 
       # 先设置 Node.js 版本，保证后续 pnpm 用 Node v22
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
 
@@ -57,11 +57,14 @@ jobs:
           prerelease: false
 
       - name: Build project
-        run: pnpm run build
+        run: pnpm gen:manifest && pnpm gen:runtime && pnpm run build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-files
-          path: .next/
+          path: |
+            .next/standalone/
+            .next/static/
+            public/
           retention-days: 30

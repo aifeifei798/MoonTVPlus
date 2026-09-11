@@ -89,22 +89,31 @@ export interface M3U8Task {
 
 /**
  * 应用URL - 处理相对路径和绝对路径
+ * 优先用标准 URL 解析（正确处理 ../、//cdn、?query），失败再回退旧拼接
  */
 export function applyURL(targetURL: string, baseURL: string): string {
-  if (/^http/.test(targetURL)) {
-    return targetURL;
+  const target = (targetURL || '').trim();
+  if (!target) return baseURL;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(target)) {
+    // 已是绝对 URL（含 http:/https:/data: 等）
+    return target;
   }
-  const urlObj = new URL(baseURL);
-  const protocol = urlObj.protocol;
-  const host = urlObj.host;
-
-  if (targetURL.startsWith('/')) {
-    return `${protocol}//${host}${targetURL}`;
+  try {
+    return new URL(target, baseURL).href;
+  } catch {
+    // 回退：旧字符串拼接
+    if (target.startsWith('/')) {
+      try {
+        const urlObj = new URL(baseURL);
+        return `${urlObj.protocol}//${urlObj.host}${target}`;
+      } catch {
+        return target;
+      }
+    }
+    const pathArr = baseURL.split('/');
+    pathArr.pop();
+    return `${pathArr.join('/')}/${target}`;
   }
-
-  const pathArr = baseURL.split('/');
-  pathArr.pop();
-  return `${pathArr.join('/')}/${targetURL}`;
 }
 
 /**
@@ -182,9 +191,24 @@ export async function parseM3U8(url: string, depth = 0): Promise<M3U8Task> {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
-  const response = await fetch(url, { signal: controller.signal }).finally(() =>
-    clearTimeout(timeout),
-  );
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal }).finally(() =>
+      clearTimeout(timeout),
+    );
+  } catch (e) {
+    clearTimeout(timeout);
+    if ((e as Error).name === 'AbortError') throw new Error('请求超时');
+    throw e;
+  }
+  if (!response.ok) {
+    throw new Error(`m3u8 请求失败: ${response.status}`);
+  }
+  const contentType = response.headers.get('content-type') || '';
+  // 允许 application/vnd.apple.mpegurl / audio/x-mpegurl / text/plain 等；仅当明确为 html 时拒绝
+  if (contentType.includes('text/html')) {
+    throw new Error('无效的 m3u8 链接');
+  }
   const m3u8Str = await response.text();
 
   if (m3u8Str.substring(0, 7).toUpperCase() !== '#EXTM3U') {
@@ -233,8 +257,9 @@ export async function parseM3U8(url: string, depth = 0): Promise<M3U8Task> {
   let lastDuration: number | null = null;
   for (const line of lines) {
     if (line.startsWith('#EXTINF:')) {
-      lastDuration = parseFloat(line.split('#EXTINF:')[1]);
-      task.durationSecond += lastDuration;
+      const parsed = parseFloat(line.split('#EXTINF:')[1]);
+      lastDuration = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+      if (lastDuration !== null) task.durationSecond += lastDuration;
     } else if (/^[^#]/.test(line) && line.trim()) {
       const tsUrl = applyURL(line.trim(), url);
       task.tsUrlList.push(tsUrl);
@@ -253,30 +278,56 @@ export async function parseM3U8(url: string, depth = 0): Promise<M3U8Task> {
   const estimatedBitrate = (2 * 1024 * 1024) / 8; // 2Mbps 转为字节/秒
   task.totalSize = Math.round(task.durationSecond * estimatedBitrate);
 
-  // 检测 AES 加密
+  // 检测 AES 加密：仅支持 AES-128/CBC；SAMPLE-AES 与多 Key 轮换暂不支持（跳过解密避免误伤）
   if (m3u8Str.includes('#EXT-X-KEY')) {
+    const keyLines = m3u8Str
+      .split('\n')
+      .filter((l) => l.includes('#EXT-X-KEY'));
     const methodMatch = m3u8Str.match(/METHOD=([^,\s]+)/);
     const uriMatch = m3u8Str.match(/URI="([^"]+)"/);
     const ivMatch = m3u8Str.match(/IV=([^,\s]+)/);
 
-    task.aesConf.method = methodMatch ? methodMatch[1] : '';
+    const method = methodMatch ? methodMatch[1] : '';
+    task.aesConf.method = method;
     task.aesConf.uri = uriMatch ? applyURL(uriMatch[1], url) : '';
     task.aesConf.iv = ivMatch ? ivMatch[1] : '';
 
-    // 获取 AES key
-    if (task.aesConf.uri) {
+    if (method && method !== 'AES-128' && method !== 'NONE') {
+      // SAMPLE-AES 等需要播放器原生支持，强制 CBC 会损坏数据；此处标记但不解密
+      task.aesConf.key = '' as unknown as typeof task.aesConf.key;
+    } else if (keyLines.length > 1) {
+      // 多 Key 轮换：当前仅拉首个 Key，记录告警，后续分片仍用首 Key（尽力而为）
+      // eslint-disable-next-line no-console
+      console.warn(`检测到 ${keyLines.length} 个 EXT-X-KEY，仅使用首个 Key`);
+    }
+
+    // 获取 AES key（带 10s 超时）
+    if (task.aesConf.uri && task.aesConf.method === 'AES-128') {
       try {
         const { assertSafeFetchUrl } = await import('./ssrf');
         assertSafeFetchUrl(task.aesConf.uri);
       } catch (e) {
         throw new Error((e as Error).message || '非法 AES key URL');
       }
-      const keyResponse = await fetch(task.aesConf.uri);
-      const keyArrayBuffer = await keyResponse.arrayBuffer();
-      if (keyArrayBuffer.byteLength > 64 * 1024) {
-        throw new Error('AES key 过大');
+      const keyController = new AbortController();
+      const keyTimer = setTimeout(() => keyController.abort(), 10000);
+      try {
+        const keyResponse = await fetch(task.aesConf.uri, {
+          signal: keyController.signal,
+        });
+        if (!keyResponse.ok)
+          throw new Error(`Key 请求失败: ${keyResponse.status}`);
+        const keyArrayBuffer = await keyResponse.arrayBuffer();
+        if (keyArrayBuffer.byteLength > 64 * 1024) {
+          throw new Error('AES key 过大');
+        }
+        task.aesConf.key = arrayBufferToWordArray(keyArrayBuffer);
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') throw new Error('Key 请求超时');
+        throw e;
+      } finally {
+        clearTimeout(keyTimer);
       }
-      task.aesConf.key = arrayBufferToWordArray(keyArrayBuffer);
     }
   }
 
@@ -291,7 +342,7 @@ function extractTitleFromUrl(url: string): string {
     const urlObj = new URL(url);
     const title = urlObj.searchParams.get('title');
     if (title) return title;
-  } catch (e) {
+  } catch {
     // ignore
   }
 
@@ -347,11 +398,12 @@ export function aesDecrypt(
 }
 
 /**
- * 下载单个 TS 片段
+ * 下载单个 TS 片段（带 20s 超时，避免 stall 卡住 worker）
  */
 export async function downloadTsSegment(
   url: string,
   signal?: AbortSignal,
+  timeoutMs = 20000,
 ): Promise<ArrayBuffer> {
   try {
     const { assertSafeFetchUrl } = await import('./ssrf');
@@ -359,15 +411,30 @@ export async function downloadTsSegment(
   } catch (e) {
     throw new Error((e as Error).message || '非法片段 URL');
   }
-  const response = await fetch(url, { signal });
-  if (!response.ok) {
-    throw new Error(`下载失败: ${response.status}`);
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`下载失败: ${response.status}`);
+    }
+    const buf = await response.arrayBuffer();
+    if (buf.byteLength > 50 * 1024 * 1024) {
+      throw new Error('片段过大');
+    }
+    return buf;
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') {
+      if (signal?.aborted) throw new Error('下载已取消');
+      throw new Error('下载超时');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
-  const buf = await response.arrayBuffer();
-  if (buf.byteLength > 50 * 1024 * 1024) {
-    throw new Error('片段过大');
-  }
-  return buf;
 }
 
 /**
@@ -399,11 +466,15 @@ export function triggerDownload(
   document.body.appendChild(a);
   a.click();
 
-  // 延迟清理，确保下载已开始
+  // 延迟清理，确保下载已开始（大 Blob 慢机器上 100ms 可能抢跑，延至 60s）
   setTimeout(() => {
-    document.body.removeChild(a);
+    try {
+      document.body.removeChild(a);
+    } catch {
+      // ignore
+    }
     URL.revokeObjectURL(url);
-  }, 100);
+  }, 60000);
 }
 
 /**
@@ -609,7 +680,9 @@ export async function downloadM3U8Video(
     index: number,
     retryCount = 0,
   ): Promise<void> => {
-    const retryDelay = 1000; // 重试延迟（毫秒）
+    // 指数退避 + 抖动（1s/2s/4s 上限 8s），且可被取消打断
+    const baseDelay = Math.min(1000 * 2 ** retryCount, 8000);
+    const retryDelay = baseDelay + Math.floor(Math.random() * 500);
 
     if (signal?.aborted) {
       throw new Error('下载已取消');
@@ -660,8 +733,11 @@ export async function downloadM3U8Video(
         throw new Error('下载已取消');
       }
 
-      // 如果使用边下边存，加入待写入队列
+      // 如果使用边下边存，加入待写入队列（带背压：队列超 200 即先刷盘）
       if (writer) {
+        if (pendingWrites.size >= 200) {
+          await flushPendingWrites();
+        }
         // 将片段数据加入队列
         pendingWrites.set(index, segmentData);
 
@@ -723,8 +799,18 @@ export async function downloadM3U8Video(
           message: `片段 ${index + 1} 重试中 (${retryCount + 1}/${maxRetries})`,
         });
 
-        // 等待一段时间后重试
-        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        // 等待一段时间后重试（可被取消打断）
+        await new Promise<void>((resolve, reject) => {
+          const t = setTimeout(resolve, retryDelay);
+          signal?.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(t);
+              reject(new Error('下载已取消'));
+            },
+            { once: true },
+          );
+        });
         return downloadSegment(index, retryCount + 1);
       }
 
@@ -740,23 +826,12 @@ export async function downloadM3U8Video(
         error,
       );
 
-      // 边下边存模式下，失败的片段标记为 'failed' 并加入队列
+      // 边下边存模式下失败即中断，避免静默跳片产出损坏文件；
+      // 普通模式保留“等待手动重试”语义
       if (streamMode !== 'disabled' && writer) {
-        // 标记为失败，以便按顺序跳过
-        pendingWrites.set(index, 'failed');
-
-        // 使用串行化写入函数，确保写入操作按顺序执行，避免多线程并发写入
-        await flushPendingWrites();
-
-        // eslint-disable-next-line no-console
-        console.warn(`边下边存模式：已跳过失败片段 ${index + 1}，继续下载...`);
-        onProgress?.({
-          current: completedCount,
-          total: totalSegments,
-          percentage: Math.floor((completedCount / totalSegments) * 100),
-          status: 'downloading',
-          message: `片段 ${index + 1} 失败已跳过 (已完成 ${completedCount}/${totalSegments})`,
-        });
+        throw new Error(
+          `片段 ${index + 1} 下载失败，已中止边下边存（避免文件缺片损坏）: ${error instanceof Error ? error.message : String(error)}`,
+        );
       } else {
         // 普通模式下，片段失败不影响任务状态，保持 downloading 等待手动重试
         onProgress?.({
@@ -926,7 +1001,7 @@ export function getSegmentList(task: M3U8Task): SegmentInfo[] {
   return task.tsUrlList.map((url, index) => ({
     index: index + 1,
     url,
-    duration: 0,
+    duration: task.segmentDurations[index] ?? 0,
     status: task.finishList[index]?.status || '',
   }));
 }

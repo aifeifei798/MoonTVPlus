@@ -3,8 +3,99 @@
 import { NextResponse } from 'next/server';
 
 import { getCacheTime, getConfig } from '@/lib/config';
+import { fetchDoubanData } from '@/lib/douban';
+import {
+  getDoubanCache,
+  recommendsCacheKey,
+  setDoubanCache,
+} from '@/lib/douban-cache';
 
 export const runtime = 'edge';
+
+// TVBox 内调豆瓣推荐：不再经 HTTP 回环（避免 Host 投毒 SSRF），直接复用推荐链路
+async function fetchRecommendsDirect(params: {
+  kind: 'movie' | 'tv';
+  category: string;
+  label: string;
+  year: string;
+  sort: string;
+  start: number;
+  limit: number;
+}): Promise<any[]> {
+  const { kind, category, label, year, sort, start, limit } = params as {
+    kind: 'movie' | 'tv';
+    category: string;
+    label: string;
+    year: string;
+    sort: string;
+    start: number;
+    limit: number;
+  };
+  const cacheKey = await recommendsCacheKey({
+    kind,
+    limit: String(limit),
+    start: String(start),
+    category,
+    format: '',
+    region: '',
+    year,
+    platform: '',
+    sort,
+    label,
+  });
+  const cached = await getDoubanCache(cacheKey);
+  if (cached && Array.isArray((cached as any).list))
+    return (cached as any).list;
+
+  const selectedCategories = { 类型: category } as Record<string, string>;
+  const tags: string[] = [];
+  if (category) tags.push(category);
+  if (label) tags.push(label);
+  if (year) tags.push(year);
+
+  const baseUrl = `https://m.douban.com/rexxar/api/v2/${kind}/recommend`;
+  const qs = new URLSearchParams();
+  qs.append('refresh', '0');
+  qs.append('start', String(start));
+  qs.append('count', String(limit));
+  qs.append('selected_categories', JSON.stringify(selectedCategories));
+  qs.append('uncollect', 'false');
+  qs.append('score_range', '0,10');
+  qs.append('tags', tags.join(','));
+  if (sort) qs.append('sort', sort);
+  const target = `${baseUrl}?${qs.toString()}`;
+  try {
+    const data = await fetchDoubanData<{
+      items: Array<{
+        id: string;
+        title: string;
+        year: string;
+        type: string;
+        pic: { large: string; normal: string };
+        rating: { value: number };
+      }>;
+    }>(target);
+    const list = (data.items || [])
+      .filter((item) => item.type === 'movie' || item.type === 'tv')
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        poster: item.pic?.normal || item.pic?.large || '',
+        rate: item.rating?.value ? item.rating.value.toFixed(1) : '',
+        year: item.year,
+      }));
+    await setDoubanCache(cacheKey, {
+      code: 200,
+      message: '获取成功',
+      list,
+    });
+    return list;
+  } catch {
+    const stale = await getDoubanCache(cacheKey, true);
+    if (stale && Array.isArray((stale as any).list)) return (stale as any).list;
+    return [];
+  }
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -102,6 +193,7 @@ export async function GET(request: Request) {
       }
 
       const origin = url.origin;
+      void origin;
       const qs = new URLSearchParams();
       qs.set('kind', kind);
       // 处理“热门/最新”无数据的问题：
@@ -125,11 +217,16 @@ export async function GET(request: Request) {
       qs.set('limit', String(pageSize));
       if (sort) qs.set('sort', sort);
 
-      const resp = await fetch(
-        `${origin}/api/douban/recommends?${qs.toString()}`,
-      );
-      const data = await resp.json();
-      const list = Array.isArray((data as any).list) ? (data as any).list : [];
+      // 直接内调（不走 HTTP 回环，避免 Host 投毒）
+      const list = await fetchRecommendsDirect({
+        kind,
+        category,
+        label,
+        year: qs.get('year') || '',
+        sort,
+        start: (pgParam - 1) * pageSize,
+        limit: pageSize,
+      });
 
       const payload = {
         code: 1,
@@ -163,7 +260,7 @@ export async function GET(request: Request) {
         },
       },
     );
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { code: 0, msg: 'error', class: [], list: [] },
       { status: 500 },

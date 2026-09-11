@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { getSearchHistory, subscribeToDataUpdates } from '@/lib/db.client';
+import { logger } from '@/lib/logger';
 
 /**
  * 搜索历史：首屏空数组，挂载后加载并订阅 `searchHistoryUpdated` 更新。
@@ -13,12 +14,18 @@ export function useSearchHistory(): string[] {
 
   useEffect(() => {
     let cancelled = false;
-    getSearchHistory().then((h) => {
-      if (!cancelled) setHistory(h);
-    });
-    const unsubscribe = subscribeToDataUpdates(
+    getSearchHistory()
+      .then((h) => {
+        if (!cancelled) setHistory(Array.isArray(h) ? h : []);
+      })
+      .catch((e) => {
+        logger.debug('加载搜索历史失败', e);
+      });
+    const unsubscribe = subscribeToDataUpdates<string[]>(
       'searchHistoryUpdated',
-      setHistory,
+      (v) => {
+        if (Array.isArray(v) && !cancelled) setHistory(v);
+      },
     );
     return () => {
       cancelled = true;

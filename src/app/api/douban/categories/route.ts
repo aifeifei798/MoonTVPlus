@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     return buildDoubanOkResponse(cached, 'hit');
   }
 
-  const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${kind}?start=${pageStart}&limit=${pageLimit}&category=${category}&type=${type}`;
+  const target = `https://m.douban.com/rexxar/api/v2/subject/recent_hot/${encodeURIComponent(kind)}?start=${pageStart}&limit=${pageLimit}&category=${encodeURIComponent(category)}&type=${encodeURIComponent(type)}`;
 
   try {
     // 调用豆瓣 API

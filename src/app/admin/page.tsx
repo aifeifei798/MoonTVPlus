@@ -2018,7 +2018,7 @@ const ConfigFileComponent = ({
         // 解析 JSON 并格式化显示
         const parsedConfig = JSON.parse(config.ConfigFile);
         setConfigContent(JSON.stringify(parsedConfig, null, 2));
-      } catch (e) {
+      } catch {
         // 如果解析失败，直接显示原始内容
         setConfigContent(config.ConfigFile);
       }
@@ -2035,7 +2035,7 @@ const ConfigFileComponent = ({
       try {
         const parsedConfig = JSON.parse(configContent);
         formattedConfig = JSON.stringify(parsedConfig, null, 2);
-      } catch (e) {
+      } catch {
         throw new Error('配置文件格式错误，请检查 JSON 语法');
       }
 

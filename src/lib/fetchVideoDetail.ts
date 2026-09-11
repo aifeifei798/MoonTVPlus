@@ -80,7 +80,7 @@ async function fetchVideoDetailInner({
           }
         }
       }
-    } catch (error) {
+    } catch {
       // 流式搜索失败时忽略，继续走详情兜底
     }
   }

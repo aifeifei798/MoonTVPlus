@@ -1,5 +1,5 @@
 # ---- 第 1 阶段：安装依赖 ----
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 
 # 启用 corepack 并激活与 packageManager 一致的 pnpm，避免 latest 漂移
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
@@ -13,7 +13,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ---- 第 2 阶段：构建项目 ----
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 WORKDIR /app
 
@@ -24,21 +24,19 @@ COPY . .
 
 # 在构建阶段也显式设置 DOCKER_ENV，
 # 确保 Next.js 在编译时即选择 Node Runtime 而不是 Edge Runtime
-# 注意：字符串替换为兜底手段，上游改双引号/分号即失效；首选在代码中以 DOCKER_ENV 分支，而非依赖 sed
-RUN find ./src -type f \( -name "route.ts" -o -name "layout.tsx" -o -name "not-found.tsx" \) -print0 \
-  | xargs -0 sed -i "s/export const runtime = 'edge';/export const runtime = 'nodejs';/g" \
-  && grep -rq "export const runtime = 'nodejs'" ./src || (echo "edge->nodejs 替换未生效，检查 runtime 声明格式" && exit 1)
+# 稳健替换脚本兼容单/双引号与空格变化，残留 edge 即 fail-fast
+RUN node scripts/docker-replace-runtime.js
 ENV DOCKER_ENV=true
 
 # For Docker builds, force dynamic rendering to read runtime environment variables.
 # 幂等处理：已存在 force-dynamic 则跳过，避免重复插入导致构建失败
-RUN grep -q "export const dynamic = 'force-dynamic'" src/app/layout.tsx || sed -i "/const inter = Inter({ subsets: \['latin'] });/a export const dynamic = 'force-dynamic';" src/app/layout.tsx
+RUN node -e "const fs=require('fs');const f='src/app/layout.tsx';let s=fs.readFileSync(f,'utf8');if(!s.includes(\"export const dynamic = 'force-dynamic'\")){s=s.replace(/export const runtime = 'nodejs';/, \"export const runtime = 'nodejs';\nexport const dynamic = 'force-dynamic';\");fs.writeFileSync(f,s);}console.log('dynamic 检查完成')"
 
 # 生成生产构建
 RUN pnpm run build
 
 # ---- 第 3 阶段：生成运行时镜像 ----
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 # 创建非 root 用户
 RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs

@@ -160,7 +160,7 @@ export function getAuthInfoFromCookie(
     const decoded = decodeURIComponent(authCookie.value);
     const authData = JSON.parse(decoded);
     return authData;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -218,7 +218,7 @@ export function getAuthInfoFromBrowserCookie(): {
 
     const authData = JSON.parse(decoded);
     return authData;
-  } catch (error) {
+  } catch {
     return null;
   }
 }

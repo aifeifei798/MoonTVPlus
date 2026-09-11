@@ -38,9 +38,17 @@ export function getRequestOrigin(request: Request) {
   );
   const host = pickHeaderValue(request.headers.get('host'));
 
-  const resolvedHost = [forwardedHost, xForwardedHost, host, url.host].find(
-    (candidate) => candidate && !/^0\.0\.0\.0(?::\d+)?$/.test(candidate),
-  );
+  const sanitizeHost = (h: string): string => {
+    const v = h.trim();
+    if (!v || v.includes('@') || v.includes(' ') || v.includes('/')) return '';
+    // 仅允许 host[:port] 字符集
+    if (!/^[a-zA-Z0-9.:_-]+$/.test(v)) return '';
+    return v;
+  };
+
+  const resolvedHost = [forwardedHost, xForwardedHost, host, url.host]
+    .map(sanitizeHost)
+    .find((candidate) => candidate && !/^0\.0\.0\.0(?::\d+)?$/.test(candidate));
 
   if (!resolvedHost) {
     return url.origin;
@@ -51,7 +59,9 @@ export function getRequestOrigin(request: Request) {
     xForwardedProto,
     url.protocol.replace(':', ''),
     'http',
-  ].find(Boolean);
+  ]
+    .map((p) => p.trim().toLowerCase())
+    .find((p) => p === 'http' || p === 'https');
 
-  return `${resolvedProto}://${resolvedHost}`;
+  return `${resolvedProto || 'http'}://${resolvedHost}`;
 }

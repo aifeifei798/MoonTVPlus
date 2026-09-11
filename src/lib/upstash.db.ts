@@ -3,6 +3,7 @@
 import { Redis } from '@upstash/redis';
 
 import { AdminConfig } from './admin.types';
+import { hashPassword, verifyPassword } from './password';
 import {
   Favorite,
   Following,
@@ -225,8 +226,8 @@ export class UpstashRedisStorage implements IStorage {
   }
 
   async registerUser(userName: string, password: string): Promise<void> {
-    // 简单存储明文密码，生产环境应加密
-    await withRetry(() => this.client.set(this.userPwdKey(userName), password));
+    const hashed = await hashPassword(password);
+    await withRetry(() => this.client.set(this.userPwdKey(userName), hashed));
   }
 
   async verifyUser(userName: string, password: string): Promise<boolean> {
@@ -234,8 +235,16 @@ export class UpstashRedisStorage implements IStorage {
       this.client.get(this.userPwdKey(userName)),
     );
     if (stored === null) return false;
-    // 确保比较时都是字符串类型
-    return ensureString(stored) === password;
+    const storedStr = ensureString(stored);
+    const { ok, needsUpgrade } = await verifyPassword(password, storedStr);
+    if (ok && needsUpgrade) {
+      const hashed = await hashPassword(password).catch(() => null);
+      if (hashed)
+        withRetry(() =>
+          this.client.set(this.userPwdKey(userName), hashed),
+        ).catch(() => undefined);
+    }
+    return ok;
   }
 
   // 检查用户是否存在
@@ -249,10 +258,8 @@ export class UpstashRedisStorage implements IStorage {
 
   // 修改用户密码
   async changePassword(userName: string, newPassword: string): Promise<void> {
-    // 简单存储明文密码，生产环境应加密
-    await withRetry(() =>
-      this.client.set(this.userPwdKey(userName), newPassword),
-    );
+    const hashed = await hashPassword(newPassword);
+    await withRetry(() => this.client.set(this.userPwdKey(userName), hashed));
   }
 
   // 删除用户及其所有数据
@@ -448,10 +455,25 @@ export class UpstashRedisStorage implements IStorage {
     );
   }
 
-  // 清空所有数据
+  // 清空所有数据：仅删本项目命名空间（u:*/admin/* 等），禁止 flushall 影响共享实例
   async clearAllData(): Promise<void> {
-    const client = getUpstashRedisClient();
-    await client.flushall();
+    const patterns = ['u:*', 'admin:*', 'config:*', 'sys:*'];
+    for (const pattern of patterns) {
+      let cursor = 0;
+      do {
+        const [next, keys] = await withRetry(() =>
+          (
+            this.client as unknown as {
+              scan: (c: number, o: object) => Promise<[number, string[]]>;
+            }
+          ).scan(cursor, { match: pattern, count: 100 }),
+        );
+        cursor = Number(next);
+        if (Array.isArray(keys) && keys.length > 0) {
+          await withRetry(() => this.client.del(...keys));
+        }
+      } while (cursor !== 0);
+    }
   }
 }
 

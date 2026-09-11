@@ -75,8 +75,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   precomputedVideoInfo,
   preferBestSource,
   setLoading,
-  setIsVideoLoading,
-  setVideoLoadingStage,
+  // setIsVideoLoading / setVideoLoadingStage 保留在 Props 接口以兼容调用方，组件内暂未使用
 }) => {
   const router = useRouter();
   const pageCount = Math.ceil(totalEpisodes / episodesPerPage);
@@ -149,7 +148,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
     try {
       const info = await getVideoResolutionFromM3u8(episodeUrl);
       setVideoInfoMap((prev) => new Map(prev).set(sourceKey, info));
-    } catch (error) {
+    } catch {
       // 失败时保存错误状态
       setVideoInfoMap((prev) =>
         new Map(prev).set(sourceKey, {

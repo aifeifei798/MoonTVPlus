@@ -57,6 +57,14 @@ try {
   // 写入 manifest.json
   fs.writeFileSync(manifestPath, JSON.stringify(manifestTemplate, null, 2));
   console.log(`✅ Generated manifest.json with site name: ${siteName}`);
+
+  // 图标存在性校验：缺图仍生成但给出明确警告，避免 404 引用悄悄上线
+  for (const icon of manifestTemplate.icons) {
+    const iconPath = path.join(publicDir, icon.src.replace(/^\//, ''));
+    if (!fs.existsSync(iconPath)) {
+      console.warn(`⚠️ manifest 引用的图标缺失: ${icon.src}`);
+    }
+  }
 } catch (error) {
   console.error('❌ Error generating manifest.json:', error);
   process.exit(1);

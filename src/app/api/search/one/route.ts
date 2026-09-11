@@ -39,9 +39,10 @@ export async function GET(request: NextRequest) {
       { result: null, error: '缺少必要参数: q 或 resourceId' },
       {
         headers: {
-          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          // 用户/分组相关结果禁止 CDN 跨用户共享
+          'Cache-Control': `private, max-age=${cacheTime}`,
+          'CDN-Cache-Control': 'no-store',
+          'Vercel-CDN-Cache-Control': 'no-store',
           'Netlify-Vary': 'query',
         },
       },
@@ -102,9 +103,9 @@ export async function GET(request: NextRequest) {
       { results: result },
       {
         headers: {
-          'Cache-Control': `public, max-age=${cacheTime}, s-maxage=${cacheTime}`,
-          'CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
-          'Vercel-CDN-Cache-Control': `public, s-maxage=${cacheTime}`,
+          'Cache-Control': `private, max-age=${cacheTime}`,
+          'CDN-Cache-Control': 'no-store',
+          'Vercel-CDN-Cache-Control': 'no-store',
           'Netlify-Vary': 'query',
         },
       },

@@ -3,6 +3,7 @@
 import { createClient, RedisClientType } from 'redis';
 
 import { AdminConfig } from './admin.types';
+import { hashPassword, verifyPassword } from './password';
 import {
   Favorite,
   Following,
@@ -11,6 +12,16 @@ import {
   SkipConfig,
   TodayUpdatedRecord,
 } from './types';
+
+// 脏数据 JSON 安全解析：失败返回 null 而非抛 500
+function safeJsonParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
 
 // 搜索历史最大条数
 const SEARCH_HISTORY_LIMIT = 20;
@@ -182,7 +193,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.prKey(userName, key)),
     );
-    return val ? (JSON.parse(val) as PlayRecord) : null;
+    return safeJsonParse<PlayRecord>(val) ?? null;
   }
 
   async setPlayRecord(
@@ -200,7 +211,8 @@ export abstract class BaseRedisStorage implements IStorage {
       for (const fullKey of allKeys) {
         const val = await this.withRetry(() => this.client.get(fullKey));
         if (val) {
-          const existingRecord = JSON.parse(val) as PlayRecord;
+          const existingRecord = safeJsonParse<PlayRecord>(val);
+          if (!existingRecord) continue;
           // 如果找到同名但不是当前key的记录，则删除它
           if (
             existingRecord.title === record.title &&
@@ -229,7 +241,8 @@ export abstract class BaseRedisStorage implements IStorage {
     keys.forEach((fullKey: string, idx: number) => {
       const raw = values[idx];
       if (raw) {
-        const rec = JSON.parse(raw) as PlayRecord;
+        const rec = safeJsonParse<PlayRecord>(raw);
+        if (!rec) return;
         // 截取 source+id 部分
         const keyPart = ensureString(fullKey.replace(`u:${userName}:pr:`, ''));
         result[keyPart] = rec;
@@ -251,7 +264,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.favKey(userName, key)),
     );
-    return val ? (JSON.parse(val) as Favorite) : null;
+    return safeJsonParse<Favorite>(val) ?? null;
   }
 
   async setFavorite(
@@ -275,7 +288,8 @@ export abstract class BaseRedisStorage implements IStorage {
     keys.forEach((fullKey: string, idx: number) => {
       const raw = values[idx];
       if (raw) {
-        const fav = JSON.parse(raw) as Favorite;
+        const fav = safeJsonParse<Favorite>(raw);
+        if (!fav) return;
         const keyPart = ensureString(fullKey.replace(`u:${userName}:fav:`, ''));
         result[keyPart] = fav;
       }
@@ -296,7 +310,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.folKey(userName, key)),
     );
-    return val ? (JSON.parse(val) as Following) : null;
+    return safeJsonParse<Following>(val) ?? null;
   }
 
   async setFollowing(
@@ -320,7 +334,8 @@ export abstract class BaseRedisStorage implements IStorage {
     keys.forEach((fullKey: string, idx: number) => {
       const raw = values[idx];
       if (raw) {
-        const following = JSON.parse(raw) as Following;
+        const following = safeJsonParse<Following>(raw);
+        if (!following) return;
         const keyPart = ensureString(fullKey.replace(`u:${userName}:fol:`, ''));
         result[keyPart] = following;
       }
@@ -338,9 +353,9 @@ export abstract class BaseRedisStorage implements IStorage {
   }
 
   async registerUser(userName: string, password: string): Promise<void> {
-    // 简单存储明文密码，生产环境应加密
+    const hashed = await hashPassword(password);
     await this.withRetry(() =>
-      this.client.set(this.userPwdKey(userName), password),
+      this.client.set(this.userPwdKey(userName), hashed),
     );
   }
 
@@ -349,8 +364,18 @@ export abstract class BaseRedisStorage implements IStorage {
       this.client.get(this.userPwdKey(userName)),
     );
     if (stored === null) return false;
-    // 确保比较时都是字符串类型
-    return ensureString(stored) === password;
+    const storedStr = ensureString(stored);
+    const { ok, needsUpgrade } = await verifyPassword(password, storedStr);
+    if (ok && needsUpgrade) {
+      // 旧明文命中，后台静默升级为哈希，不阻塞登录
+      const hashed = await hashPassword(password).catch(() => null);
+      if (hashed) {
+        this.withRetry(() =>
+          this.client.set(this.userPwdKey(userName), hashed),
+        ).catch(() => undefined);
+      }
+    }
+    return ok;
   }
 
   // 检查用户是否存在
@@ -364,9 +389,9 @@ export abstract class BaseRedisStorage implements IStorage {
 
   // 修改用户密码
   async changePassword(userName: string, newPassword: string): Promise<void> {
-    // 简单存储明文密码，生产环境应加密
+    const hashed = await hashPassword(newPassword);
     await this.withRetry(() =>
-      this.client.set(this.userPwdKey(userName), newPassword),
+      this.client.set(this.userPwdKey(userName), hashed),
     );
   }
 
@@ -474,7 +499,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.adminConfigKey()),
     );
-    return val ? (JSON.parse(val) as AdminConfig) : null;
+    return safeJsonParse<AdminConfig>(val) ?? null;
   }
 
   async setAdminConfig(config: AdminConfig): Promise<void> {
@@ -496,7 +521,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.skipConfigKey(userName, source, id)),
     );
-    return val ? (JSON.parse(val) as SkipConfig) : null;
+    return safeJsonParse<SkipConfig>(val) ?? null;
   }
 
   async setSkipConfig(
@@ -562,7 +587,7 @@ export abstract class BaseRedisStorage implements IStorage {
     const val = await this.withRetry(() =>
       this.client.get(this.todayUpdatedKey(userName)),
     );
-    return val ? (JSON.parse(val) as TodayUpdatedRecord) : null;
+    return safeJsonParse<TodayUpdatedRecord>(val) ?? null;
   }
 
   async setTodayUpdated(

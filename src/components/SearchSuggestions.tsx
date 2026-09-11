@@ -3,6 +3,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { logger } from '@/lib/logger';
+
 interface SearchSuggestionsProps {
   query: string;
   isVisible: boolean;
@@ -70,7 +72,7 @@ export default function SearchSuggestions({
               ]);
             }
           } catch (err) {
-            console.error('解析流式数据失败', err);
+            logger.debug('解析流式数据失败', err);
           }
         }
       }

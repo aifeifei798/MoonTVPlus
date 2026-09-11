@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
             }
             controller.enqueue(data);
             return true;
-          } catch (error) {
+          } catch {
             // 流已关闭或客户端断开，静默处理，避免 uncaughtException
             streamClosed = true;
             return false;

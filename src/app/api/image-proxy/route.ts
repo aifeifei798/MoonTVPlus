@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { assertSafeFetchUrl } from '@/lib/ssrf';
+import { safeFetch } from '@/lib/ssrf';
 
 export const runtime = 'edge';
 
@@ -14,26 +14,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    assertSafeFetchUrl(imageUrl);
-  } catch (e) {
-    return NextResponse.json(
-      { error: (e as Error).message || '非法 URL' },
-      { status: 400 },
-    );
-  }
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    const imageResponse = await fetch(imageUrl, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        Referer: 'https://movie.douban.com/',
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    // safeFetch 内部做初始校验 + 逐跳转复检，避免 302 到内网/元数据
+    const imageResponse = await safeFetch(
+      imageUrl,
+      {
+        headers: {
+          Referer: 'https://movie.douban.com/',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        },
       },
-    }).finally(() => clearTimeout(timeout));
+      { timeoutMs: 15000, maxRedirects: 3 },
+    );
 
     if (!imageResponse.ok) {
       return NextResponse.json(
@@ -87,9 +79,23 @@ export async function GET(request: Request) {
       headers,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Error fetching image';
+    // SSRF 拦截 / 非法 URL / 重定向异常 → 400，其余上游失败 → 502
+    if (
+      msg.includes('内网') ||
+      msg.includes('非法') ||
+      msg.includes('仅允许') ||
+      msg.includes('重定向') ||
+      msg.includes('认证信息')
+    ) {
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+    if (msg === '请求超时') {
+      return NextResponse.json({ error: '上游超时' }, { status: 504 });
+    }
     return NextResponse.json(
       { error: 'Error fetching image' },
-      { status: 500 },
+      { status: 502 },
     );
   }
 }

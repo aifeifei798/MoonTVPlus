@@ -1,4 +1,5 @@
 import { API_CONFIG, ApiSite, getCacheTime, getConfig } from '@/lib/config';
+import { assertSafeFetchUrl } from '@/lib/ssrf';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
 
@@ -95,30 +96,67 @@ interface ApiSearchItem {
 // 匹配 m3u8 链接的正则
 const M3U8_PATTERN = /(https?:\/\/[^"'\s]+?\.m3u8)/g;
 
-/** 封装带超时的 fetch，区分超时和网络错误 */
+/** 封装带超时的 fetch，区分超时和网络错误；附带 SSRF 初检 + 手动重定向逐跳复检 */
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeout = 30000,
+  maxRedirects = 3,
 ): Promise<Response> {
+  // apiSite.api 来自 DB/订阅可控，先做 SSRF 初检
+  assertSafeFetchUrl(url);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
+  let current = url;
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error: unknown) {
-    // 区分超时错误和网络错误
-    const err = error as Error;
-    if (err.name === 'AbortError') {
-      throw new Error('请求超时');
-    } else if (
-      err.message?.includes('Failed to fetch') ||
-      err.message?.includes('fetch failed') ||
-      err.message?.includes('NetworkError')
-    ) {
-      throw new Error('请求失败');
-    } else {
-      throw new Error(`网络错误: ${err.message || '未知错误'}`);
+    for (let i = 0; i <= maxRedirects; i++) {
+      let res: Response;
+      try {
+        res = await fetch(current, {
+          ...options,
+          signal: controller.signal,
+          redirect: 'manual',
+        });
+      } catch (error: unknown) {
+        const err = error as Error;
+        if (err.name === 'AbortError') throw new Error('请求超时');
+        else if (
+          err.message?.includes('Failed to fetch') ||
+          err.message?.includes('fetch failed') ||
+          err.message?.includes('NetworkError')
+        ) {
+          throw new Error('请求失败');
+        } else {
+          throw new Error(`网络错误: ${err.message || '未知错误'}`);
+        }
+      }
+      const status = res.status;
+      if (
+        status === 301 ||
+        status === 302 ||
+        status === 303 ||
+        status === 307 ||
+        status === 308
+      ) {
+        if (i === maxRedirects) throw new Error('重定向次数过多');
+        const location = res.headers.get('location');
+        if (!location) throw new Error('重定向缺少 Location');
+        try {
+          await res.arrayBuffer().catch(() => undefined);
+        } catch {
+          // ignore
+        }
+        try {
+          current = new URL(location, current).href;
+        } catch {
+          throw new Error('非法重定向地址');
+        }
+        assertSafeFetchUrl(current);
+        continue;
+      }
+      return res;
     }
+    throw new Error('重定向次数过多');
   } finally {
     clearTimeout(timeoutId);
   }
@@ -233,7 +271,12 @@ export async function* searchFromApiStream(
       { headers: API_CONFIG.search.headers },
       timeout,
     );
-    if (!response.ok) return;
+    if (!response.ok) {
+      // 4xx（尤其 404）视为“无结果”静默结束；5xx 抛错以便调用方计熔断
+      if (response.status >= 500)
+        throw new Error(`搜索失败: ${response.status}`);
+      return;
+    }
 
     const data = await response.json();
     if (!Array.isArray(data?.list)) return;
@@ -284,8 +327,17 @@ export async function* searchFromApiStream(
           pagePromises.push(promise);
         }
 
-        const settled = await Promise.all(pagePromises);
+        const settled = await Promise.allSettled(pagePromises);
         for (const res of settled
+          .filter(
+            (
+              r,
+            ): r is PromiseFulfilledResult<{
+              page: number;
+              results: SearchResult[];
+            } | null> => r.status === 'fulfilled',
+          )
+          .map((r) => r.value)
           .filter(
             (r): r is { page: number; results: SearchResult[] } =>
               !!r && r.results.length > 0,

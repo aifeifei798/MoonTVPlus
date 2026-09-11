@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     if (un.trim()) {
       try {
         username = Buffer.from(un, 'base64').toString('utf8');
-      } catch (e) {
+      } catch {
         return NextResponse.json({ error: '参数 un 非法' }, { status: 400 });
       }
     }
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
         'Cache-Control': `public, max-age=${cacheTime}, s-maxage=0`,
       },
     });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { sites: [], parses: [], lives: [], ads: [] },
       {

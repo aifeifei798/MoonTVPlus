@@ -20,13 +20,13 @@ jobs:
 
       # 安装 Node.js
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       # 安装 pnpm
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
 
@@ -44,13 +44,13 @@ jobs:
         env:
           GITHUB_ACTIONS: 'true'
 
-      # 提交版本更新
+      # 提交版本更新（仅收版本文件，避免把工作区脏文件全提交）
       - name: Commit version updates
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git checkout main  # 确保在主分支
-          git add .
+          git add VERSION.txt CHANGELOG src/lib/version.ts || true
           git diff --quiet && git diff --staged --quiet || git commit -m "chore: update version files for ${{ github.ref_name }}"
           git push origin main
 

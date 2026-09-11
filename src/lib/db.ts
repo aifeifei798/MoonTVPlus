@@ -47,6 +47,15 @@ export function getStorage(): IStorage {
   return storageInstance;
 }
 
+/** localstorage 模式服务端无 IStorage；误调时抛明确错误而非 TypeError */
+export function getStorageOrThrow(): IStorage {
+  const s = getStorage();
+  if (!s) {
+    throw new Error('localstorage 模式服务端无存储实例');
+  }
+  return s;
+}
+
 // 工具函数：生成存储key
 export function generateStorageKey(source: string, id: string): string {
   return `${source}+${id}`;
