@@ -277,6 +277,20 @@ repo is not a git repo** and nothing here is committed.
   the `sticky z-50` top nav then paints above the fullscreen player ("网页全屏
   上面导航还在"). Verified live with a CDP `elementFromPoint` probe: with
   `isolate` the hit is inside `<header>`, without it the hit is the player.
+- Player audio: default volume is 0.7 (`volume:` option + `lastVolumeRef`, which
+  restores it across episodes); "声音增强" is a GainNode 2x boost
+  (`src/lib/volume-boost.ts`), default ON, toggled from the settings panel.
+  Safe to leave on: the video element already carries
+  `crossOrigin='anonymous'`, so anything that plays is CORS-clean and the
+  MediaElementSource can't newly silence it; when WebAudio is unavailable
+  `ensureVolumeBoost` returns false and the switch flips back. The settings
+  panel also has an "音量" range slider — the control-bar volume popup is
+  hover-only CSS, unreachable on touch, so this is the mobile volume control.
+- Player fullscreen on iPhone: HLS plays through MSE, where
+  `video.webkitEnterFullscreen()` is a no-op, so the native fullscreen button
+  appears dead. A capture listener on `.art-control-fullscreen` falls back to
+  `fullscreenWeb = true` when no fullscreen mode engages within 600ms
+  (desktop/Android go native and never hit the fallback). `theme` is `#0071e3`.
 - Palette is Apple-style, not Tailwind-default: brand accent is the `apple`
   blue scale in `tailwind.config.ts` (`600 #0071e3` / hover `500 #0077ed` /
   dark `400 #2997ff`; the old `green-*` brand is gone, migrated shade for
