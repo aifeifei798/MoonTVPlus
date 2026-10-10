@@ -222,6 +222,35 @@ papered over:
     only its first 512KB. (e) The shared `httpx` client now has
     `Limits(max_connections=100, max_keepalive_connections=20)` and a 10s
     default timeout, and the two `detailCache` dicts evict FIFO at 500 entries.
+16. **去广告 now deletes the ad segments instead of the seam marker.** Upstream's
+    `filterAdsFromM3U8` removed every `#EXT-X-DISCONTINUITY` line and kept all
+    the segments, which is the reported "picture freezes, audio keeps playing
+    after an ad": measured on a live source with ffprobe, the ad TS is a
+    different encoder profile (content h264 1280×536, ad h264 1920×1080), so
+    its SPS/PPS and `moof` differ from the content's; hls.js 1.5.17 emits a
+    fresh init segment only at a discontinuity, so deleting the marker splices
+    the ad's `mdat` under the content's init segment — the video decoder
+    produces no frames (frozen picture) while the AAC track, whose params do
+    match, keeps decoding (sound). The port instead splits the playlist at the
+    markers into groups, signs every segment URI by host + directory (query and
+    file name dropped), requires a dominant signature covering ≥60% of the
+    segments before it will judge anything, and drops a group only when its
+    modal signature differs from the dominant one **and** it owns ≤35% of the
+    timeline (durations, falling back to segment counts) — a run that big is
+    content, not an ad. One `#EXT-X-DISCONTINUITY` is re-emitted at every seam
+    that still has segments on both sides, so hls.js resets its codec state
+    there instead of splicing. Markers are matched with
+    `#EXT-X-DISCONTINUITY(?!-)` so a `#EXT-X-DISCONTINUITY-SEQUENCE:n`
+    directive stays a directive (hls.js's own slow regex tries the `-SEQUENCE`
+    alternative first, and eating it would desync its numbering). When nothing
+    qualifies the manifest is returned byte-identical, markers included, so a
+    source without ads is untouched. Verified on the live 暴风 manifest (363
+    segments, 3 markers → 354 segments, 1 marker, exactly the 26.04s of ads
+    removed, zero content segments lost) plus a 14-case fixture table covering
+    no markers, no dominant signature, same-directory ads, absolute-URL ads on
+    another host, leading/trailing/multiple ad runs, an empty group, a
+    `-SEQUENCE` directive and a CRLF manifest (hls.js's URI capture is
+    `(\S[^\r\n]*)`, so line endings are preserved rather than normalised).
 
 ## Milestones
 
