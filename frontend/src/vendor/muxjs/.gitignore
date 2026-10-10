@@ -1,0 +1,11 @@
+.DS_Store
+/node_modules/
+*~
+*.iml
+*.ipr
+*.iws
+*.swp
+dist-test
+npm-debug.log
+deploy
+.idea

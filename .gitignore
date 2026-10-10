@@ -1,0 +1,19 @@
+# secrets & local runtime (server.sh state, real .env has PASSWORD)
+.env
+.run/
+*.db
+*.db-journal
+
+# python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# frontend build deps & output (rebuild with `pnpm build`)
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# misc
+.DS_Store
