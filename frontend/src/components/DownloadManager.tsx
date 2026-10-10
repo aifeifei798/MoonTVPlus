@@ -2,7 +2,6 @@
 import * as React from 'react';
 import { Download, List, Pause, Play, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Swal from 'sweetalert2';
 
 import { formatTime } from '@/lib/formatTime';
 import { downloadM3U8Video, DownloadProgress, M3U8Task, parseM3U8, PauseResumeController, StreamSaverMode } from '@/lib/m3u8-downloader';
@@ -924,7 +923,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
 
                             // 边下边存模式：提示用户确认并完成流
                             if (streamMode !== 'disabled') {
-                              const result = await Swal.fire({
+                              const result = await (await import('sweetalert2')).default.fire({
                                 title: '立即保存',
                                 text: '立即保存将跳过后续片段下载，直接完成下载。文件将包含目前已下载的片段。\n\n是否继续？',
                                 icon: 'warning',
@@ -984,7 +983,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                 } catch (error) {
                                   // eslint-disable-next-line no-console
                                   console.error('完成下载失败:', error);
-                                  Swal.fire({
+                                  (await import('sweetalert2')).default.fire({
                                     icon: 'error',
                                     title: '完成下载失败',
                                     text: error instanceof Error ? error.message : String(error),
@@ -997,7 +996,7 @@ const DownloadManager = ({ isOpen, onClose }: DownloadManagerProps) => {
                                   ));
                                 }
                               } else {
-                                Swal.fire({
+                                (await import('sweetalert2')).default.fire({
                                   icon: 'error',
                                   title: '无法完成下载',
                                   text: '流未初始化',

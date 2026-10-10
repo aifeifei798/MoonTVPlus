@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import math
 
-from fastapi import Request, Response
+from fastapi import Request
+from fastapi.responses import StreamingResponse
 
-from ..m3u8 import download_ts_segment, parse_m3u8
+from ..m3u8 import parse_m3u8, stream_ts_segment
 from ..url_guard import validate_media_url
 from . import json_response
 
@@ -72,6 +73,19 @@ async def m3u8_parse(request: Request):
         )
 
 
+async def _with_head(head, segments):
+    """把已取出的首块还回流里，供 `StreamingResponse` 接着发。
+
+    `m3u8_proxy` 先推进一次生成器，是为了让"上游 4xx/超时"在 200 提交之前就
+    以原来的 JSON 500 冒出去（buffered 版就是这样）；之后的失败则和 buffered
+    版一样无法回收——字节已经上路了。
+    """
+    if head is not None:
+        yield head
+    async for chunk in segments:
+        yield chunk
+
+
 async def m3u8_proxy(request: Request):
     try:
         url = request.query_params.get("url")
@@ -83,10 +97,23 @@ async def m3u8_proxy(request: Request):
         if not guard.get("ok"):
             return json_response({"error": "地址不被允许", "message": guard.get("reason")}, 403)
 
-        data = await download_ts_segment(url)
+        segments = stream_ts_segment(url)
+        try:
+            head = await segments.__anext__()
+        except StopAsyncIteration:
+            head = None
+        except Exception as error:  # noqa: BLE001 — 首块之前失败，状态码还能改
+            print("代理下载失败:", error)
+            return json_response(
+                {
+                    "error": "下载失败",
+                    "message": str(error) if isinstance(error, Exception) else "未知错误",
+                },
+                500,
+            )
 
-        return Response(
-            content=data,
+        return StreamingResponse(
+            _with_head(head, segments),
             media_type="application/octet-stream",
             headers={"Cache-Control": "public, max-age=31536000"},
         )

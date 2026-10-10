@@ -26,6 +26,7 @@
  */
 
 import * as React from 'react';
+import { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -40,13 +41,13 @@ import GlobalDownloadManager from '@/components/GlobalDownloadManager';
 import { GlobalErrorIndicator } from '@/components/GlobalErrorIndicator';
 
 import Home from '@/app/page';
-import SearchPage from '@/app/search/page';
-import DoubanPage from '@/app/douban/page';
-import LoginPage from '@/app/login/page';
-import PlayPage from '@/app/play/page';
-import RankingPage from '@/app/ranking/page';
-import AdminPage from '@/app/admin/page';
-import WarningPage from '@/app/warning/page';
+const SearchPage = lazy(() => import('@/app/search/page'));
+const DoubanPage = lazy(() => import('@/app/douban/page'));
+const LoginPage = lazy(() => import('@/app/login/page'));
+const PlayPage = lazy(() => import('@/app/play/page'));
+const RankingPage = lazy(() => import('@/app/ranking/page'));
+const AdminPage = lazy(() => import('@/app/admin/page'));
+const WarningPage = lazy(() => import('@/app/warning/page'));
 import NotFound from '@/app/not-found';
 
 /**
@@ -66,7 +67,7 @@ const PAGES = {
 
 export default function RootLayout() {
   const layout = window.RUNTIME_LAYOUT ?? {};
-  const Page = (PAGES as Record<string, () => React.JSX.Element>)[location.pathname] ?? NotFound;
+  const Page = (PAGES as Record<string, React.ComponentType>)[location.pathname] ?? NotFound;
 
   return (
     <ThemeProvider
@@ -95,7 +96,9 @@ export default function RootLayout() {
                 paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom))',
               }}
             >
-              <Page />
+              <Suspense fallback={<div className='flex justify-center items-center h-40'><div className='animate-spin rounded-full h-8 w-8 border-b-2 border-apple-500'></div></div>}>
+                <Page />
+              </Suspense>
             </main>
           </div>
 

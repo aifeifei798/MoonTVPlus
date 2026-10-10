@@ -34,6 +34,7 @@ from ..utils import js_truthy, json_dump, split_key
 CONCURRENCY = 5  # `const CONCURRENCY = 5`
 DETAIL_TIMEOUT_MS = 30000  # `timeout: 30000`
 ZERO_EPISODES = "接口返回 0 集（可能资源已下架或未收录）"
+DETAIL_CACHE_MAX = 500  # `detailCache` 上限，FIFO 淘汰最旧 key
 
 _SENTINEL = object()
 
@@ -121,6 +122,8 @@ async def _stream(username: str, entries: list[tuple[str, dict]]):
         task = detail_cache.get(cache_key)
         if task is None:
             task = asyncio.ensure_future(_fetch_detail(source, id_, fallback_title))
+            if len(detail_cache) >= DETAIL_CACHE_MAX:
+                detail_cache.pop(next(iter(detail_cache)))
             detail_cache[cache_key] = task
         return await task
 

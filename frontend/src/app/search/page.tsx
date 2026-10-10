@@ -284,6 +284,36 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
         let buffer = '';
         let firstResult = true;
 
+        // Batch NDJSON state updates to avoid a re-render per streamed line.
+        let pendingResults: SearchResult[] = [];
+        let pendingFailed: { name: string; key: string; error: string }[] | null = null;
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flushPending = () => {
+          if (pendingResults.length > 0) {
+            const batch = pendingResults;
+            pendingResults = [];
+            setSearchResults((prev) => [...prev, ...batch]);
+            if (firstResult) {
+              setIsLoading(false);
+              firstResult = false;
+            }
+          }
+          if (pendingFailed !== null) {
+            const failed = pendingFailed;
+            pendingFailed = null;
+            setFailedSources(failed);
+          }
+          if (flushTimer !== null) {
+            clearTimeout(flushTimer);
+            flushTimer = null;
+          }
+        };
+        const scheduleFlush = () => {
+          if (flushTimer === null) {
+            flushTimer = setTimeout(flushPending, 150);
+          }
+        };
+
         while (!done) {
           const { value, done: readerDone } = await reader.read();
           done = readerDone;
@@ -298,13 +328,13 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
               try {
                 const json = JSON.parse(line);
                 if (json.pageResults?.length) {
-                  setSearchResults((prev) => [...prev, ...json.pageResults]);
-                  if (firstResult) {
-                    setIsLoading(false);
-                    firstResult = false;
-                  }
+                  pendingResults.push(...json.pageResults);
+                  scheduleFlush();
                 }
-                if (json.failedSources) setFailedSources(json.failedSources);
+                if (json.failedSources) {
+                  pendingFailed = json.failedSources;
+                  scheduleFlush();
+                }
               } catch {
                 //
               }
@@ -315,13 +345,14 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
         if (buffer.trim()) {
           try {
             const json = JSON.parse(buffer);
-            if (json.pageResults) setSearchResults((prev) => [...prev, ...json.pageResults]);
-            if (json.failedSources) setFailedSources(json.failedSources);
+            if (json.pageResults) pendingResults.push(...json.pageResults);
+            if (json.failedSources) pendingFailed = json.failedSources;
           } catch {
             //
           }
         }
 
+        flushPending();
         setIsLoading(false);
       }
     } catch (err: any) {

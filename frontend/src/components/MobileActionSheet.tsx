@@ -1,7 +1,7 @@
 
 import { Radio, X } from 'lucide-react';
 import Image from '@/shims/image';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ActionItem {
@@ -42,6 +42,7 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let animationId: number;
@@ -122,7 +123,11 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
 
     if (isVisible) {
       document.addEventListener('keydown', handleEsc);
-      return () => document.removeEventListener('keydown', handleEsc);
+      const t = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+      return () => {
+        document.removeEventListener('keydown', handleEsc);
+        window.clearTimeout(t);
+      };
     }
   }, [isVisible, onClose]);
 
@@ -182,6 +187,9 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
       />
 
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className="relative w-full max-w-lg mx-4 mb-4 bg-white dark:bg-black rounded-2xl shadow-2xl transition-all duration-200 ease-out"
         onTouchMove={(e) => {
           e.stopPropagation();
@@ -231,7 +239,9 @@ const MobileActionSheet: React.FC<MobileActionSheetProps> = ({
           </div>
 
           <button
+            ref={closeButtonRef}
             onClick={onClose}
+            aria-label="关闭"
             className="p-2 rounded-full hover:bg-[#f5f5f7] dark:hover:bg-[#1d1d1f] transition-colors duration-150"
           >
             <X size={20} className="text-gray-500 dark:text-gray-400" />

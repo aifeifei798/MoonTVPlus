@@ -5,7 +5,6 @@ import * as React from 'react';
 import { ChevronRight } from 'lucide-react';
 import Link from '@/shims/link';
 import { Suspense, useEffect, useRef, useState } from 'react';
-import Swal from 'sweetalert2';
 
 import {
   BangumiCalendarData,
@@ -638,7 +637,7 @@ function HomeClient() {
   };
 
   // 点击进度圆圈：展示刷新结果（成功/失败明细），失败时可重试
-  const handleShowRefreshResult = () => {
+  const handleShowRefreshResult = async () => {
     const failed = refreshFailedRef.current;
     const { success, failed: failedCount, updated, total, running } = refreshProgress;
 
@@ -662,7 +661,7 @@ function HomeClient() {
 
     const canRetry = failed.length > 0 && !running;
 
-    Swal.fire({
+    (await import('sweetalert2')).default.fire({
       title: running ? '正在刷新集数…' : '刷新结果',
       html: `
         <div class="text-sm text-gray-600 dark:text-gray-300">
@@ -934,7 +933,7 @@ function HomeClient() {
                   <button
                     className='text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                     onClick={async () => {
-                      const { isConfirmed } = await Swal.fire({
+                      const { isConfirmed } = await (await import('sweetalert2')).default.fire({
                         title: '确认清空',
                         text: '确定要清空所有收藏吗？',
                         icon: 'warning',
@@ -945,7 +944,7 @@ function HomeClient() {
                       if (isConfirmed) {
                         await clearAllFavorites();
                         setFavoriteItems([]);
-                        Swal.fire({
+                        (await import('sweetalert2')).default.fire({
                           icon: 'success',
                           title: '已清空',
                           text: '所有收藏已清空',

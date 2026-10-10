@@ -11,6 +11,21 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none; /* Chrome, Safari and Opera */
   }
+
+  /* 触屏设备没有 hover：VideoCard 上的播放键/遮罩/操作条/豆瓣入口平时靠
+     group-hover 才出现，手机上必须常显，否则只能靠 500ms 长按。
+     用 !important 才能压过同级的 opacity-0 / translate-y-2 工具类。
+     只放在 @media (hover: none) 里：桌面端仍然是 hover 才出现。 */
+  @media (hover: none) {
+    .touch-visible {
+      opacity: 1 !important;
+    }
+
+    .touch-slide-up {
+      --tw-translate-y: 0px !important;
+      transform: translate(var(--tw-translate-x), var(--tw-translate-y)) !important;
+    }
+  }
 }
 
 :root {

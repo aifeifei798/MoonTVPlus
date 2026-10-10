@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { ChevronDown, Save, Settings, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import Swal from 'sweetalert2';
 
 import { getAvailableApiSitesClient } from '@/lib/config.client';
 import { getRequestTimeout } from '@/lib/utils';
@@ -77,12 +76,12 @@ export default function SourceSelector({
     onChange([]);
   };
 
-  const handleSaveSources = () => {
+  const handleSaveSources = async () => {
     localStorage.setItem('savedSources', JSON.stringify(selectedSources));
     localStorage.setItem('requestTimeout', timeoutSeconds.toString());
     
     // 显示保存成功提示
-    Swal.fire({
+    (await import('sweetalert2')).default.fire({
       icon: 'success',
       title: '保存成功',
       text: '只保存在本地',

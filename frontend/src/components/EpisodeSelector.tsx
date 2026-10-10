@@ -20,6 +20,26 @@ interface VideoInfo {
   hasError?: boolean; // 添加错误状态标识
 }
 
+// 模块级探测缓存：按剧集 URL 去重并发 + 缓存解析结果，10 分钟 TTL。
+// key: episode URL, value: { promise(在途) 或 info(已解析), timestamp }
+const PROBE_CACHE_TTL_MS = 10 * 60 * 1000;
+const probeCache = new Map<
+  string,
+  { promise: Promise<VideoInfo> | null; info?: VideoInfo; ts: number }
+>();
+
+function getCachedProbe(episodeUrl: string): Promise<VideoInfo> | VideoInfo | null {
+  const entry = probeCache.get(episodeUrl);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > PROBE_CACHE_TTL_MS) {
+    probeCache.delete(episodeUrl);
+    return null;
+  }
+  if (entry.info) return entry.info;
+  if (entry.promise) return entry.promise;
+  return null;
+}
+
 interface EpisodeSelectorProps {
   /** 总集数 */
   totalEpisodes: number;
@@ -123,6 +143,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   }, [currentPage, descending, pageCount]);
 
   // 获取视频信息的函数 - 移除 attemptedSources 依赖避免不必要的重新创建
+  // 节流：命中模块级缓存(episode URL, 10min TTL)则直接复用；在途请求去重。
   const getVideoInfo = useCallback(async (source: SearchResult) => {
     const sourceKey = `${source.source}-${source.id}`;
 
@@ -141,10 +162,33 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
     // 标记为已尝试
     setAttemptedSources((prev) => new Set(prev).add(sourceKey));
 
+    // 先查模块级缓存（按 episode URL）
+    const cached = getCachedProbe(episodeUrl);
+    if (cached) {
+      try {
+        const info = cached instanceof Promise ? await cached : cached;
+        setVideoInfoMap((prev) => new Map(prev).set(sourceKey, info));
+      } catch (error) {
+        setVideoInfoMap((prev) =>
+          new Map(prev).set(sourceKey, {
+            quality: '错误',
+            loadSpeed: '未知',
+            pingTime: 0,
+            hasError: true,
+          })
+        );
+      }
+      return;
+    }
+
     try {
-      const info = await getVideoResolutionFromM3u8(episodeUrl);
+      const promise = getVideoResolutionFromM3u8(episodeUrl);
+      probeCache.set(episodeUrl, { promise, ts: Date.now() });
+      const info = await promise;
+      probeCache.set(episodeUrl, { promise: null, info, ts: Date.now() });
       setVideoInfoMap((prev) => new Map(prev).set(sourceKey, info));
     } catch (error) {
+      probeCache.delete(episodeUrl);
       // 失败时保存错误状态
       setVideoInfoMap((prev) =>
         new Map(prev).set(sourceKey, {
@@ -204,6 +248,7 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   });
 
   // 当切换到换源tab并且有源数据时，异步获取视频信息 - 移除 attemptedSources 依赖避免循环触发
+  // 节流：只探测当前选中/可见的源，不再全量批量探测所有 tab 源。
   useEffect(() => {
     const fetchVideoInfosInBatches = async () => {
       if (
@@ -213,25 +258,24 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
       )
         return;
 
-      // 筛选出尚未测速的播放源
-      const pendingSources = availableSources.filter((source) => {
-        const sourceKey = `${source.source}-${source.id}`;
-        return !attemptedSourcesRef.current.has(sourceKey);
-      });
+      // 只探测当前选中的源（visible/selected tab），避免全量探测所有源
+      const current =
+        availableSources.find(
+          (s) =>
+            s.source?.toString() === currentSource?.toString() &&
+            s.id?.toString() === currentId?.toString()
+        ) ?? availableSources[0];
+      if (!current) return;
 
-      if (pendingSources.length === 0) return;
+      const sourceKey = `${current.source}-${current.id}`;
+      if (attemptedSourcesRef.current.has(sourceKey)) return;
 
-      const batchSize = Math.ceil(pendingSources.length / 2);
-
-      for (let start = 0; start < pendingSources.length; start += batchSize) {
-        const batch = pendingSources.slice(start, start + batchSize);
-        await Promise.all(batch.map(getVideoInfo));
-      }
+      await getVideoInfo(current);
     };
 
     fetchVideoInfosInBatches();
     // 依赖项保持与之前一致
-  }, [activeTab, availableSources, getVideoInfo, optimizationEnabled]);
+  }, [activeTab, availableSources, getVideoInfo, optimizationEnabled, currentSource, currentId]);
 
   // 升序分页标签
   const categoriesAsc = useMemo(() => {
@@ -663,7 +707,12 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                                 }
                               }
 
-                              return null;
+                              // 未探测/探测中：占位符，保持布局稳定
+                              return (
+                                <div className='bg-[#f5f5f7]0/10 dark:bg-gray-400/20 text-gray-400 px-1.5 py-0 rounded text-xs flex-shrink-0 min-w-[50px] text-center'>
+                                  ...
+                                </div>
+                              );
                             })()}
                           </div>
 
@@ -704,6 +753,11 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                                   ); // 占位div
                                 }
                               }
+                              return (
+                                <div className='text-gray-400 font-medium text-xs'>
+                                  ...
+                                </div>
+                              );
                             })()}
                           </div>
                         </div>

@@ -74,6 +74,17 @@ class DbManager:
     async def delete_play_record(self, user_name, key):
         await get_storage().delete_play_record(user_name, key)
 
+    async def delete_all_play_records(self, user_name):
+        """清空播放记录：后端有单条 DELETE 方法则直调，否则回退逐条删。"""
+        storage = get_storage()
+        method = getattr(storage, "delete_all_play_records", None)
+        if method:
+            await method(user_name)
+            return
+        all_records = await storage.get_all_play_records(user_name)
+        for key in all_records:
+            await storage.delete_play_record(user_name, key)
+
     # ---------- 收藏 ----------
     async def get_favorite(self, user_name, key):
         return await get_storage().get_favorite(user_name, key)
@@ -87,6 +98,16 @@ class DbManager:
     async def delete_favorite(self, user_name, key):
         await get_storage().delete_favorite(user_name, key)
 
+    async def delete_all_favorites(self, user_name):
+        storage = get_storage()
+        method = getattr(storage, "delete_all_favorites", None)
+        if method:
+            await method(user_name)
+            return
+        all_favorites = await storage.get_all_favorites(user_name)
+        for key in all_favorites:
+            await storage.delete_favorite(user_name, key)
+
     # ---------- 追更 ----------
     async def get_following(self, user_name, key):
         return await get_storage().get_following(user_name, key)
@@ -99,6 +120,16 @@ class DbManager:
 
     async def delete_following(self, user_name, key):
         await get_storage().delete_following(user_name, key)
+
+    async def delete_all_followings(self, user_name):
+        storage = get_storage()
+        method = getattr(storage, "delete_all_followings", None)
+        if method:
+            await method(user_name)
+            return
+        all_followings = await storage.get_all_followings(user_name)
+        for key in all_followings:
+            await storage.delete_following(user_name, key)
 
     # ---------- 用户 ----------
     async def register_user(self, user_name, password):
@@ -162,6 +193,12 @@ class DbManager:
         method = getattr(storage, "set_admin_config", None)
         if method:
             await method(config)
+        try:
+            from ..config import invalidate_config_cache
+
+            invalidate_config_cache()
+        except Exception:  # noqa: BLE001 — config 未加载时无缓存可清
+            pass
 
     # ---------- 跳过片头片尾配置 ----------
     async def get_skip_config(self, user_name, source, id_):
