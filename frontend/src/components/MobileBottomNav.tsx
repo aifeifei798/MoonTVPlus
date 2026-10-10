@@ -96,7 +96,10 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
         minHeight: 'calc(3.5rem + env(safe-area-inset-bottom))',
       }}
     >
-      <ul className='flex items-center overflow-x-auto scrollbar-hide'>
+      {/* 8 个入口一屏排下：上游是每项 20vw + 横滑（滚动条还藏了），
+          手机上只能看到 5 个，剩下 3 个像丢了一样。这里改 flex 均分，
+          再小的屏也不用滑 */}
+      <ul className='flex items-stretch'>
         {navItems.map((item) => {
           const active = isActive(item.href);
           
@@ -112,15 +115,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
           return (
             <li
               key={item.href}
-              className='flex-shrink-0'
-              style={{
-                width: simpleMode ? '50vw' : '20vw',
-                minWidth: simpleMode ? '50vw' : '20vw'
-              }}
+              className='flex-1 min-w-0'
             >
               <Link
                 href={item.href}
-                className='flex flex-col items-center justify-center w-full h-14 gap-1 text-xs'
+                className='flex flex-col items-center justify-center w-full h-14 gap-1 px-0.5 text-xs'
                 onClick={() => {
                   // 如果不是当前激活的链接，则触发加载动画
                   if (!active) {
@@ -129,17 +128,16 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
                 }}
               >
                 <item.icon
-                  className={`h-6 w-6 ${active
+                  className={`h-6 w-6 shrink-0 ${active
                       ? 'text-apple-600 dark:text-apple-400'
                       : 'text-gray-500 dark:text-gray-400'
                     }`}
                 />
                 <span
-                  className={
-                    active
+                  className={`whitespace-nowrap leading-none ${active
                       ? 'text-apple-600 dark:text-apple-400'
                       : 'text-gray-600 dark:text-gray-300'
-                  }
+                    }`}
                 >
                   {item.label}
                 </span>
