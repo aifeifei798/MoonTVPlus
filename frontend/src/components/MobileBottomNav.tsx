@@ -2,7 +2,7 @@
 
 
 import * as React from 'react';
-import { Cat, Clapperboard, Clover, Compass, Film, Home, Search, Tv } from 'lucide-react';
+import { Cat, Clapperboard, Clover, Compass, Film, Home, Search, Trophy, Tv } from 'lucide-react';
 import Link from '@/shims/link';
 import { usePathname } from '@/shims/navigation';
 import { memo, useEffect, useState } from 'react';
@@ -55,6 +55,11 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
       icon: Clover,
       label: '综艺',
       href: '/douban?type=show',
+    },
+    {
+      icon: Trophy,
+      label: '榜单',
+      href: '/ranking',
     },
   ]);
 
@@ -119,7 +124,7 @@ const MobileBottomNav = ({ activePath }: MobileBottomNavProps) => {
             >
               <Link
                 href={item.href}
-                className='flex flex-col items-center justify-center w-full h-14 gap-1 px-0.5 text-xs'
+                className='flex flex-col items-center justify-center w-full h-14 gap-1 px-0.5 text-[11px]'
                 onClick={() => {
                   // 如果不是当前激活的链接，则触发加载动画
                   if (!active) {
