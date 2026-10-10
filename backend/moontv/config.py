@@ -22,8 +22,10 @@ Three things differ from the TS module on purpose:
 
 from __future__ import annotations
 
+import copy
 import json
 import os
+import time
 
 from .env import (
     ANNOUNCEMENT,
@@ -73,6 +75,20 @@ API_CONFIG = {
 # module state, mirroring `let fileConfig` / `let cachedConfig`
 file_config: dict = {}
 cached_config: dict | None = None
+
+# `get_config` 每调用一次读一次 admin_config 表；热点路由（搜索/豆瓣/在线心跳）
+# 高频调用，5s TTL 挡掉重复的 DB 读 + merge 开销。调用方无需改动，同形状返回。
+# 返回的是深拷贝：路由拿到的是"像刚解析出来的 JSON"那样的独立对象（改
+# `admin_config["UserConfig"]["Users"]` 不会污染缓存，失败路径也不会把没存进
+# 库的改动泄漏给 5s 内的其他请求）——正是没有缓存之前每次读到的东西。
+_CONFIG_TTL_S = 5.0
+_CONFIG_CACHE: dict = {"data": None, "ts": 0.0}
+
+
+def invalidate_config_cache() -> None:
+    """写配置后调用，使下一次 `get_config` 重新读表。"""
+    _CONFIG_CACHE["data"] = None
+    _CONFIG_CACHE["ts"] = 0.0
 
 
 def _config_file_path() -> str:
@@ -194,6 +210,7 @@ def refine_config(admin_config: dict) -> dict:
 async def init_config() -> None:
     """`initConfig` — non-localstorage path."""
     global cached_config, file_config
+    invalidate_config_cache()
     if cached_config:
         return
 
@@ -324,11 +341,19 @@ async def get_config() -> dict:
     """`getConfig` — non-localstorage path."""
     global cached_config, file_config
 
+    now = time.monotonic()
+    if _CONFIG_CACHE["data"] is not None and now - _CONFIG_CACHE["ts"] < _CONFIG_TTL_S:
+        return copy.deepcopy(_CONFIG_CACHE["data"])
+
     storage = get_storage()
     admin_config = await storage.get_admin_config() if hasattr(storage, "get_admin_config") else None
 
     if admin_config is None:
         await init_config()
+        if cached_config is not None:
+            _CONFIG_CACHE["data"] = cached_config
+            _CONFIG_CACHE["ts"] = time.monotonic()
+            return copy.deepcopy(cached_config)
         return cached_config
 
     if not admin_config.get("CustomCategories"):
@@ -438,7 +463,9 @@ async def get_config() -> dict:
         user_config.setdefault("Users", []).insert(0, {"username": owner_user, "role": "owner"})
 
     cached_config = admin_config
-    return cached_config
+    _CONFIG_CACHE["data"] = admin_config
+    _CONFIG_CACHE["ts"] = time.monotonic()
+    return copy.deepcopy(admin_config)
 
 
 def config_self_check(admin_config: dict) -> dict:
@@ -559,6 +586,7 @@ async def reset_config() -> None:
     for field in ("ConfigFile", "SiteConfig", "UserConfig", "SourceConfig", "SubscriptionConfig"):
         cached_config[field] = admin_config[field]
     cached_config["CustomCategories"] = admin_config.get("CustomCategories") or []
+    invalidate_config_cache()
 
 
 async def get_cache_time() -> int:
@@ -603,3 +631,4 @@ async def get_available_api_sites(username: str | None = None) -> list[dict]:
 async def set_cached_config(config: dict) -> None:
     global cached_config
     cached_config = config
+    invalidate_config_cache()

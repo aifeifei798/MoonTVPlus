@@ -30,6 +30,18 @@ from ..utils import split_key
 # search routes, which leave `fetchWithTimeout`'s default in place.
 DETAIL_TIMEOUT_MS = 30000
 
+# `detailCache` 上限：一次刷新里最多留 500 条详情，FIFO 淘汰最早的 key。
+# 这个 dict 本来只在一次 `_refresh_record_and_favorites` 内存活，上限只是兜底。
+DETAIL_CACHE_MAX = 500
+
+
+def _cache_put(cache: dict, key: str, value) -> None:
+    """FIFO 淘汰至上限内的 put（同一 key 重复 put 只刷新值，不动顺序）。"""
+    if key not in cache:
+        while len(cache) >= DETAIL_CACHE_MAX:
+            cache.pop(next(iter(cache)))
+    cache[key] = value
+
 
 def _iso_now() -> str:
     """`new Date().toISOString()` — UTC, milliseconds, trailing `Z`."""
@@ -91,7 +103,7 @@ async def _refresh_record_and_favorites() -> None:
             except Exception as err:  # noqa: BLE001
                 print(f"获取视频详情失败 ({source}+{id_}):", err)
                 return None
-            detail_cache[key] = detail
+            _cache_put(detail_cache, key, detail)
             return detail
 
         for user in users:

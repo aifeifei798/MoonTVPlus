@@ -21,7 +21,9 @@ from urllib.parse import urljoin, urlsplit, parse_qsl
 
 from .fetch import get_http_client
 
-_FETCH_TIMEOUT_S = 30.0  # upstream's plain `fetch(url)`; no timeout was passed
+# 上游是裸 `fetch(url)`（没传 timeout）；共享 client 的默认 10s（`fetch.py`）就是
+# 这里的上限，播放列表/AES key 同样适用——一个 hang 住的上游不该把请求挂住。
+_FETCH_TIMEOUT_S = 10.0
 
 
 def apply_url(target: str, base: str) -> str:
@@ -168,3 +170,31 @@ async def download_ts_segment(url: str) -> bytes:
     if status >= 400:
         raise Exception(f"下载失败: {status}")
     return data
+
+
+_TS_MAX_BYTES = 2 * 1024 * 1024  # 单个 ts 分片上限，超限断流
+_TS_CHUNK = 64 * 1024
+_TS_TIMEOUT_S = 10.0
+
+
+async def stream_ts_segment(url: str):
+    """`downloadTsSegment` 的流式版：64KB 分块 yield，超 ~2MB 断流，10s 超时。
+
+    状态码语义与 buffered 版一致（>=400 即抛 `下载失败: <status>`）。
+    """
+    client = get_http_client()
+    response = await client.send(
+        client.build_request("GET", url, timeout=_TS_TIMEOUT_S), stream=True
+    )
+    if response.status_code >= 400:
+        await response.aclose()
+        raise Exception(f"下载失败: {response.status_code}")
+    try:
+        sent = 0
+        async for chunk in response.aiter_bytes(_TS_CHUNK):
+            sent += len(chunk)
+            if sent > _TS_MAX_BYTES:
+                break
+            yield chunk
+    finally:
+        await response.aclose()

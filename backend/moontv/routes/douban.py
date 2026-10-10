@@ -168,6 +168,8 @@ async def douban_top250(page_start) -> json_response:
             html = await fetch_douban_html(
                 f"https://movie.douban.com/top250?start={_num(page_start)}&filter="
             )
+            # 正则回溯昂贵，只喂前 512KB（Top250 条目全在页首）。
+            html = html[: 512 * 1024]
             list_ = []
             for match in TOP250_PATTERN.finditer(html):
                 subject_id, title, cover, rate = match.groups()

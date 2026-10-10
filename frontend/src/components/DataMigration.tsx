@@ -35,6 +35,7 @@ const AlertModal = ({
   timer
 }: AlertModalProps) => {
   const [isVisible, setIsVisible] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // 控制动画状态
   useEffect(() => {
@@ -49,6 +50,21 @@ const AlertModal = ({
       setIsVisible(false);
     }
   }, [isOpen, timer, onClose]);
+
+  // Escape 关闭 + 打开时聚焦关闭按钮
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    // focus close button on mount
+    const t = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      window.clearTimeout(t);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -80,7 +96,7 @@ const AlertModal = ({
 
   return createPortal(
     <div className={`fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} onClick={onClose}>
-      <div className={`bg-white dark:bg-[#1d1d1f] rounded-lg shadow-xl max-w-md w-full border ${getBgColor()} transition-all duration-200 ${isVisible ? 'scale-100' : 'scale-95'}`} onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`bg-white dark:bg-[#1d1d1f] rounded-lg shadow-xl max-w-md w-full border ${getBgColor()} transition-all duration-200 ${isVisible ? 'scale-100' : 'scale-95'}`} onClick={(e) => e.stopPropagation()}>
         <div className="p-6 text-center">
           <div className="flex justify-center mb-4">
             {getIcon()}
@@ -107,6 +123,7 @@ const AlertModal = ({
             {showConfirm && onConfirm ? (
               <>
                 <button
+                  ref={closeButtonRef}
                   onClick={onClose}
                   className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-[#f5f5f7] dark:bg-[#2d2d2f] hover:bg-[#e8e8ed] dark:hover:bg-[#3a3a3c] rounded-lg transition-colors"
                 >
@@ -124,6 +141,7 @@ const AlertModal = ({
               </>
             ) : (
               <button
+                ref={closeButtonRef}
                 onClick={onClose}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
               >

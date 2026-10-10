@@ -39,7 +39,7 @@ BATCH_LIMIT = 100
 # ---------------------------------------------------------------------------
 # 表结构：d1-init.sql 的 CREATE TABLE 段，逐行（去掉 Cloudflare 的 status SELECTs）
 # ---------------------------------------------------------------------------
-SCHEMA = """
+SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
@@ -147,6 +147,24 @@ CREATE TABLE IF NOT EXISTS admin_config (
 );
 """
 
+# ---------------------------------------------------------------------------
+# 索引：热点查询（按 user 取列表、按 user+title 去重）在数据量大后是全表扫描。
+# 单独一段，`__init__` 每次 connect 都无条件执行——既有库不会因为“表已存在”
+# 而跳过索引（executescript 里的 CREATE INDEX IF NOT EXISTS 只在建表那次跑过）。
+# ---------------------------------------------------------------------------
+SCHEMA_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_play_records_user_updated ON play_records(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_play_records_user_title ON play_records(user_id, title);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_followings_user ON followings(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_skip_user ON skip_configs(user_id, source, video_id);
+"""
+
+# 全量脚本（表 + 索引），保留给想一次跑完的调用方。`__init__` 不执行这一份，
+# 而是分两段执行：见那里的注释。
+SCHEMA = SCHEMA_TABLES + SCHEMA_INDEXES
+
 # `JSON.stringify` — no spaces, raw unicode. `strip_none` first: TS objects never
 # carry an explicit `undefined`, and every writer here reads optional fields with
 # `.get()`, so a `None` is a field MoonTV would have omitted.
@@ -177,7 +195,12 @@ class SqliteStorage:
         # rolled back on restart. Only `_run_batch` manages its own
         # transaction (one per 100-row chunk, like D1's `batch()`).
         self._conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
-        self._conn.executescript(SCHEMA)
+        # 两段都跑，且都在每次构造时跑（不判断库文件是否新建）：`SCHEMA_TABLES`
+        # 对既有库是 no-op，`SCHEMA_INDEXES` 的 CREATE INDEX IF NOT EXISTS 才是
+        # 升级路径——老库缺的这些索引必须在进程启动时就补上，而不是等某张表被
+        # 重建。`SCHEMA`（表+索引合成的一份）只是给外部一次跑完用的入口。
+        self._conn.executescript(SCHEMA_TABLES)
+        self._conn.executescript(SCHEMA_INDEXES)
 
     # ---------- 用户相关 ----------
     def _get_user_id(self, username: str) -> int | None:
@@ -227,16 +250,24 @@ class SqliteStorage:
         user_id = self._get_user_id(user_name)
         if not user_id:
             return
-        for table in (
-            "play_records",
-            "favorites",
-            "followings",
-            "search_history",
-            "skip_configs",
-            "today_updated",
-        ):
-            self._conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
-        self._conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        # 单事务包裹 7 条 DELETE（autocommit 下显式 BEGIN/COMMIT），避免中途失败留半删用户。
+        self._conn.execute("BEGIN")
+        try:
+            for table in (
+                "play_records",
+                "favorites",
+                "followings",
+                "search_history",
+                "skip_configs",
+                "today_updated",
+            ):
+                self._conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+            self._conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+        else:
+            self._conn.execute("COMMIT")
 
     async def get_all_users(self) -> list[str]:
         return [row[0] for row in self._conn.execute("SELECT username FROM users").fetchall()]
@@ -369,6 +400,13 @@ class SqliteStorage:
             (user_id, source, video_id),
         )
 
+    async def delete_all_play_records(self, user_name: str) -> None:
+        """单条 DELETE 清空用户全部播放记录（替代 get_all + 逐条删）。"""
+        user_id = self._get_user_id(user_name)
+        if not user_id:
+            return
+        self._conn.execute("DELETE FROM play_records WHERE user_id = ?", (user_id,))
+
     # ---------- 收藏 ----------
     def _favorite_from_row(self, row) -> dict:
         (_id, _uid, _src, _vid, title, source_name, year, cover, total_episodes, save_time, search_title, *_rest) = row
@@ -449,6 +487,13 @@ class SqliteStorage:
             "DELETE FROM favorites WHERE user_id = ? AND source = ? AND video_id = ?",
             (user_id, source, video_id),
         )
+
+    async def delete_all_favorites(self, user_name: str) -> None:
+        """单条 DELETE 清空用户全部收藏。"""
+        user_id = self._get_user_id(user_name)
+        if not user_id:
+            return
+        self._conn.execute("DELETE FROM favorites WHERE user_id = ?", (user_id,))
 
     # ---------- 追更 ----------
     def _following_from_row(self, row) -> dict:
@@ -534,6 +579,13 @@ class SqliteStorage:
             "DELETE FROM followings WHERE user_id = ? AND source = ? AND video_id = ?",
             (user_id, source, video_id),
         )
+
+    async def delete_all_followings(self, user_name: str) -> None:
+        """单条 DELETE 清空用户全部追更。"""
+        user_id = self._get_user_id(user_name)
+        if not user_id:
+            return
+        self._conn.execute("DELETE FROM followings WHERE user_id = ?", (user_id,))
 
     # ---------- 搜索历史 ----------
     async def get_search_history(self, user_name: str) -> list[str]:

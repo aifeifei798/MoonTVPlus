@@ -2039,10 +2039,24 @@ export function usePlayEngine() {
               // 这里只需一个适度的内存缓冲，避免移动端内存压力。
               // 弱网优化：缓冲拉长到 2 分钟，网络抖动时不容易转圈；
               // 实际内存占用仍由 maxBufferSize（90MB）兜底。
-              maxBufferLength: 120, // 前向缓冲目标 120s
-              maxMaxBufferLength: 600, // 前向缓冲硬上限 600s
-              backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
-              maxBufferSize: 90 * 1000 * 1000, // 约 90MB，超出后触发清理
+              // 移动端（触屏粗指针或移动 UA）减半，降低内存/流量压力。
+              ...(typeof window !== 'undefined' &&
+              (window.matchMedia?.('(pointer:coarse)').matches ||
+                /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(
+                  navigator.userAgent || ''
+                ))
+                ? {
+                    maxBufferLength: 60, // 前向缓冲目标 60s（移动端减半）
+                    maxMaxBufferLength: 300, // 前向缓冲硬上限 300s（移动端减半）
+                    backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
+                    maxBufferSize: 45 * 1000 * 1000, // 约 45MB（移动端减半）
+                  }
+                : {
+                    maxBufferLength: 120, // 前向缓冲目标 120s
+                    maxMaxBufferLength: 600, // 前向缓冲硬上限 600s
+                    backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
+                    maxBufferSize: 90 * 1000 * 1000, // 约 90MB，超出后触发清理
+                  }),
 
               /* 自定义 loader：去广告 + 缓存优先 */
               loader: CustomHlsJsLoader,

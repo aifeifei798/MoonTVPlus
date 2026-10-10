@@ -20,7 +20,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from ..auth import get_auth_info_from_cookie
-from ..config import config_self_check, get_config
+from ..config import config_self_check, get_config, invalidate_config_cache
 from ..env import STORAGE_TYPE, env
 from ..routes import find_user, json_response, user_guard
 from ..storage.db import Db
@@ -55,6 +55,10 @@ async def user_online(request: Request):
             return json_response({"error": "未登录"}, 401)
         username = auth["username"]
 
+        # 这个 handler 是整份 config 的 read-modify-write（读出来改 lastOnline
+        # 再写回去），所以不能用 5s 缓存里那份：管理员同时保存的话，过期的读
+        # 会把对方的改动覆盖掉。先清缓存，拿到的就是当时最新的 config。
+        invalidate_config_cache()
         admin_config = await get_config()
         user_entry = find_user(admin_config, username)
         if not user_entry:
@@ -125,14 +129,8 @@ async def playrecords_delete(request: Request):
                 return json_response({"error": "Invalid key format"}, 400)
             await Db.delete_play_record(username, f"{source}+{id_}")
         else:
-            # Upstream fanned the sweep out with `Promise.all`; the sqlite and
-            # redis backends both serialize writes, so the loop is the same
-            # work without a hundred coroutines competing for the cursor.
-            all = await Db.get_all_play_records(username)
-            for k in all:
-                source, id_ = split_key(k)
-                if source and id_:
-                    await Db.delete_play_record(username, f"{source}+{id_}")
+            # 单条 DELETE 清空（sqlite 一条语句，替代 get_all + 逐条删的 N+1）。
+            await Db.delete_all_play_records(username)
 
         return json_response({"success": True})
     except Exception as error:  # noqa: BLE001
@@ -201,11 +199,7 @@ async def favorites_delete(request: Request):
                 return json_response({"error": "Invalid key format"}, 400)
             await Db.delete_favorite(username, f"{source}+{id_}")
         else:
-            all = await Db.get_all_favorites(username)
-            for k in all:
-                source, id_ = split_key(k)
-                if source and id_:
-                    await Db.delete_favorite(username, f"{source}+{id_}")
+            await Db.delete_all_favorites(username)
 
         return json_response({"success": True})
     except Exception as error:  # noqa: BLE001
@@ -274,11 +268,7 @@ async def followings_delete(request: Request):
                 return json_response({"error": "Invalid key format"}, 400)
             await Db.delete_following(username, f"{source}+{id_}")
         else:
-            all = await Db.get_all_followings(username)
-            for k in all:
-                source, id_ = split_key(k)
-                if source and id_:
-                    await Db.delete_following(username, f"{source}+{id_}")
+            await Db.delete_all_followings(username)
 
         return json_response({"success": True})
     except Exception as error:  # noqa: BLE001

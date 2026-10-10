@@ -36,7 +36,6 @@ import {
 } from 'lucide-react';
 import { GripVertical } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import Swal from 'sweetalert2';
 
 import { AdminConfig, AdminConfigResult } from '@/lib/admin.types';
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
@@ -50,11 +49,11 @@ import DataMigration from '@/components/DataMigration';
 import PageLayout from '@/components/PageLayout';
 
 // 统一弹窗方法（必须在首次使用前定义）
-const showError = (message: string) =>
-  Swal.fire({ icon: 'error', title: '错误', text: message });
+const showError = async (message: string) =>
+  (await import('sweetalert2')).default.fire({ icon: 'error', title: '错误', text: message });
 
-const showSuccess = (message: string) =>
-  Swal.fire({
+const showSuccess = async (message: string) =>
+  (await import('sweetalert2')).default.fire({
     icon: 'success',
     title: '成功',
     text: message,
@@ -246,7 +245,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   };
 
   const handleDeleteUser = async (username: string) => {
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认删除用户',
       text: `删除用户 ${username} 将同时删除其搜索历史、播放记录和收藏夹，此操作不可恢复！`,
       icon: 'warning',
@@ -292,7 +291,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           .join('')}
       </div>`;
 
-    const { value, isConfirmed } = await Swal.fire({
+    const { value, isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '新建分组',
       width: '800px',
       html:
@@ -323,7 +322,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
         const nameEl = document.getElementById('swal-input-group-name') as HTMLInputElement | null;
         const name = nameEl?.value?.trim();
         if (!name) {
-          Swal.showValidationMessage('分组名称不能为空');
+          void import('sweetalert2').then((m) => m.default.showValidationMessage('分组名称不能为空'));
           return null as unknown as { name: string; sourceKeys: string[] };
         }
         const checked = Array.from(
@@ -418,7 +417,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   };
 
   const handleDeleteGroup = async (name: string) => {
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认删除分组',
       text: `删除分组 ${name} 后，该分组下的用户不会再受限于此分组的视频源。`,
       icon: 'warning',
@@ -436,7 +435,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
     const groups = config?.UserConfig?.Groups || [];
     setSelectedGroupInDialog(''); // 重置选中状态
     
-    await Swal.fire({
+    await (await import('sweetalert2')).default.fire({
       title: '分组管理',
       html: `
         <div class="text-left">
@@ -593,7 +592,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
           .join('')}
       </div>`;
 
-    const { value, isConfirmed } = await Swal.fire({
+    const { value, isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '编辑分组',
       width: '800px',
       html:
@@ -624,7 +623,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
         const nameEl = document.getElementById('swal-edit-group-name') as HTMLInputElement | null;
         const name = nameEl?.value?.trim();
         if (!name) {
-          Swal.showValidationMessage('分组名称不能为空');
+          void import('sweetalert2').then((m) => m.default.showValidationMessage('分组名称不能为空'));
           return null as unknown as { name: string; sourceKeys: string[] };
         }
         const checked = Array.from(
@@ -1224,7 +1223,7 @@ const VideoSourceConfig = ({
   const handleBatchDisable = async () => {
     if (selectedSources.size === 0) return;
     
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认批量禁用',
       text: `确定要禁用选中的 ${selectedSources.size} 个视频源吗？`,
       icon: 'warning',
@@ -1249,7 +1248,7 @@ const VideoSourceConfig = ({
   const handleBatchEnable = async () => {
     if (selectedSources.size === 0) return;
     
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认批量启用',
       text: `确定要启用选中的 ${selectedSources.size} 个视频源吗？`,
       icon: 'warning',
@@ -1286,7 +1285,7 @@ const VideoSourceConfig = ({
       confirmText += `\n注意：有 ${nonDeletableCount} 个系统默认源无法删除，将被跳过。`;
     }
     
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认批量删除',
       text: confirmText,
       icon: 'warning',
@@ -3067,7 +3066,7 @@ function AdminPageClient() {
 
   // 新增: 重置配置处理函数
   const handleResetConfig = async () => {
-    const { isConfirmed } = await Swal.fire({
+    const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认重置配置',
       text: '此操作将重置用户封禁和管理员设置、自定义视频源，站点配置将重置为默认值，是否继续？',
       icon: 'warning',
@@ -3130,8 +3129,8 @@ function AdminPageClient() {
             </h1>
             {/* 缓存提示按钮 */}
             <button
-              onClick={() => {
-                Swal.fire({
+              onClick={async () => {
+                (await import('sweetalert2')).default.fire({
                   title: '提示',
                   text: '视频源配置和分类配置中的修改需要清理浏览缓存才会在UI上彻底生效，否则需等待站点配置中的接口缓存时间后才生效',
                   icon: 'info',

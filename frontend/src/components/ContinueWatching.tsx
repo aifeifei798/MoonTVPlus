@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import Swal from 'sweetalert2';
 
 import type { PlayRecord } from '@/lib/db.client';
 import {
@@ -112,7 +111,7 @@ export default function ContinueWatching({ className, showAll = false, hideHeade
             <button
               className='text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
               onClick={async () => {
-                const { isConfirmed } = await Swal.fire({
+                const { isConfirmed } = await (await import('sweetalert2')).default.fire({
                   title: '确认清空',
                   text: '确定要清空所有播放记录吗？',
                   icon: 'warning',
@@ -123,7 +122,7 @@ export default function ContinueWatching({ className, showAll = false, hideHeade
                 if (isConfirmed) {
                   await clearAllPlayRecords();
                   setPlayRecords([]);
-                  Swal.fire({
+                  (await import('sweetalert2')).default.fire({
                     icon: 'success',
                     title: '已清空',
                     text: '所有播放记录已清空',

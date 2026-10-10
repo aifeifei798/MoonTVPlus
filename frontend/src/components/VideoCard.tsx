@@ -3,7 +3,7 @@
 import { ExternalLink, Heart, Link, PlayCircleIcon, Trash2 } from 'lucide-react';
 import Image from '@/shims/image';
 import { useRouter } from '@/shims/navigation';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 
 import {
   deleteFavorite,
@@ -46,7 +46,9 @@ interface VideoCardProps {
   isBangumi?: boolean;
 }
 
-export default function VideoCard({
+export default memo(VideoCard);
+
+function VideoCard({
   id,
   title = '',
   query = '',
@@ -355,6 +357,139 @@ export default function VideoCard({
     return configs[from] || configs.search;
   }, [from, isAggregate, actualDoubanId, rate]);
 
+  const sources = useMemo(
+    () =>
+      isAggregate && items ? items.map((i) => i.source_name || '').filter(Boolean) : [],
+    [isAggregate, items]
+  );
+
+  const actions = useMemo(
+    () => [
+      {
+        id: 'play',
+        label: '播放',
+        icon: <PlayCircleIcon size={20} />,
+        color: 'primary' as const,
+        onClick: () => handleClick(),
+      },
+      {
+        id: 'play-new-tab',
+        label: '在新标签页播放',
+        icon: <ExternalLink size={20} />,
+        color: 'default' as const,
+        onClick: () => {
+          if (from === 'douban') {
+            window.open(
+              `/play?title=${encodeURIComponent(actualTitle.trim())}${
+                actualYear ? `&year=${actualYear}` : ''
+              }${actualSearchType ? `&stype=${actualSearchType}` : ''}`,
+              '_blank'
+            );
+          } else if (actualSource && actualId) {
+            // 与主点击一致：携带当前播放集数（1 基）
+            const newTabStartEp =
+              typeof currentEpisode === 'number' &&
+              Number.isInteger(currentEpisode) &&
+              currentEpisode >= 1
+                ? `&ep=${currentEpisode}`
+                : '';
+            window.open(
+              `/play?source=${actualSource}&id=${actualId}&title=${encodeURIComponent(
+                actualTitle
+              )}${actualYear ? `&year=${actualYear}` : ''}${
+                isAggregate ? '&prefer=true' : ''
+              }${
+                actualQuery ? `&stitle=${encodeURIComponent(actualQuery.trim())}` : ''
+              }${actualSearchType ? `&stype=${actualSearchType}` : ''}${newTabStartEp}`,
+              '_blank'
+            );
+          }
+        },
+      },
+      ...(from !== 'douban' && !(from === 'search' && isAggregate) && actualSource && actualId
+        ? [
+            favorited
+              ? {
+                  id: 'unfavorite',
+                  label: '取消收藏',
+                  icon: <Heart size={18} className="fill-red-600 stroke-red-600" />,
+                  color: 'danger' as const,
+                  onClick: (e?: React.MouseEvent) => handleToggleFavorite(e as React.MouseEvent),
+                }
+              : {
+                  id: 'favorite',
+                  label: '加入收藏',
+                  icon: <Heart size={18} className="fill-transparent stroke-gray-600" />,
+                  color: 'primary' as const,
+                  onClick: (e?: React.MouseEvent) => handleToggleFavorite(e as React.MouseEvent),
+                },
+            following
+              ? {
+                  id: 'unfollow',
+                  label: '取消追更',
+                  icon: <FollowingIcon variant='remove' size={18} className='text-amber-500' />,
+                  color: 'warning' as const,
+                  onClick: (e?: React.MouseEvent) => handleToggleFollowing(e as React.MouseEvent),
+                }
+              : {
+                  id: 'follow',
+                  label: '加入追更',
+                  icon: <FollowingIcon variant='add' size={18} className='text-amber-500' />,
+                  color: 'primary' as const,
+                  onClick: (e?: React.MouseEvent) => handleToggleFollowing(e as React.MouseEvent),
+                },
+          ]
+        : []),
+      ...(from === 'playrecord' && actualSource && actualId && onDelete
+        ? [
+            {
+              id: 'delete-record',
+              label: '删除播放记录',
+              icon: <Trash2 size={18} />,
+              color: 'danger' as const,
+              onClick: (e?: React.MouseEvent) => handleDeleteRecord(e as React.MouseEvent),
+            },
+          ]
+        : []),
+      ...(actualDoubanId
+        ? [
+            {
+              id: 'open-link',
+              label: isBangumi ? '打开 Bangumi 页面' : '打开豆瓣页面',
+              icon: <Link size={18} />,
+              onClick: () => {
+                if (isBangumi) {
+                  window.open(`https://bangumi.tv/subject/${actualDoubanId}`, '_blank');
+                } else {
+                  window.open(`https://movie.douban.com/subject/${actualDoubanId}`, '_blank');
+                }
+              },
+            },
+          ]
+        : []),
+    ],
+    [
+      handleClick,
+      handleToggleFavorite,
+      handleToggleFollowing,
+      handleDeleteRecord,
+      from,
+      isAggregate,
+      actualSource,
+      actualId,
+      actualTitle,
+      actualYear,
+      actualSearchType,
+      actualQuery,
+      currentEpisode,
+      actualDoubanId,
+      isBangumi,
+      favorited,
+      following,
+      onDelete,
+    ]
+  );
+
   // 渲染
   return (
     <div
@@ -374,6 +509,13 @@ export default function VideoCard({
           setIsActionOpen(true);
         }, 500);
         setLongPressTimer(timerId);
+      }}
+      onTouchMove={() => {
+        // 手指滑动/滚动时取消长按，避免滚动误触操作面板
+        if (longPressTimer) {
+          window.clearTimeout(longPressTimer);
+          setLongPressTimer(null);
+        }
       }}
       onTouchEnd={() => {
         if (longPressTimer) {
@@ -423,11 +565,11 @@ export default function VideoCard({
           }}
         />
 
-        <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black-20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100' />
+        <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black-20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100 touch-visible' />
 
       {/* 播放按钮 */}
       {config.showPlayButton && (
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 touch-visible transition">
               <PlayCircleIcon
                 size={50}
                 strokeWidth={0.8}
@@ -441,7 +583,7 @@ export default function VideoCard({
           )}
 
         {(config.showHeart || config.showFollowButton || config.showCheckCircle) && (
-          <div className='absolute bottom-3 inset-x-3 flex items-center justify-end opacity-0 translate-y-2 transition-all duration-300 ease-in-out group-hover:opacity-100 group-hover:translate-y-0 [gap:clamp(0px,4cqi,0.75rem)]'>
+          <div className='absolute bottom-3 inset-x-3 flex items-center justify-end opacity-0 translate-y-2 transition-all duration-300 ease-in-out group-hover:opacity-100 group-hover:translate-y-0 touch-visible touch-slide-up [gap:clamp(0px,4cqi,0.75rem)]'>
             {config.showCheckCircle && onDelete && (
               <Trash2
                 onClick={handleDeleteRecord}
@@ -503,7 +645,9 @@ export default function VideoCard({
 
         {/* 🔗 豆瓣/Bangumi跳转链接（左下角） */}
         {config.showDoubanLink && actualDoubanId && (
-          <div
+          <button
+            type="button"
+            aria-label={isBangumi ? '跳转到 Bangumi' : '跳转到豆瓣'}
             onClick={(e) => {
               e.stopPropagation(); // 阻止触发卡片点击
               
@@ -515,7 +659,7 @@ export default function VideoCard({
                 window.open(`https://movie.douban.com/subject/${actualDoubanId}`, "_blank");
               }
             }}
-            className="absolute bottom-2 left-2 bg-apple-500 text-white text-xs font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md hover:bg-apple-600 hover:scale-[1.1] transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 cursor-pointer"
+            className="absolute bottom-2 left-2 bg-apple-500 text-white text-xs font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md hover:bg-apple-600 hover:scale-[1.1] transition-all duration-300 ease-out opacity-0 group-hover:opacity-100 touch-visible cursor-pointer"
             title={isBangumi ? "跳转到 Bangumi" : "跳转到豆瓣"}
           >
             <svg
@@ -531,7 +675,7 @@ export default function VideoCard({
               <path d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'></path>
               <path d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'></path>
             </svg>
-          </div>
+          </button>
         )}
 
         {/* 集数 */}
@@ -546,7 +690,10 @@ export default function VideoCard({
   <div className="absolute bottom-2 right-2 flex flex-col items-end">
     <div className="relative group/sources">
       {/* 小圆圈按钮：默认显示 */}
-      <div
+      <button
+        type="button"
+        aria-label={`查看${items.length}个播放源`}
+        aria-expanded={showSources}
         className="bg-gray-700 text-white text-xs sm:text-xs w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center shadow-md hover:bg-[#48484a] hover:scale-[1.1] transition-all duration-300 ease-out cursor-pointer"
         onClick={(e) => {
           e.stopPropagation();
@@ -554,7 +701,7 @@ export default function VideoCard({
         }}
       >
         {items.length}
-      </div>
+      </button>
 
 {/* 播放源列表弹窗 */}
 {showSources && (
@@ -621,114 +768,11 @@ export default function VideoCard({
         poster={processImageUrl(actualPoster)}
         sourceName={source_name}
         isAggregate={isAggregate}
-        sources={isAggregate && items ? items.map(i => i.source_name || '').filter(Boolean) : []}
+        sources={sources}
         currentEpisode={currentEpisode}
         totalEpisodes={actualEpisodes || undefined}
         origin="vod"
-        actions={[
-          {
-            id: 'play',
-            label: '播放',
-            icon: <PlayCircleIcon size={20} />,
-            color: 'primary',
-            onClick: () => handleClick(),
-          },
-          {
-            id: 'play-new-tab',
-            label: '在新标签页播放',
-            icon: <ExternalLink size={20} />,
-            color: 'default',
-            onClick: () => {
-              if (from === 'douban') {
-                window.open(
-                  `/play?title=${encodeURIComponent(actualTitle.trim())}${
-                    actualYear ? `&year=${actualYear}` : ''
-                  }${actualSearchType ? `&stype=${actualSearchType}` : ''}`,
-                  '_blank'
-                );
-              } else if (actualSource && actualId) {
-                // 与主点击一致：携带当前播放集数（1 基）
-                const newTabStartEp =
-                  typeof currentEpisode === 'number' &&
-                  Number.isInteger(currentEpisode) &&
-                  currentEpisode >= 1
-                    ? `&ep=${currentEpisode}`
-                    : '';
-                window.open(
-                  `/play?source=${actualSource}&id=${actualId}&title=${encodeURIComponent(
-                    actualTitle
-                  )}${actualYear ? `&year=${actualYear}` : ''}${
-                    isAggregate ? '&prefer=true' : ''
-                  }${
-                    actualQuery ? `&stitle=${encodeURIComponent(actualQuery.trim())}` : ''
-                  }${actualSearchType ? `&stype=${actualSearchType}` : ''}${newTabStartEp}`,
-                  '_blank'
-                );
-              }
-            },
-          },
-          ...(from !== 'douban' && !(from === 'search' && isAggregate) && actualSource && actualId
-            ? [
-                favorited
-                  ? {
-                      id: 'unfavorite',
-                      label: '取消收藏',
-                      icon: <Heart size={18} className="fill-red-600 stroke-red-600" />,
-                      color: 'danger' as const,
-                      onClick: (e?: React.MouseEvent) => handleToggleFavorite(e as React.MouseEvent),
-                    }
-                  : {
-                      id: 'favorite',
-                      label: '加入收藏',
-                      icon: <Heart size={18} className="fill-transparent stroke-gray-600" />,
-                      color: 'primary' as const,
-                      onClick: (e?: React.MouseEvent) => handleToggleFavorite(e as React.MouseEvent),
-                    },
-                following
-                  ? {
-                      id: 'unfollow',
-                      label: '取消追更',
-                      icon: <FollowingIcon variant='remove' size={18} className='text-amber-500' />,
-                      color: 'warning' as const,
-                      onClick: (e?: React.MouseEvent) => handleToggleFollowing(e as React.MouseEvent),
-                    }
-                  : {
-                      id: 'follow',
-                      label: '加入追更',
-                      icon: <FollowingIcon variant='add' size={18} className='text-amber-500' />,
-                      color: 'primary' as const,
-                      onClick: (e?: React.MouseEvent) => handleToggleFollowing(e as React.MouseEvent),
-                    },
-              ]
-            : []),
-          ...(from === 'playrecord' && actualSource && actualId && onDelete
-            ? [
-                {
-                  id: 'delete-record',
-                  label: '删除播放记录',
-                  icon: <Trash2 size={18} />,
-                  color: 'danger' as const,
-                  onClick: (e?: React.MouseEvent) => handleDeleteRecord(e as React.MouseEvent),
-                },
-              ]
-            : []),
-          ...(actualDoubanId
-            ? [
-                {
-                  id: 'open-link',
-                  label: isBangumi ? '打开 Bangumi 页面' : '打开豆瓣页面',
-                  icon: <Link size={18} />,
-                  onClick: () => {
-                    if (isBangumi) {
-                      window.open(`https://bangumi.tv/subject/${actualDoubanId}`, '_blank');
-                    } else {
-                      window.open(`https://movie.douban.com/subject/${actualDoubanId}`, '_blank');
-                    }
-                  },
-                },
-              ]
-            : []),
-        ]}
+        actions={actions}
       />
     </div>
   );

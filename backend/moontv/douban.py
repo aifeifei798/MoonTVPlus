@@ -12,11 +12,11 @@ they only ever reach `details` of a 500, which is the documented divergence in
 `PLAN.md`.
 
 Resilience (douban rate-limits datacenter IPs with 403/418/timeouts, so a
-single-shot fetch is an empty page): every fetch tries the official host first,
-then the two `cmliussss` mirrors the frontend already uses for its non-`direct`
-modes (`m.douban.cmliussss.net` / `.com`, same for `movie.`). One attempt per
-candidate, ~0.3s between candidates, first 2xx wins. The error raised is the
-last candidate's, unchanged in shape; the tried hosts go to the server log,
+single-shot fetch is an empty page): every fetch races the official host and
+the two `cmliussss` mirrors the frontend already uses for its non-`direct`
+modes (`m.douban.cmliussss.net` / `.com`, same for `movie.`) concurrently,
+first 2xx wins, each with a 4s timeout. The error raised is the last
+candidate's, unchanged in shape; the tried hosts go to the server log,
 not the response body.
 """
 
@@ -27,7 +27,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .fetch import FetchFailed, FetchNetworkError, FetchTimeout, fetch_with_timeout
 
-TIMEOUT_MS = 10000  # `setTimeout(() => controller.abort(), 10000)`
+TIMEOUT_MS = 4000
 
 # The exact header set `fetchDoubanData` passed to `fetch`.
 DOUBAN_HEADERS = {
@@ -93,33 +93,65 @@ async def _fetch_one(url: str, headers: dict):
     return response
 
 
-async def fetch_douban_data(url: str):
-    """`fetchDoubanData(url)` — the parsed JSON body, via mirror fallback."""
+async def _race_candidates(candidates: list[str], headers: dict):
+    """官源与镜像并发竞速：首个 2xx/3xx 胜出，全败则抛最后一个错误。
+
+    原串行 fallback（带 0.3s 间隔）在官源 hang 住时把延迟拉满；并发后慢者
+    被 cancel，快者决定延迟。同一批 `done` 里既有成功也有失败时，按候选顺序
+    （官源优先）取成功者——否则官源与镜像同一时刻返回时，可能把失败者当成
+    竞速结果。错误形状不变（最后一个候选的错误）。
+    """
+    if len(candidates) == 1:
+        return await _fetch_one(candidates[0], headers)
+
+    # 每个候选一个 task，`order` 记住它的位次：官源赢平局。
+    order = {
+        asyncio.ensure_future(_fetch_one(url, headers)): index
+        for index, url in enumerate(candidates)
+    }
+    pending = set(order)
     last_error: Exception | None = None
-    candidates = _candidate_urls(url)
-    for index, candidate in enumerate(candidates):
-        if index:
-            await asyncio.sleep(0.3)  # don't hammer all three at once
-        try:
-            return (await _fetch_one(candidate, DOUBAN_HEADERS)).json()
-        except Exception as error:  # noqa: BLE001 — any failure tries the next mirror
-            last_error = error
-    print(f"douban fetch failed ({len(candidates)} hosts):", last_error)
+    try:
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            winner = None
+            for task in sorted(done, key=lambda item: order[item]):
+                try:
+                    result = task.result()
+                except Exception as error:  # noqa: BLE001 — 该候选失败，记下继续
+                    last_error = error
+                    continue
+                if winner is None:
+                    winner = result
+            if winner is not None:
+                return winner
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            # 等 cancel 真正送达，别把"Task was destroyed pending"留在循环里。
+            await asyncio.gather(*pending, return_exceptions=True)
     raise last_error if last_error is not None else FetchFailed()
+
+
+async def fetch_douban_data(url: str):
+    """`fetchDoubanData(url)` — the parsed JSON body, via the mirror race."""
+    candidates = _candidate_urls(url)
+    try:
+        return (await _race_candidates(candidates, DOUBAN_HEADERS)).json()
+    except Exception as error:  # noqa: BLE001
+        print(f"douban fetch failed ({len(candidates)} hosts):", error)
+        raise
 
 
 async def fetch_douban_html(url: str) -> str:
-    """`handleTop250`'s fetch — the page's HTML, same 10s abort, same fallback."""
-    last_error: Exception | None = None
-    for index, candidate in enumerate(_candidate_urls(url)):
-        if index:
-            await asyncio.sleep(0.3)
-        try:
-            return (await _fetch_one(candidate, DOUBAN_HTML_HEADERS)).text
-        except Exception as error:  # noqa: BLE001
-            last_error = error
-    print("douban html fetch failed:", last_error)
-    raise last_error if last_error is not None else FetchFailed()
+    """`handleTop250`'s fetch — the page's HTML, same 4s timeout, same race."""
+    candidates = _candidate_urls(url)
+    try:
+        return (await _race_candidates(candidates, DOUBAN_HTML_HEADERS)).text
+    except Exception as error:  # noqa: BLE001
+        print(f"douban html fetch failed ({len(candidates)} hosts):", error)
+        raise
 
 
 async def fetch_subject_collection(collection_id: str, start: int, count: int):

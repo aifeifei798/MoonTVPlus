@@ -198,6 +198,30 @@ papered over:
     twice. The port upserts (`created_at` refresh) and dedupes within the
     batch (first/newest occurrence wins), making imports idempotent. The
     import route's other failure shapes are unchanged.
+15. **The perf/robustness pass trades a few microseconds of shape for bounded
+    work.** (a) `/api/image-proxy` and `/api/m3u8`'s segment verb now
+    `StreamingResponse` in 64KB chunks instead of buffering the whole body, so a
+    response carries `Transfer-Encoding: chunked` where it used to carry
+    `Content-Length`; statuses, the four cache/CDN headers and the upstream's
+    `Content-Type` are unchanged, and the image proxy still mirrors a non-2xx/3xx
+    upstream status verbatim. (b) Both proxies cap their bodies (8MB per image,
+    2MB per TS segment) and fail fast rather than buffer without limit; an
+    image whose `Content-Length` alone declares more than 8MB answers the
+    route's existing `{"error": "Error fetching image"}` 500, and an oversized
+    TS stream that trips the cap while streaming ends mid-body, which is the one
+    case the buffered version could have answered instead. (c) `get_config` has a
+    5s TTL cache (invalidated on every write path — `Db.save_admin_config`,
+    `init_config`, `reset_config`, `set_cached_config`), so a page load no longer
+    re-reads and re-merges `admin_config`; it returns a deep copy, so a caller
+    mutating what it got cannot poison the cache. `/api/user/online` is the one
+    handler that read-modify-writes the whole config, so it invalidates before
+    reading rather than accepting a 5s-old snapshot. (d) `TIMEOUT_MS` for douban
+    dropped 10s→4s and the three hosts are raced with `asyncio.wait(FIRST_COMPLETED)`
+    instead of serial fallback (the first 2xx/3xx wins, losers are cancelled, the
+    raised error is still the last candidate's); the top250 HTML scrape is fed
+    only its first 512KB. (e) The shared `httpx` client now has
+    `Limits(max_connections=100, max_keepalive_connections=20)` and a 10s
+    default timeout, and the two `detailCache` dicts evict FIFO at 500 entries.
 
 ## Milestones
 
