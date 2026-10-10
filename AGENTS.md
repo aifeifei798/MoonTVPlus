@@ -2,8 +2,11 @@
 
 This repo is a rewrite of MoonTV (Next.js 14, upstream `VERSION.txt` = `4.2.5`) as
 a FastAPI backend (`backend/`) plus a Vite + React frontend (`frontend/`). The
-original tree lives at `/home/feifei/develop/MoonTV` and is a git repo; **this
-repo is not a git repo** and nothing here is committed.
+original tree lived at `/home/feifei/develop/MoonTV` and is a git repo; it is
+**gone from this machine**, so parity is reasoned from the ported code plus real
+source data. **This repo is a git repo** pushed to a public `MoonTVPlus` —
+verification harnesses live in `.opencode/skills/moontvplus-verification/` and
+are committed, not left in `/tmp`.
 
 ## Read before porting anything
 
@@ -13,7 +16,12 @@ repo is not a git repo** and nothing here is committed.
   docstrings point at it.
 - `/home/feifei/develop/MoonTV/src/lib/**` and `src/app/api/**/route.ts` — the
   source of truth for behavior and the wire format. When docs here disagree with
-  the TypeScript, the TypeScript wins.
+  the TypeScript, the TypeScript wins. That tree is **not on this machine now**,
+  so re-fetch it (or a released copy) before a parity claim that needs a diff;
+  until then, parity is argued from the ported code plus real source data.
+- `.opencode/skills/moontvplus-verification/` — the committed harnesses and the
+  rules that make a harness lie. Load it (`skill` tool, id
+  `moontvplus-verification`) before writing a probe or claiming a fix is live.
 
 ## Commands
 
@@ -348,9 +356,17 @@ repo is not a git repo** and nothing here is committed.
 
 Ports are verified by comparing against the TypeScript, not by reading it: a
 table of fixtures run through both the verbatim TS (in node) and the Python port,
-then byte-compared. The harnesses from earlier sessions were scratch files under
-`/tmp/opencode` (`cross_downstream.py` ↔ `cross_downstream.cjs`, `smoke2.py`,
-`smoke3.py`) and are **not committed** — expect to recreate them. When you do:
+then byte-compared. The reusable harnesses are **committed** in
+`.opencode/skills/moontvplus-verification/scripts/` — `adfilter_cases.cjs` (the
+fixture table), `adfilter_probe.cjs` (the structural census of any manifest),
+`cdp_eval.cjs` and `cdp_net.cjs` (the browser probes), `mkplayurl.py` (derives a
+working `/play` URL from data), `login_cookie.py` (the auth cookie), `servecheck.py`
+(stale-dist + shipped-chunk check), `chrome_start.sh` (the headless Chrome the CDP
+harnesses attach to), `_harness.py` (the `sys.path` + `.env` bootstrap) — with the
+captured manifests in `fixtures/live-source-*.m3u8` and the trap list in
+`references/harness-rules.md`. The one-off probes from earlier sessions
+(`cross_downstream.py` ↔ `cross_downstream.cjs`, `smoke2.py`, `smoke3.py`) were
+scratch and are gone. When you write a new one:
 
 - Name them `.cjs`. A `.mjs` is treated as ESM, where `require` is undefined.
 - `NODE_PATH=/home/feifei/develop/MoonTVPlus/frontend/node_modules` is needed to
@@ -378,21 +394,24 @@ then byte-compared. The harnesses from earlier sessions were scratch files under
   `corsErrorStatus.corsError = "MissingAllowOriginHeader"` and `hls.levels`
   stays empty (`currentLevel` -1) even with `--ignore-certificate-errors` on a
   second Chrome. That is the source's CORS plus a stale episode URL, not a port
-  gap. Measure the filter offline instead: `/tmp/opencode/adfilter_probe.cjs
-  <manifest>` prints segments/markers/duration/drops/seams for a saved manifest,
-  and `/tmp/opencode/adfilter_cases.cjs` is the fixture table.
+  gap. Measure the filter offline instead: `scripts/adfilter_probe.cjs
+  <manifest>` prints segments/markers/duration/drops/seams for a saved manifest
+  (the committed `fixtures/live-source-*.m3u8` are the durable cases; a live
+  fetch may fail because these CDNs rotate hosts and expire episode URLs),
+  and `scripts/adfilter_cases.cjs` is the fixture table.
 
 `TestClient` checks the wire, not the runtime: it never executes the bundle, so
 mount-time JS errors (see the `createRoot` note above) are invisible to every
-harness and only show up as a blank page in a browser. The workaround used here
-is a CDP harness (`/tmp/opencode/cdp.cjs`, scratch): start headless Chrome with
-`--remote-debugging-port`, install a `MutationObserver` with
+harness and only show up as a blank page in a browser. The committed CDP harnesses
+(`scripts/cdp_eval.cjs`, `scripts/cdp_net.cjs`) close that gap: start headless Chrome
+with `scripts/chrome_start.sh <port>` (they only attach, they cannot start one),
+install a `MutationObserver` with
 `Page.addScriptToEvaluateOnNewDocument` so it exists **before** the bundle runs,
 `Page.navigate` to the page, then `Runtime.evaluate` to read the recorded
 mutations and `document.body.innerHTML` length. A `+0 -1` body mutation means
 React cleared the whitespace text node and rendered nothing — the render value,
-not an exception. The harness takes an optional second argument, a raw
-`name=value` cookie, and sets it with `Network.setCookie` before navigating;
+not an exception. `cdp_eval.cjs` takes the cookie **value** as argv[2] (it sets
+`name: 'auth'` itself) and `scripts/login_cookie.py` prints exactly that:
 for authenticated pages get one from `curl -i -X POST /api/login` and pass the
 `auth=…` half of the `Set-Cookie` header verbatim (prefixing another `auth=`
 doubles it and the gate bounces back to `/login?redirect=%2F`). Keep the
