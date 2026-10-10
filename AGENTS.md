@@ -359,6 +359,19 @@ then byte-compared. The harnesses from earlier sessions were scratch files under
 - Static/catch-all harnesses point the backend at the tree with
   `MOONTV_FRONTEND_DIR` (there are also `MOONTV_FRONTEND_DIST` and
   `MOONTV_INDEX_HTML` overrides in `static.py`).
+- Never type non-ASCII into a harness command or file: this machine's I/O path
+  silently transcodes CJK in **both** directions, so a `source=暴风` typed into a
+  `curl`/`python3 -c` string arrives as two other codepoints and the server
+  answers `无效的API来源` while an ASCII `source=IK` passes — the same reason a
+  CDP play page reported `未找到匹配结果` for a source that was configured and
+  working. Derive the string from data instead (the `SourceConfig` key out of
+  `Db.get_admin_config()`, the title out of the source's own API response) and
+  pass it on as percent-encoded ASCII, which is never mangled.
+- A `/play` URL needs `stype=tv` or `stype=movie`, not the numeric `stype=1`:
+  `usePlayEngine.ts` puts `stype` straight into `searchType` and the client's
+  `typeMatch` is `(searchType === 'tv' && episodes > 1) || (searchType === 'movie'
+  && episodes === 1)`, so any other value filters every search result out and the
+  page renders `未找到匹配结果` with no `<video>` and no error in `window.__errs`.
 
 `TestClient` checks the wire, not the runtime: it never executes the bundle, so
 mount-time JS errors (see the `createRoot` note above) are invisible to every

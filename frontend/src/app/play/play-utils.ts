@@ -61,12 +61,21 @@ export function formatTime(seconds: number): string {
  * init segment — the video decoder produces no frames (frozen picture)
  * while the AAC track, whose params match, keeps decoding (sound).
  *
- * Correct shape: drop the ad segments themselves, and keep one
- * `#EXT-X-DISCONTINUITY` at every seam that survives, so hls.js resets
- * its codec state. Ad groups are recognised as the minority runs of
- * segment URLs whose host+directory differs from the playlist's dominant
- * one and whose duration share is small; when nothing matches the
- * manifest is returned untouched (markers intact).
+ * Correct shape: drop the ad segments themselves. A marker is then only
+ * honest where the codec really changes, and on the measured sources it
+ * does not: the content on both sides of a cut-out ad shares one encoder
+ * AND one continuous timeline (0000074.ts ends at PTS 301.863 while
+ * 0000075.ts starts at exactly 301.863), so the splice is a plain gap in
+ * an otherwise continuous playlist. Declaring a discontinuity there makes
+ * hls.js reset its muxers and re-anchor the two tracks with different
+ * offsets, which is the "audio and picture drift 1-3s after the ad" bug.
+ * So a marker is emitted at a splice seam only when the two sides'
+ * host+directory differ; a marker the packager declared between two
+ * untouched groups is never dropped, since that one may be a real codec
+ * change. Ad groups are recognised as the minority runs of segment URLs
+ * whose host+directory differs from the playlist's dominant one and
+ * whose duration share is small; when nothing matches the manifest is
+ * returned untouched (markers intact).
  */
 export function filterAdsFromM3U8(m3u8Content: string): string {
   if (!m3u8Content) return '';
@@ -177,44 +186,91 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
   // guess which run is the ad; leave the manifest completely alone.
   if (dominantCount / totalSegs < 0.6) return m3u8Content;
 
-  const dropGroup: boolean[] = groups.map((group) => {
-    if (group.segs.length === 0) return false;
-    const groupSigCount = new Map<string, number>();
-    let groupDur = 0;
-    for (const seg of group.segs) {
+  /**
+   * Majority signature of a group, so the seam logic can ask "same
+   * encoder on both sides?" without re-tallying every time.
+   */
+  const modalSignature = (segs: { url: string; dur: number }[]): string => {
+    const counts = new Map<string, number>();
+    for (const seg of segs) {
       const key = segmentSignature(seg.url);
-      groupSigCount.set(key, (groupSigCount.get(key) ?? 0) + 1);
-      groupDur += seg.dur;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
-    let groupSig = '';
-    let groupSigCountMax = 0;
-    for (const [sig, count] of groupSigCount) {
-      if (count > groupSigCountMax) {
-        groupSigCountMax = count;
-        groupSig = sig;
+    let best = '';
+    let bestCount = 0;
+    for (const [sig, count] of counts) {
+      if (count > bestCount) {
+        bestCount = count;
+        best = sig;
       }
     }
-    if (groupSig === dominantSig) return false;
+    return best;
+  };
+
+  const groupSig = groups.map((group) => modalSignature(group.segs));
+  const groupDur = groups.map((group) =>
+    group.segs.reduce((sum, seg) => sum + seg.dur, 0),
+  );
+
+  const dropGroup: boolean[] = groups.map((group, i) => {
+    if (group.segs.length === 0) return false;
+    if (groupSig[i] === dominantSig) return false;
     // A run that owns a big slice of the timeline is content, not an ad.
-    const share = totalDur > 0 ? groupDur / totalDur : group.segs.length / totalSegs;
+    const share = totalDur > 0 ? groupDur[i] / totalDur : group.segs.length / totalSegs;
     return share <= 0.35;
   });
 
   // Nothing looked like an ad → return the original bytes, markers included.
   if (dropGroup.every((flag) => !flag)) return m3u8Content;
 
+  /**
+   * `#EXT-X-KEY` is inherited by later groups until one is redeclared, so
+   * dropping a group that declared one would hand the following segments
+   * the previous group's key. The dropped group's last key line is put
+   * back at the seam to keep that inheritance.
+   */
+  const lastKeyLine = (groupLines: string[]): string | null => {
+    for (let k = groupLines.length - 1; k >= 0; k--) {
+      if (/^#EXT-X-KEY\b/i.test(groupLines[k].trim())) return groupLines[k];
+    }
+    return null;
+  };
+
   const keptLines: string[] = [];
-  let emittedSegs = 0;
+  let lastKept = -1;
+  let inheritedKey: string | null = null;
+
   for (let i = 0; i < groups.length; i++) {
-    if (dropGroup[i]) continue;
+    if (dropGroup[i]) {
+      const key = lastKeyLine(groups[i].lines);
+      if (key !== null) inheritedKey = key;
+      continue;
+    }
     const group = groups[i];
-    // Keep one marker at every seam that still has segments on both sides,
-    // so hls.js emits a fresh init segment there instead of splicing codecs.
-    if (emittedSegs > 0 && group.segs.length > 0) {
-      keptLines.push('#EXT-X-DISCONTINUITY');
+    if (group.segs.length > 0) {
+      if (lastKept >= 0) {
+        // Was something spliced out between this group and the previous
+        // kept one? Only those seams may lose the marker: a discontinuity
+        // the packager declared between untouched groups stays, because it
+        // can be a genuine codec change that needs a fresh init segment.
+        let spliced = false;
+        for (let k = lastKept + 1; k < i; k++) {
+          if (dropGroup[k]) {
+            spliced = true;
+            break;
+          }
+        }
+        if (!spliced || groupSig[i] !== groupSig[lastKept]) {
+          keptLines.push('#EXT-X-DISCONTINUITY');
+        }
+      }
+      lastKept = i;
+    }
+    if (inheritedKey !== null) {
+      keptLines.push(inheritedKey);
+      inheritedKey = null;
     }
     keptLines.push(...group.lines);
-    emittedSegs += group.segs.length;
   }
 
   return keptLines.join('\n');
