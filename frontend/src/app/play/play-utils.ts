@@ -50,25 +50,174 @@ export function formatTime(seconds: number): string {
 }
 
 /**
- * 去广告：过滤 M3U8 内容中的 #EXT-X-DISCONTINUITY 标记。
+ * 去广告：把 M3U8 里的广告分片（及其 #EXTINF 行）出。
+ *
+ * Upstream only deleted the `#EXT-X-DISCONTINUITY` lines and kept every
+ * segment. That is the bug behind "picture freezes, audio keeps playing":
+ * the ad segments come from a different encoder (measured on a live source:
+ * content 1280x536 h264, ad 1920x1080 h264), so their SPS/PPS and moof
+ * differ. hls.js emits a fresh init segment only at a discontinuity, so
+ * deleting the marker makes the ad's mdat get appended under the content's
+ * init segment — the video decoder produces no frames (frozen picture)
+ * while the AAC track, whose params match, keeps decoding (sound).
+ *
+ * Correct shape: drop the ad segments themselves, and keep one
+ * `#EXT-X-DISCONTINUITY` at every seam that survives, so hls.js resets
+ * its codec state. Ad groups are recognised as the minority runs of
+ * segment URLs whose host+directory differs from the playlist's dominant
+ * one and whose duration share is small; when nothing matches the
+ * manifest is returned untouched (markers intact).
  */
 export function filterAdsFromM3U8(m3u8Content: string): string {
   if (!m3u8Content) return '';
 
-  // 按行分割M3U8内容
   const lines = m3u8Content.split('\n');
-  const filteredLines: string[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // No discontinuity at all → nothing to strip, return as-is.
+  // `(?!-)` keeps `#EXT-X-DISCONTINUITY-SEQUENCE:n` a directive, not a seam:
+  // hls.js's own parser tries the `-SEQUENCE` alternative first, and eating
+  // that directive would desync its discontinuity numbering.
+  const isMarkerLine = (line: string) => /#EXT-X-DISCONTINUITY(?!-)/.test(line);
+  if (!lines.some(isMarkerLine)) return m3u8Content;
 
-    // 只过滤#EXT-X-DISCONTINUITY标识
-    if (!line.includes('#EXT-X-DISCONTINUITY')) {
-      filteredLines.push(line);
+  /**
+   * Split the playlist into groups at every `#EXT-X-DISCONTINUITY` line.
+   * The marker lines themselves are dropped here and re-emitted later, so
+   * their count never leaks into the output.
+   *   - lines: every non-marker line of the group (directives kept verbatim)
+   *   - segs : the group's segment URIs, each tagged with its #EXTINF duration
+   */
+  const groups: { lines: string[]; segs: { url: string; dur: number }[] }[] = [];
+  let groupLines: string[] = [];
+  let groupSegs: { url: string; dur: number }[] = [];
+  let pendingDur: number | null = null;
+
+  const closeGroup = () => {
+    groups.push({ lines: groupLines, segs: groupSegs });
+    groupLines = [];
+    groupSegs = [];
+    pendingDur = null;
+  };
+
+  for (const line of lines) {
+    if (isMarkerLine(line)) {
+      closeGroup();
+      continue;
+    }
+    groupLines.push(line);
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      const extinf = /^#EXTINF:(-?\d*\.?\d+(?:e[+-]?\d+)?)/i.exec(trimmed);
+      if (extinf) {
+        const parsed = parseFloat(extinf[1]);
+        pendingDur = Number.isFinite(parsed) ? parsed : 0;
+      }
+      continue;
+    }
+    groupSegs.push({ url: trimmed, dur: pendingDur ?? 0 });
+    pendingDur = null;
+  }
+  closeGroup();
+
+  /**
+   * Signature of a segment URI: host + directory, ignoring the file name
+   * and query string. Ads are spliced in from another directory (or host),
+   * while the content around them shares one.
+   *   https://host:65/a/b/x.ts → "host:65|/a/b"
+   *   /video/adjump/time/x.ts  → "|/video/adjump/time"
+   *   0000000.ts               → "|"
+   */
+  const segmentSignature = (url: string): string => {
+    let host = '';
+    let path = url;
+    const scheme = /^[a-z][a-z0-9-]*:\/\//i.exec(url);
+    if (scheme) {
+      const afterScheme = url.slice(scheme[0].length);
+      const slash = afterScheme.indexOf('/');
+      if (slash < 0) {
+        host = afterScheme;
+        path = '';
+      } else {
+        host = afterScheme.slice(0, slash);
+        path = afterScheme.slice(slash);
+      }
+    }
+    const query = path.indexOf('?');
+    if (query >= 0) path = path.slice(0, query);
+    const lastSlash = path.lastIndexOf('/');
+    const dir = lastSlash <= 0 ? '' : path.slice(0, lastSlash);
+    return `${host}|${dir}`;
+  };
+
+  // Tally every segment by signature, so the "dominant" one (the encoder
+  // the bulk of the timeline comes from) is known before any group is judged.
+  const sigCount = new Map<string, number>();
+  let totalSegs = 0;
+  let totalDur = 0;
+  for (const group of groups) {
+    for (const seg of group.segs) {
+      const key = segmentSignature(seg.url);
+      sigCount.set(key, (sigCount.get(key) ?? 0) + 1);
+      totalSegs += 1;
+      totalDur += seg.dur;
+    }
+  }
+  if (totalSegs === 0) return m3u8Content;
+
+  let dominantSig = '';
+  let dominantCount = 0;
+  for (const [sig, count] of sigCount) {
+    if (count > dominantCount) {
+      dominantCount = count;
+      dominantSig = sig;
     }
   }
 
-  return filteredLines.join('\n');
+  // No clear majority (load-balanced mirrors, stitched files…) → do not
+  // guess which run is the ad; leave the manifest completely alone.
+  if (dominantCount / totalSegs < 0.6) return m3u8Content;
+
+  const dropGroup: boolean[] = groups.map((group) => {
+    if (group.segs.length === 0) return false;
+    const groupSigCount = new Map<string, number>();
+    let groupDur = 0;
+    for (const seg of group.segs) {
+      const key = segmentSignature(seg.url);
+      groupSigCount.set(key, (groupSigCount.get(key) ?? 0) + 1);
+      groupDur += seg.dur;
+    }
+    let groupSig = '';
+    let groupSigCountMax = 0;
+    for (const [sig, count] of groupSigCount) {
+      if (count > groupSigCountMax) {
+        groupSigCountMax = count;
+        groupSig = sig;
+      }
+    }
+    if (groupSig === dominantSig) return false;
+    // A run that owns a big slice of the timeline is content, not an ad.
+    const share = totalDur > 0 ? groupDur / totalDur : group.segs.length / totalSegs;
+    return share <= 0.35;
+  });
+
+  // Nothing looked like an ad → return the original bytes, markers included.
+  if (dropGroup.every((flag) => !flag)) return m3u8Content;
+
+  const keptLines: string[] = [];
+  let emittedSegs = 0;
+  for (let i = 0; i < groups.length; i++) {
+    if (dropGroup[i]) continue;
+    const group = groups[i];
+    // Keep one marker at every seam that still has segments on both sides,
+    // so hls.js emits a fresh init segment there instead of splicing codecs.
+    if (emittedSegs > 0 && group.segs.length > 0) {
+      keptLines.push('#EXT-X-DISCONTINUITY');
+    }
+    keptLines.push(...group.lines);
+    emittedSegs += group.segs.length;
+  }
+
+  return keptLines.join('\n');
 }
 
 /**
