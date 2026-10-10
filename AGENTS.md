@@ -372,6 +372,15 @@ then byte-compared. The harnesses from earlier sessions were scratch files under
   `typeMatch` is `(searchType === 'tv' && episodes > 1) || (searchType === 'movie'
   && episodes === 1)`, so any other value filters every search result out and the
   page renders `未找到匹配结果` with no `<video>` and no error in `window.__errs`.
+- The CDP browser cannot load these sources' manifests, so the ad filter is not
+  measurable in it: the CDN answers the manifest XHR with **404** and no
+  `Access-Control-Allow-Origin`, so hls.js fails with
+  `corsErrorStatus.corsError = "MissingAllowOriginHeader"` and `hls.levels`
+  stays empty (`currentLevel` -1) even with `--ignore-certificate-errors` on a
+  second Chrome. That is the source's CORS plus a stale episode URL, not a port
+  gap. Measure the filter offline instead: `/tmp/opencode/adfilter_probe.cjs
+  <manifest>` prints segments/markers/duration/drops/seams for a saved manifest,
+  and `/tmp/opencode/adfilter_cases.cjs` is the fixture table.
 
 `TestClient` checks the wire, not the runtime: it never executes the bundle, so
 mount-time JS errors (see the `createRoot` note above) are invisible to every

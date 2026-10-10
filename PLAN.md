@@ -242,10 +242,15 @@ papered over:
     continuous timeline (ffprobe: `0000074.ts` ends at PTS 301.863 and
     `0000075.ts` starts at exactly 301.863, while the ad restarts at ~1.4s), so
     the splice is a plain gap in an otherwise continuous playlist and a
-    `#EXT-X-DISCONTINUITY` there is a lie — hls.js honours it by resetting its
-    muxers and re-anchoring the two tracks with different offsets, which is the
-    second reported bug, "audio and picture drift 1-3s after the ad, a refresh
-    fixes it". So a marker is emitted at a splice seam only when the two
+    `#EXT-X-DISCONTINUITY` there is a lie. hls.js 1.7.3 decides it per fragment
+    from the counter alone — `discontinuity = frag.cc !== lastFrag.cc`, and a
+    true one runs `resetInitialTimestamp` (`demuxer.resetTimeStamp` +
+    `remuxer.resetTimeStamp`) and then splits the audio/video anchor
+    asymmetrically (`audioTimeOffset += Math.max(0, Δ)`,
+    `videoTimeOffset += Math.max(0, -Δ)`), re-anchoring both tracks at the
+    incoming file's own PTS; with the ad's ~1.4s restart that is where the
+    reported "audio and picture drift 1-3s after the ad, a refresh fixes it"
+    comes from. So a marker is emitted at a splice seam only when the two
     surviving groups' signatures differ; a marker the packager declared between
     two untouched groups is never dropped, since that one may be a genuine codec
     change needing a fresh init segment. `#EXT-X-KEY` is inherited by later
