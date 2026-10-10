@@ -201,10 +201,25 @@ ensure_venv() {
 }
 
 ensure_frontend_dist() {
-  if [[ -f "$FRONTEND_DIR/dist/index.html" ]]; then
-    return 0
+  local index="$FRONTEND_DIR/dist/index.html"
+  if [[ -f "$index" ]]; then
+    # A plain `restart` after `git pull` used to keep serving the old bundle:
+    # sources newer than the bundle mean the bundle is stale, so rebuild it.
+    # (Without pnpm there is nothing to build with — keep the old bundle and
+    # say so instead of breaking the restart.)
+    local newer
+    newer="$(find "$FRONTEND_DIR/src" "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/package.json" "$FRONTEND_DIR/tailwind.config.ts" "$FRONTEND_DIR/postcss.config.js" -type f -newer "$index" -print -quit 2>/dev/null)"
+    if [[ -z "$newer" ]]; then
+      return 0
+    fi
+    printf 'frontend sources changed since last build (%s) — rebuilding\n' "$newer"
+    if ! command -v pnpm >/dev/null; then
+      printf 'pnpm not found — keeping the existing (possibly stale) dist\n'
+      return 0
+    fi
+  else
+    printf 'frontend/dist is missing — building the bundle\n'
   fi
-  printf 'frontend/dist is missing — building the bundle\n'
   build_frontend
 }
 
