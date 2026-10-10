@@ -1,0 +1,44 @@
+<!-- The app document MoonTVPlus serves at every non-API path.
+
+     This is the Vite entry, and `frontend/dist/index.html` is what the backend
+     actually serves, so Vite's hashed script/asset URLs and the markers below
+     survive into it:
+
+       __SITE_NAME__        -> <title>, from `getConfig()`
+       __RUNTIME_CONFIG__   -> `window.RUNTIME_CONFIG`, the same nine fields
+                               `src/app/layout.tsx` used to inline
+       __RUNTIME_LAYOUT__   -> the three layout props that used to be computed
+                               server-side in `layout.tsx` and passed down as
+                               component props: `siteName`, `announcement`,
+                               `autoUpdateEnabled`
+
+     The head mirrors `layout.tsx`'s: the viewport meta (including
+     `viewport-fit=cover`), the apple-touch-icon, the manifest link, and the
+     inline script that runs before the deferred module, so `window.RUNTIME_CONFIG`
+     is already set when the app bundle starts.
+
+     `import './globals.css'` and `import 'sweetalert2/dist/sweetalert2.min.css'`
+     from `layout.tsx` become the two stylesheets below; the Tailwind directives
+     are compiled by the `tailwindcss` CLI into `/assets/tailwind.css` before
+     this file is built. -->
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>__SITE_NAME__</title>
+    <meta name="description" content="影视聚合" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="./node_modules/@fontsource/inter/latin.css" />
+    <link rel="stylesheet" href="/assets/tailwind.css" />
+    <link rel="stylesheet" href="/assets/sweetalert2.min.css" />
+    <script>
+      window.RUNTIME_CONFIG = __RUNTIME_CONFIG__;
+      window.RUNTIME_LAYOUT = __RUNTIME_LAYOUT__;
+    </script>
+    <script type="module" src="./src/main.tsx"></script>
+  </head>
+  <body class="font-primary min-h-screen bg-white text-gray-900 dark:bg-black dark:text-gray-200"></body>
+</html>

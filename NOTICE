@@ -1,0 +1,19 @@
+MoonTVPlus
+Copyright 2026 MoonTVPlus contributors
+
+This project is a rewrite of MoonTV, which is licensed under the MIT License:
+
+  MoonTV — Copyright (c) 2025 LunaTechLab
+  https://github.com/Stardm0/MoonTV (upstream VERSION 4.2.5)
+
+Parts of this tree are copied from those MoonTV sources and therefore keep the
+MIT attribution above, in particular:
+
+  frontend/src/app/**            page and component files
+  frontend/src/components/**     copied components
+  frontend/src/lib/**            the browser client libs, copied verbatim
+  frontend/src/vendor/muxjs/**   the Momo707577045/mux.js fork the app depends on
+
+Everything else — the FastAPI backend, the Vite/React shell, the shims and the
+build scripts — is original work in this tree and is licensed under the Apache
+License, Version 2.0 (see LICENSE).
