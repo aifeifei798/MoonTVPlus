@@ -222,14 +222,14 @@ papered over:
     only its first 512KB. (e) The shared `httpx` client now has
     `Limits(max_connections=100, max_keepalive_connections=20)` and a 10s
     default timeout, and the two `detailCache` dicts evict FIFO at 500 entries.
-16. **去广告 now deletes the ad segments instead of the seam marker.** Upstream's
+16. **去广告 drops the ad segments, and the seam marker is now conditional.** Upstream's
     `filterAdsFromM3U8` removed every `#EXT-X-DISCONTINUITY` line and kept all
     the segments, which is the reported "picture freezes, audio keeps playing
     after an ad": measured on a live source with ffprobe, the ad TS is a
     different encoder profile (content h264 1280×536, ad h264 1920×1080), so
-    its SPS/PPS and `moof` differ from the content's; hls.js 1.5.17 emits a
-    fresh init segment only at a discontinuity, so deleting the marker splices
-    the ad's `mdat` under the content's init segment — the video decoder
+    its SPS/PPS and `moof` differ from the content's; hls.js (installed 1.7.3)
+    emits a fresh init segment only at a discontinuity, so deleting the marker
+    splices the ad's `mdat` under the content's init segment — the video decoder
     produces no frames (frozen picture) while the AAC track, whose params do
     match, keeps decoding (sound). The port instead splits the playlist at the
     markers into groups, signs every segment URI by host + directory (query and
@@ -237,20 +237,34 @@ papered over:
     segments before it will judge anything, and drops a group only when its
     modal signature differs from the dominant one **and** it owns ≤35% of the
     timeline (durations, falling back to segment counts) — a run that big is
-    content, not an ad. One `#EXT-X-DISCONTINUITY` is re-emitted at every seam
-    that still has segments on both sides, so hls.js resets its codec state
-    there instead of splicing. Markers are matched with
+    content, not an ad. What a seam then gets is decided per seam, not blanket:
+    the content on both sides of a cut-out ad shares one encoder AND one
+    continuous timeline (ffprobe: `0000074.ts` ends at PTS 301.863 and
+    `0000075.ts` starts at exactly 301.863, while the ad restarts at ~1.4s), so
+    the splice is a plain gap in an otherwise continuous playlist and a
+    `#EXT-X-DISCONTINUITY` there is a lie — hls.js honours it by resetting its
+    muxers and re-anchoring the two tracks with different offsets, which is the
+    second reported bug, "audio and picture drift 1-3s after the ad, a refresh
+    fixes it". So a marker is emitted at a splice seam only when the two
+    surviving groups' signatures differ; a marker the packager declared between
+    two untouched groups is never dropped, since that one may be a genuine codec
+    change needing a fresh init segment. `#EXT-X-KEY` is inherited by later
+    segments until one is redeclared, so a dropped group's last key line is put
+    back at the seam instead of silently handing the following segments the
+    previous group's key. Markers are matched with
     `#EXT-X-DISCONTINUITY(?!-)` so a `#EXT-X-DISCONTINUITY-SEQUENCE:n`
     directive stays a directive (hls.js's own slow regex tries the `-SEQUENCE`
     alternative first, and eating it would desync its numbering). When nothing
-    qualifies the manifest is returned byte-identical, markers included, so a
-    source without ads is untouched. Verified on the live source B manifest (363
-    segments, 3 markers → 354 segments, 1 marker, exactly the 26.04s of ads
-    removed, zero content segments lost) plus a 14-case fixture table covering
-    no markers, no dominant signature, same-directory ads, absolute-URL ads on
-    another host, leading/trailing/multiple ad runs, an empty group, a
-    `-SEQUENCE` directive and a CRLF manifest (hls.js's URI capture is
-    `(\S[^\r\n]*)`, so line endings are preserved rather than normalised).
+    qualifies the manifest is returned byte-identical, markers included. Verified
+    on two live source B manifests (363 segments/3 markers → 354/0 with exactly the
+    26.04s of ads removed; 1345/5 → 1327/0 with 18 ad segments and 52.08s removed
+    across two seams) and a 17-case fixture table covering no markers, no
+    dominant signature, same-directory ads, absolute-URL ads on another host,
+    leading/trailing/multiple ad runs, an empty group, a `-SEQUENCE` directive,
+    a CRLF manifest, a splice seam with a real encoder change (marker kept), a
+    packager marker between untouched groups (stays) and a dropped group that
+    declared a key (key re-emitted). Line endings are preserved because hls.js's
+    URI capture is `(\S[^\r\n]*)`.
 
 ## Milestones
 
