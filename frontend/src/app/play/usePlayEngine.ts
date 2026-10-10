@@ -61,6 +61,11 @@ import {
 } from '@/lib/video-prefetcher';
 
 import { triggerGlobalError } from '@/components/GlobalErrorIndicator';
+import {
+  ensureVolumeBoost,
+  loadVolumeBoostEnabled,
+  setVolumeBoostEnabled,
+} from '@/lib/volume-boost';
 
 import { wrapArtplayerPluginDanmuku } from './danmuku-live-font-size';
 import { useVideoActions } from './hooks/useVideoActions';
@@ -1995,7 +2000,7 @@ export function usePlayEngine() {
         playsInline: true,
         autoPlayback: false,
         airplay: true,
-        theme: '#22c55e',
+        theme: '#0071e3',
         lang: 'zh-cn',
         hotkey: false,
         fastForward: true,
@@ -2172,6 +2177,68 @@ export function usePlayEngine() {
                 // ignore
               }
               return newVal ? '当前开启' : '当前关闭';
+            },
+          },
+          {
+            // 声音增强：GainNode 2 倍增益，默认开。video.volume 顶到 1
+            // 都嫌轻的片子靠它——开关只改 gain 值，不断图不断播。
+            // 手机上系统音量条本来也够不着播放器内部，这个开关+下面的
+            // 音量滑杆都在齿轮面板里，触屏照常用。
+            name: '声音增强',
+            html: '声音增强',
+            switch: loadVolumeBoostEnabled(),
+            tooltip: '2倍增益',
+            onSwitch: function (item: any) {
+              const enabled = !item.switch;
+              const video = artPlayerRef.current?.video;
+              if (video && !ensureVolumeBoost(video)) {
+                if (artPlayerRef.current) {
+                  artPlayerRef.current.notice.show = '当前环境不支持声音增强';
+                }
+                return item.switch;
+              }
+              setVolumeBoostEnabled(video, enabled);
+              return enabled;
+            },
+          },
+          {
+            // 音量滑杆：桌面端控制栏的音量条是 hover 才冒出来，
+            // 手机上没 hover，只能静音不能调——这个 range 项在哪都能拖。
+            name: '音量',
+            html: '音量',
+            tooltip: `${Math.round((lastVolumeRef.current ?? 0.7) * 100)}%`,
+            range: [
+              Math.round((lastVolumeRef.current ?? 0.7) * 100),
+              0,
+              100,
+              1,
+            ],
+            onChange: function (item: any) {
+              const v = Math.round(Number(item.range[0]));
+              if (artPlayerRef.current) {
+                artPlayerRef.current.volume = v / 100;
+              }
+              return `${v}%`;
+            },
+            mounted: function (_el: any, item: any) {
+              // 方向键/控制栏改了音量，把滑杆位置同步回来。
+              // tooltip 赋值走的是 DOM setter，不会触发 render，
+              // 不会把用户从面板里弹出来（见 artplayer-setting.ts）。
+              try {
+                artPlayerRef.current?.on?.('video:volumechange', () => {
+                  const v = Math.round(
+                    (artPlayerRef.current?.volume ?? 0) * 100
+                  );
+                  try {
+                    if (item?.$range) item.$range.value = v;
+                    if (item) item.tooltip = `${v}%`;
+                  } catch {
+                    // 面板重建时引用会野，忽略
+                  }
+                });
+              } catch {
+                // ignore
+              }
             },
           },
           {
@@ -2370,6 +2437,46 @@ export function usePlayEngine() {
       artPlayerRef.current.on('ready', () => {
         setError(null);
 
+        // 声音增强默认开：ready 时把 GainNode 接上。自动播放策略下
+        // AudioContext 可能是 suspended，playing 里会再 ensure 一次 resume。
+        try {
+          ensureVolumeBoost(artPlayerRef.current?.video);
+        } catch {
+          // 接不上就算了，视频本身不受影响
+        }
+
+        // iPhone 兜底：HLS 走 MSE，video.webkitEnterFullscreen 是个空响，
+        // 原生全屏按钮点了没反应。点完 600ms 还没进任何全屏就进网页全屏
+        //（CSS 的，到处都好使，autoOrientation 照样管旋转）。
+        // 桌面/Android 原生能进，这个检查直接过，不影响。
+        try {
+          const fsBtn = artPlayerRef.current?.template?.$player?.querySelector?.(
+            '.art-control-fullscreen'
+          ) as HTMLElement | null | undefined;
+          let pending: ReturnType<typeof setTimeout> | null = null;
+          fsBtn?.addEventListener('click', () => {
+            if (pending) {
+              // 短时间内又点一次 = 用户在退出，别画蛇添足
+              clearTimeout(pending);
+              pending = null;
+              return;
+            }
+            pending = setTimeout(() => {
+              pending = null;
+              const a = artPlayerRef.current;
+              try {
+                if (a && !a.fullscreen && !a.fullscreenWeb) {
+                  a.fullscreenWeb = true;
+                }
+              } catch {
+                // ignore
+              }
+            }, 600);
+          });
+        } catch {
+          // 按钮找不到就不兜，原生行为不变
+        }
+
         // 捕获弹幕插件实例
         if (artPlayerRef.current?.plugins?.artplayerPluginDanmuku) {
           danmukuPluginInstanceRef.current =
@@ -2508,6 +2615,12 @@ export function usePlayEngine() {
       });
       artPlayerRef.current.on('video:playing', () => {
         prefetcherRef.current.setThrottled(false);
+        // 手势已经有了，AudioContext 在这里 resume 最稳
+        try {
+          ensureVolumeBoost(artPlayerRef.current?.video);
+        } catch {
+          // ignore
+        }
       });
 
       // 如果播放器初始化时已经在播放状态，则请求 Wake Lock
