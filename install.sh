@@ -139,6 +139,43 @@ create_venv() {
   printf 'created venv: %s\n' "$VENV_DIR"
 }
 
+ensure_pip() {
+  # Some systems (Debian without python3-venv, stripped interpreters) build a
+  # venv with no pip at all — `python -m venv` succeeds but `python -m pip`
+  # is "No module named pip". Detect it here (both for a reused and a freshly
+  # created venv) and bootstrap before install_deps runs.
+  if run "$PY" -m pip --version >/dev/null 2>&1; then
+    return 0
+  fi
+  printf 'venv has no pip — bootstrapping it\n'
+  run "$PY" -m ensurepip --upgrade >/dev/null 2>&1 || true
+  if run "$PY" -m pip --version >/dev/null 2>&1; then
+    printf 'pip bootstrapped via ensurepip\n'
+    return 0
+  fi
+  # Last resort: get-pip.py (needs network). Prefer curl, fall back to stdlib.
+  local getpip=/tmp/moontvplus-get-pip.py
+  if command -v curl >/dev/null; then
+    run curl -fsSL https://bootstrap.pypa.io/get-pip.py -o "$getpip" || true
+  fi
+  if [[ ! -s "$getpip" ]]; then
+    run "$HOSTPY" - "$getpip" <<'PY' || true
+import sys, urllib.request
+urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", sys.argv[1])
+PY
+  fi
+  if [[ -s "$getpip" ]]; then
+    run "$PY" "$getpip"
+  fi
+  if ! run "$PY" -m pip --version >/dev/null 2>&1; then
+    printf 'could not bootstrap pip. Try: sudo apt install python3-venv (Debian/Ubuntu/Pi),\n'
+    printf 'or delete the venv and rerun with --recreate. Network proxies also break\n'
+    printf 'get-pip.py — retry with --pip-index <mirror> once pip exists.\n'
+    return 1
+  fi
+  printf 'pip bootstrapped via get-pip.py\n'
+}
+
 read_deps() {
   # pyproject's dependency array, one requirement spec per line.
   DEPS=()
@@ -277,6 +314,7 @@ main() {
   if [[ $REQ_BACKEND == 1 ]]; then
     check_python
     create_venv
+    ensure_pip
     read_deps
     install_deps
     if [[ $DRY == 0 ]]; then
