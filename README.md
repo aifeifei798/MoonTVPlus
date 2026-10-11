@@ -131,7 +131,7 @@ same-origin `/mitm.html` + `/sw.js` keep working.
 
 ## API surface
 
-Implemented so far:
+Every upstream route is in, plus the addition called out below:
 
 ```
 POST /api/login            POST /api/register       POST /api/logout
@@ -139,20 +139,31 @@ POST /api/change-password  GET   /api/server-config GET  /api/search
 GET  /api/config/sources   GET  /api/config/custom_category
 
 POST /api/admin/user       POST /api/admin/group    POST /api/admin/source
-POST /api/admin/category   POST /api/admin/site     POST /api/admin/config_file
+POST /api/admin/source/test  POST /api/admin/category  POST /api/admin/site
+POST /api/admin/config_file  GET  /api/admin/config  GET  /api/admin/reset
 POST /api/admin/subscription  GET /api/admin/subscription
 POST /api/admin/tvbox      GET  /api/admin/tvbox
-GET  /api/admin/config     GET  /api/admin/reset
 POST /api/admin/data_migration/export
 POST /api/admin/data_migration/import
+
+GET  /api/detail           GET  /api/search/{one,resources,suggestions,ws}
+POST /api/m3u8             GET  /api/m3u8
+GET  /api/douban           GET  /api/douban/{categories,recommends}
+GET  /api/image-proxy      GET  /api/tvbox/{config,categories}
+GET  /api/cron             POST /api/followings/refresh   POST /api/user/online
+GET|POST /api/{favorites,followings,playrecords,searchhistory,skipconfigs,today-updated}
 ```
 
-Still to port: `user`, `favorites`, `followings`, `playrecords`, `searchhistory`,
-`skipconfigs`, `today-updated`, `douban` ×3, `image-proxy`, `tvbox` ×2 (the
-external `/api/tvbox/config` pair, not the admin route above), `cron`, `detail`,
-`m3u8`. Until a route exists, an unauthenticated `/api/...` path still gets the
-gate's `401`, while a path the gate deliberately does not cover falls through to
-the app document at status 404.
+`/api/admin/source/test` is a MoonTVPlus addition, not an upstream route: it
+probes every configured API site with the same request a search makes and
+streams the verdicts back as SSE, so the admin panel can show which sources
+went dead.
+
+Everything upstream had is ported. Still missing: the browser side of the old
+`.dat` backup migration, and the Redis/Kvrocks storage backends (`create_storage`
+raises until they exist). Until a route exists, an unauthenticated `/api/...`
+path still gets the gate's `401`, while a path the gate deliberately does not
+cover falls through to the app document at status 404.
 
 ## Data and backups
 
@@ -188,7 +199,12 @@ site configuration. Dependency pins (`react` 19.0.0, `artplayer` 5.3.0, vendored
 `backend/.venv/bin/python -m pytest` is wired up through `backend/pyproject.toml`
 (`asyncio_mode = auto`); there are no test files yet. Cross-checks against the
 original TypeScript are done with node harnesses and fixture comparisons
-described in PLAN.md.
+described in PLAN.md. The reusable ones are committed in
+`.opencode/skills/moontvplus-verification/scripts/` — `adfilter_cases.cjs` and
+`adfilter_probe.cjs` (the ad filter, measured offline), `cdp_eval.cjs` and
+`cdp_net.cjs` (the browser probes), `servecheck.py` (stale-`dist` check),
+`source_delete_check.py` and `source_health_check.py` (the admin panel's source
+routes) — with the traps that make a harness lie in `references/harness-rules.md`.
 
 ## License
 
