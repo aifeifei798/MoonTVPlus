@@ -108,3 +108,32 @@ reason strings are imported from the code (`moontv.routes.source_test.FORMAT_ERR
 transcoded codepoints against transcoded codepoints and silently tests nothing.
 Seeded keys are ASCII (`zzok`/`zzbad`/`zzmalformed`/`zzslow`), deleted at the end,
 and the original source order is replayed.
+
+## Verify the `.dat` backup migration (B7)
+
+```bash
+backend/.venv/bin/python scripts/dat_backup_check.py   # 97/97, restores the state it started from
+node scripts/dat_backup_node.cjs /tmp/opencode/dat_spec.json /tmp/opencode/dat_out.json
+```
+
+The format has no upstream tree to diff against here, so it is checked against the
+libraries that **define** it: `crypto-js@4.2.0` (what upstream's `crypto.ts` used,
+installed in `frontend/node_modules`) for the AES layer both directions, `openssl
+enc -aes-256-cbc -md md5` for the same layer through an independent `EVP_BytesToKey`
+implementation, and node's `zlib.deflateRawSync(..., {level: 6})` for pako's DEFLATE
+both directions. Then a **live** export → saved `.dat` file → multipart import round
+trip against the running server, which is the only way to see that the import's
+`Db.clear_all_data()` — it deletes all eight data tables before replaying the
+backup — eats nothing: the harness seeds one of every record kind through the
+panel's own routes, asserts each survives, and restores the original `ConfigFile`
+string, source order and users at the end.
+
+The browser half is `components/DataMigration.tsx`, rendered as the owner-only
+collapsible tab in the admin panel. It is collapsed on load (`expandedTabs` has no
+`dataMigration` key, so it is `undefined` → falsy), so a CDP probe clicks the **last**
+tab header (`w-full px-6 py-4 flex items-center justify-between`) and then reads
+`input[type=file]` with `accept=".dat"` plus the two migration buttons
+(`px-4 py-2.5 rounded-lg font-medium transition-colors mt-10`). Both are
+`disabled` until a password/file is typed, so assert the shared class, not
+`bg-blue-600`/`bg-red-600` — the disabled variant swaps those for
+`bg-[#f5f5f7] … cursor-not-allowed`.
