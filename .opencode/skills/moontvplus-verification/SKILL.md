@@ -137,3 +137,33 @@ tab header (`w-full px-6 py-4 flex items-center justify-between`) and then reads
 `disabled` until a password/file is typed, so assert the shared class, not
 `bg-blue-600`/`bg-red-600` — the disabled variant swaps those for
 `bg-[#f5f5f7] … cursor-not-allowed`.
+
+## Verify the Redis/Kvrocks backend
+
+```bash
+backend/.venv/bin/python scripts/redis_storage_check.py   # 96/96, touches no deployment state
+backend/.venv/bin/python scripts/redis_serve_fake.py      # one app + one fake RESP socket, for ad hoc probes
+```
+
+There is no redis-server on this box (`which redis-server redis-cli` is empty and
+sudo needs a password), so the oracle is `fakeredis`'s `TcpFakeServer`: a real
+RESP **TCP** server, which is why the real `redis.asyncio` client's wire encoding
+and the port's command surface are exercised. No claim here is made about a real
+server's own behavior (timeouts, RDB, Kvrocks' `exh*` extensions).
+
+`redis_serve_fake.py` runs both in one process — uvicorn owns the main loop, the
+fake server runs in its own thread — and reads `FAKE_REDIS_PORT`, `HTTP_PORT` and
+`NEXT_PUBLIC_STORAGE_TYPE`; it points `REDIS_URL` or `KVROCKS_URL` at the fake
+socket for whichever of the two is asked for. A key census taken from an **outside**
+`redis.Redis(host, port)` is honest here, unlike the sqlite case: the server never
+holds a connection to that socket.
+
+The harness runs one scenario against sqlite/redis/kvrocks servers it spawns
+itself (fresh temp db, `MOONTV_CONFIG_PATH` at a throwaway `config.json` that has
+a `custom_category`, free ports) and canonicalizes the responses. The upstream
+differences are asserted **as differences** on the right axis, not as equality:
+redis's `LREM key 0 <kw>` dedup is always newest-first while D1's
+`CURRENT_TIMESTAMP` ties inside a second, and redis hands back the stored JSON
+while D1 rebuilds typed columns. The redis-only `reset_config` branch is visible
+only in the **stored** blob — on the wire all three show the category again,
+because `get_config` re-injects the blob's `ConfigFile.custom_category` on read.

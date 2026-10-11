@@ -93,6 +93,46 @@ checked against the libraries that define it. Three traps in that leg:
   and **no** `serverVersion` — upstream stamps `timestamp` and `serverVersion` in
   the backup **payload**, so the claim is `backup["serverVersion"] == CURRENT_VERSION`.
 
+## Redis backend (the storage oracle)
+
+- **`fakeredis.TcpFakeServer(addr, bind_and_activate=True)` only BINDS.** Nothing
+  answers until `serve_forever` runs, so start it in a daemon
+  `threading.Thread(..., daemon=True)`; there is no `stop_all()`, so the process
+  exits with the app. Without the thread every redis call hangs into the client's
+  10 s connect timeout and the harness looks like a broken port.
+- **Pick free ports, never fixed ones.** `TcpFakeServer` raises
+  `OSError: [Errno 98] Address already in use`, and a leftover scratch server from
+  an earlier session silently steals a run — the harness then measures the old
+  store. Use `socket(...).bind(("127.0.0.1", 0))` + `getsockname()[1]` with
+  sequential `exclude` sets, and kill leftovers with the bracket trick
+  (`pgrep -f "redis_serve_fake[.]py"`, which does not match the `pgrep` itself).
+- **The redis-only `reset_config` branch is vacuous on this box** until
+  `MOONTV_CONFIG_PATH` points at a config file that HAS a `custom_category`
+  (`backend/config.json` has only `api_site` + `cache_time`). Copy the `api_site`
+  map verbatim into the throwaway file, or the source census stops agreeing across
+  backends for a reason that reads like a port gap.
+- **Take a store census BEFORE the scenario's `deleteUser`.** After it the seed
+  user's keys are gone, so "the search history is the only LIST" reads `[]` and
+  passes without testing anything.
+- Reading sqlite's admin blob from a second connection is fine — the trap that
+  makes a harness lie is **writing** from one while the server holds its own.
+- The export SSE chunk field is **`data`** (`{"type":"chunk","data":…}`), not
+  `chunk`; a reader that guesses the name collects `""` and every downstream
+  decrypt check silently passes on an empty blob.
+- `Db.batch_import_today_updated(username, record)` takes **no** `on_progress`
+  callback, unlike the other five `batch_import_*` — arity, not behavior.
+- The missing-URL message is literally `${clientName}_URL env variable not set`,
+  so the port's mixed-case `Redis_URL …` / `Kvrocks_URL …` **is** faithful; an
+  all-uppercase expectation is the harness bug, not a port gap.
+- `_is_connection_error` must match redis-python's spelling, not node's: the wire
+  message is `Error 111 connecting to 127.0.0.1:9. Connect call failed …`, whose
+  word is lowercase and whose code is a bare errno. A case-sensitive `Connection`
+  test silently kills the retry wrapper, and the failure then looks like a dead
+  port rather than a dead matcher.
+- Cross-backend compares must skip the upstream-faithful differences
+  (`UPSTREAM_DIFFERS`) and assert them explicitly as differences; comparing whole
+  record objects makes them fail for reasons that read like port gaps.
+
 ## Mutating deployment state
 
 - **Never write `backend/moontv.db` from a second sqlite connection to seed a

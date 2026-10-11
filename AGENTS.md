@@ -11,8 +11,8 @@ are committed, not left in `/tmp`.
 ## Read before porting anything
 
 - `PLAN.md` — the port plan, the rules, the deliberate behavior changes, and
-  milestones (B0–B7 plus `/api/m3u8` are in; only the Redis/Kvrocks backend is
-  not). Module docstrings point at it.
+  milestones (B0–B7, `/api/m3u8` and the Redis/Kvrocks backend are all in).
+  Module docstrings point at it.
 - `/home/feifei/develop/MoonTV/src/lib/**` and `src/app/api/**/route.ts` — the
   source of truth for behavior and the wire format. When docs here disagree with
   the TypeScript, the TypeScript wins. That tree is **not on this machine now**,
@@ -84,6 +84,16 @@ are committed, not left in `/tmp`.
 - Storage: `storage/db.py` `getStorage()` is a per-process singleton;
   `storage/sqlite.py` ports `d1.db.ts` with the `d1-init.sql` schema verbatim,
   `SEARCH_HISTORY_LIMIT = 20`, `BATCH_LIMIT = 100`.
+- **Three storage backends, two files of substance**: `storage/redis.py` and
+  `storage/kvrocks.py` are 14-line leaves over one `storage/redis_base.py`
+  (`redis-base.db.ts`), because this 4.2.5 tree's `kvrocks.db.ts` uses plain redis
+  commands (no `exh*`); they differ only in env var (`REDIS_URL`/`KVROCKS_URL`),
+  the `clientName` log label, and the global client symbol (`Symbol.for('__MOONTV_REDIS_CLIENT__')`
+  → `_GLOBAL_CLIENTS` keyed by `REDIS_CLIENT_SYMBOL`/`KVROCKS_CLIENT_SYMBOL`).
+  `BaseRedisStorage` deliberately has **no** `batch_import_*` and no `deleteAll*`,
+  so `db.py`'s `getattr` capability checks and the data-migration per-item
+  fallback (`BATCH_SIZE = 50`) stay reachable exactly as upstream — adding those
+  methods would silently change which branch the import takes.
 - Data model is plain Python dicts plus `strip_none()` at serialization
   (`None` == absent field, matching `JSON.stringify` dropping `undefined`).
   Do not introduce pydantic models: the JS mutates objects in place and relies
@@ -186,6 +196,30 @@ are committed, not left in `/tmp`.
   commit here is silent total data loss, not a perf detail. Only `_run_batch`
   manages its own transaction (explicit `BEGIN`/`COMMIT` per 100-row chunk,
   `ROLLBACK` on failure, like D1's `batch()`).
+- **The redis-only `reset_config` branch is a STORE difference, not a wire one**:
+  `config.py` rebuilds `CustomCategories` from the config file only when
+  `storage_type == "redis"` (kvrocks gets `[]` like sqlite, upstream's `=== 'redis'`),
+  but `get_config` re-injects the blob's `ConfigFile.custom_category` on every read,
+  so all three backends serve the same `/api/admin/config` after a reset — only the
+  stored blob differs. Proving it needs a config file that HAS a `custom_category`,
+  and this box's does not: point `MOONTV_CONFIG_PATH` at a throwaway copy that does
+  (the path is `MOONTV_CONFIG_PATH` or `dirname(dirname(config.py))/config.json`).
+- **The redis backend's oracle here is `fakeredis`'s `TcpFakeServer`, not a redis server**
+  (`which redis-server redis-cli` is empty and sudo needs a password). It is a real
+  RESP TCP server, so the real `redis.asyncio` client's wire encoding and the port's
+  command surface are exercised; what no harness here can claim is a real server's
+  own behavior (timeouts, RDB, Kvrocks' `exh*`). `TcpFakeServer(addr, bind_and_activate=True)`
+  only BINDS — you must run `serve_forever` in a thread — and it has no `stop_all()`.
+- `addSearchHistory`'s `lRem(key, 0, keyword)` is **not** a no-op: per the LREM spec
+  `count = 0` means "remove ALL matches", so the redis backends really do dedup
+  search history like sqlite/D1. The port keeps all three arguments so the same
+  bytes go on the wire — the two-argument form would misparse an integer keyword as
+  `LREM key count <missing>`.
+- The redis backend round-trips the stored JSON verbatim, so `/api/favorites` etc.
+  hand back exactly what was POSTed, while sqlite rebuilds its column shape
+  (`_record_from_row`). That is upstream's own difference (D1 stored typed columns),
+  so a sqlite-vs-redis byte comparison must send complete records and compare a
+  projection, not whole objects.
 - A harness must not seed state by writing `backend/moontv.db` from a second
   `sqlite3` connection: SQLite never re-reads pages through a connection another
   process already has open, so the write is durable on disk but the running server
@@ -496,8 +530,12 @@ tab in the admin panel and downloads the `.dat` back to `/api/admin/data_migrati
 `scripts/dat_backup_check.py` is 97 checks green: crypto parity against crypto-js
 and openssl both ways, and a live export → file → import round trip that proves
 the import's `Db.clear_all_data()` (it deletes all eight tables before replaying
-the backup) eats nothing. Only the Redis/Kvrocks backend is missing (`create_storage`
-raises a plain `RuntimeError` naming PLAN.md instead of a bare `ModuleNotFoundError`).
+the backup) eats nothing. The Redis/Kvrocks backend is **in** too — `storage/redis_base.py`
+(`BaseRedisStorage`) plus the `redis.py`/`kvrocks.py` leaves, verified by
+`scripts/redis_storage_check.py` (96 checks green: the storage layer against a real
+RESP socket, one wire scenario run against sqlite/redis/kvrocks and canonicalized,
+and the data-migration fallback that only the absent `batch_import_*` can reach).
+Nothing in the milestone list is unported now.
 
 B4 user state is **in** — `routes/user_state.py` (`/api/user/online`,
 `playrecords`, `favorites`, `followings`) and `routes/user_history.py`
