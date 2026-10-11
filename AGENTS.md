@@ -107,7 +107,13 @@ are committed, not left in `/tmp`.
   (`该源不可删除`) and by having `batchDelete` skip them while still answering
   `{"ok":true}`; the port drops both and prunes the key out of the blob's `ConfigFile`
   string too (`config.py: drop_config_api_site` / `drop_config_custom_category`),
-  which is what makes the panel's 删除/批量删除 stick (PLAN.md, change 17). While an
+  which is what makes the panel's 删除/批量删除 stick (PLAN.md, change 17). The
+  panel also refused them **in the browser** — the 删除 button was rendered only
+  when `from !== 'config'`, and `handleBatchDelete` filtered the selected keys the
+  same way while promising `系统默认源无法删除，将被跳过` — so a backend-only fix
+  leaves the UI unchanged and the key never sent; both guards are gone in
+  `frontend/src/app/admin/page.tsx` (and the row renderers now emit the button
+  unconditionally). A frontend edit is invisible until `pnpm build` runs. While an
   admin blob exists its `ConfigFile` is the source of truth — `backend/config.json`
   on disk is only read by `init_config`/`reset_config`.
 - `Db` in `storage/db.py` is an **instance** (`Db = DbManager()`), mirroring
