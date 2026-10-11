@@ -271,6 +271,25 @@ papered over:
     declared a key (key re-emitted). Line endings are preserved because hls.js's
     URI capture is `(\S[^\r\n]*)`.
 
+17. **`/api/admin/source` and `/api/admin/category` really delete config-declared
+    entries.** Upstream refused them — `该源不可删除`/`该分类不可删除` for a single
+    delete, and `batchDelete` skipped them while still answering `{"ok":true}` —
+    so the panel promised a deletion that never happened and the count stayed.
+    The refusal was already half a lie: `getConfig` re-merges the admin blob's
+    `ConfigFile.api_site` map into `SourceConfig` on every read (config.py:394-416,
+    with the same loops in `refine_config` and `reset_config`), so an entry removed
+    from the list is rebuilt as `from == "config"` on the next request even with
+    the guard gone — a forced removal was resurrected (10 → 9 in the blob → 10
+    served). The port drops the guard and prunes the same key out of the blob's
+    `ConfigFile` string (`config.py: drop_config_api_site` /
+    `drop_config_custom_category`), which is what makes the deletion stick: while
+    an admin config exists, `getConfig` reads that blob, not `backend/config.json`
+    on disk. A `reset_config`, or uploading a config file that still declares the
+    key, brings it back — that is the file's meaning, unchanged. Verified by
+    `scripts/source_delete_check.py` (22/22): the count stays down 6s after the
+    delete, past `_CONFIG_TTL_S = 5.0`, the pruned key is absent from
+    `ConfigFile.api_site`, and a seeded `custom_category` does not come back.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

@@ -99,6 +99,17 @@ are committed, not left in `/tmp`.
   (upstream's `setAdminConfig`): the stored blob is whatever the panel sent, not
   a reconstruction. The data-migration **export** reads `Db.get_admin_config()`
   (the raw blob), not `getConfig()` — that is what makes a re-import round-trip.
+- **Config-file sources/categories are re-injected on every read**: `refine_config`,
+  `get_config` and `reset_config` all merge the blob's `ConfigFile.api_site` map
+  (and `custom_category` list) into `SourceConfig`/`CustomCategories` and mark the
+  result `from: "config"`. Deleting one from the list alone is therefore a no-op —
+  it is rebuilt on the next request. Upstream hid that by refusing a single delete
+  (`该源不可删除`) and by having `batchDelete` skip them while still answering
+  `{"ok":true}`; the port drops both and prunes the key out of the blob's `ConfigFile`
+  string too (`config.py: drop_config_api_site` / `drop_config_custom_category`),
+  which is what makes the panel's 删除/批量删除 stick (PLAN.md, change 17). While an
+  admin blob exists its `ConfigFile` is the source of truth — `backend/config.json`
+  on disk is only read by `init_config`/`reset_config`.
 - `Db` in `storage/db.py` is an **instance** (`Db = DbManager()`), mirroring
   `export const db = new DbManager()`. As a class it silently ate the first
   argument as `self`, so every non-owner login/register path answered
@@ -145,6 +156,13 @@ are committed, not left in `/tmp`.
   commit here is silent total data loss, not a perf detail. Only `_run_batch`
   manages its own transaction (explicit `BEGIN`/`COMMIT` per 100-row chunk,
   `ROLLBACK` on failure, like D1's `batch()`).
+- A harness must not seed state by writing `backend/moontv.db` from a second
+  `sqlite3` connection: SQLite never re-reads pages through a connection another
+  process already has open, so the write is durable on disk but the running server
+  keeps serving the old blob and the probe silently tests nothing (a fresh process
+  would see it). Drive the change through the panel's own routes — `/api/admin/config_file`
+  replaces the whole `ConfigFile` string, `/api/admin/source` and `/api/admin/category`
+  mutate the lists — or restart the server after the write.
 - `cryptography` 50: `Cipher.decryptor()` / `encryptor()` are bound methods, not
   properties. Raw DEFLATE for `.dat` backups is
   `zlib.compressobj(6, zlib.DEFLATED, -15)` / `zlib.decompress(data, -15)`.

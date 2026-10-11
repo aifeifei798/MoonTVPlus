@@ -36,7 +36,7 @@ import time
 from fastapi import Request
 
 from ..auth import get_auth_info_from_cookie
-from ..config import config_self_check, get_config, reset_config
+from ..config import config_self_check, drop_config_api_site, drop_config_custom_category, get_config, reset_config
 from ..env import PASSWORD, STORAGE_TYPE, TVBOX_ENABLED, USERNAME, env, env_raw
 from ..fetch import fetch_with_timeout
 from ..request_origin import get_request_origin
@@ -487,9 +487,11 @@ async def source(request: Request):
                 index = next((i for i, s in enumerate(sources) if s.get("key") == key), -1)
                 if index == -1:
                     return json_response({"error": "源不存在"}, 404)
-                if sources[index].get("from") == "config":
-                    return json_response({"error": "该源不可删除"}, 400)
+                # Upstream refused these with 该源不可删除 and batchDelete skipped
+                # them while still answering {"ok":true}; both now do what the panel
+                # promises, which needs the ConfigFile pruned too (PLAN.md, change 17).
                 sources.pop(index)
+                drop_config_api_site(admin_config_dict, [key])
             case "sort":
                 order = body.get("order")
                 if not isinstance(order, list):
@@ -516,11 +518,11 @@ async def source(request: Request):
                 keys = body.get("keys")
                 if not isinstance(keys, list) or len(keys) == 0:
                     return json_response({"error": "缺少 keys 参数或列表为空"}, 400)
-                # 只删除自定义源，系统默认源不可删除
                 for key in keys:
                     index = next((i for i, s in enumerate(sources) if s.get("key") == key), -1)
-                    if index != -1 and sources[index].get("from") != "config":
+                    if index != -1:
                         sources.pop(index)
+                drop_config_api_site(admin_config_dict, keys)
             case _:
                 return json_response({"error": "未知操作"}, 400)
 
@@ -587,9 +589,8 @@ async def category(request: Request):
                 index = next((i for i, c in enumerate(categories) if _match(c)), -1)
                 if index == -1:
                     return json_response({"error": "分类不存在"}, 404)
-                if categories[index].get("from") == "config":
-                    return json_response({"error": "该分类不可删除"}, 400)
                 categories.pop(index)
+                drop_config_custom_category(admin_config_dict, [(body.get("query"), body.get("type"))])
             case "sort":
                 order = body.get("order")
                 if not isinstance(order, list):

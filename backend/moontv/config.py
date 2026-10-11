@@ -122,6 +122,57 @@ def _dump(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 
+def _config_file_blob(admin_config: dict) -> dict | None:
+    """The parsed `ConfigFile` string inside an admin blob, or `None`."""
+    raw = admin_config.get("ConfigFile")
+    if not isinstance(raw, str):
+        return None
+    parsed = _parse_json_or_none(raw)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def drop_config_api_site(admin_config: dict, keys) -> None:
+    """Prune keys out of the blob's `ConfigFile.api_site` map.
+
+    `refine_config`/`getConfig`/`reset_config` all re-merge that map into
+    `SourceConfig` on every read (lines 150-176, 394-416, 539-563), so a source
+    removed from the list but still declared there is rebuilt as `from == "config"`
+    on the next request. Deleting a system source has to prune both sides — that
+    is what makes the panel's 删除 stick (PLAN.md, deliberate change 17).
+    """
+    parsed = _config_file_blob(admin_config)
+    if parsed is None:
+        return
+    api_site = parsed.get("api_site")
+    if not isinstance(api_site, dict):
+        return
+    changed = False
+    for key in keys:
+        if api_site.pop(key, None) is not None:
+            changed = True
+    if changed:
+        admin_config["ConfigFile"] = _dump(parsed)
+
+
+def drop_config_custom_category(admin_config: dict, pairs) -> None:
+    """Prune (query, type) pairs out of the blob's `ConfigFile.custom_category`.
+
+    Same resurrection as the source list: `getConfig` re-merges that list, so
+    deleting a config-declared category has to prune it here too.
+    """
+    parsed = _config_file_blob(admin_config)
+    if parsed is None:
+        return
+    table = parsed.get("custom_category")
+    if not isinstance(table, list):
+        return
+    wanted = {(query, type_) for query, type_ in pairs}
+    kept = [c for c in table if not (isinstance(c, dict) and (c.get("query"), c.get("type")) in wanted)]
+    if len(kept) != len(table):
+        parsed["custom_category"] = kept
+        admin_config["ConfigFile"] = _dump(parsed)
+
+
 def _default_site_config(storage_type: str) -> dict:
     """The `SiteConfig` literal shared by `initConfig`/`resetConfig`."""
     return {
