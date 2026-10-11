@@ -34,6 +34,22 @@ writing a new probe.
   `MOONTV_FRONTEND_DIR` (`static.py` also honors `MOONTV_FRONTEND_DIST` and
   `MOONTV_INDEX_HTML`).
 
+## Mutating deployment state
+
+- **Never write `backend/moontv.db` from a second sqlite connection to seed a
+  test.** SQLite does not re-read pages through a connection the server already
+  has open, so the write is durable on disk but the running server keeps serving
+  the old blob — the probe reports the seeded state as absent and silently tests
+  nothing. Drive the change through the panel's own routes (`/api/admin/config_file`
+  replaces the whole `ConfigFile` string; `/api/admin/source` and `/api/admin/category`
+  mutate the lists), or restart the server after the write.
+- Wait past `_CONFIG_TTL_S = 5.0` (6s) before re-reading. `invalidate_config_cache()`
+  only runs on the server's own saves, so an external change that never reached the
+  cache looks like it worked.
+- A state-mutating harness must restore what it started from: capture the original
+  `ConfigFile` string and the original source order first and replay both at the
+  end (`source_delete_check.py` does exactly that), so it is safe on a live site.
+
 ## Non-ASCII
 
 Never type CJK into a harness command or file. This machine's I/O path

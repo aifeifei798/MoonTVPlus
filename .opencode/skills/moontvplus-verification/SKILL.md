@@ -71,3 +71,20 @@ seam — content files carry absolute, continuous PTS across the seam, so a
 `#EXT-X-DISCONTINUITY` there is a lie and hls.js 1.7.3 re-anchors the two
 tracks asymmetrically (`audioTimeOffset += Math.max(0, Δ)` /
 `videoTimeOffset += Math.max(0, -Δ)`).
+
+## Verify the admin panel's source/category deletes
+
+```bash
+backend/.venv/bin/python scripts/source_delete_check.py   # 22/22, restores the state it started from
+```
+
+The trap this exists for: `getConfig` re-merges the admin blob's `ConfigFile.api_site`
+map into `SourceConfig` on every read, so a `from == "config"` source removed from the
+list is rebuilt on the next request. Upstream hid that by refusing a single delete
+(`该源不可删除`) and by having `batchDelete` skip them while still answering
+`{"ok":true}` — the panel promised a deletion that never happened and the count stayed.
+The harness deletes a config-declared source and asserts the count is **still down 6s
+later**, past `_CONFIG_TTL_S = 5.0`, which is the only way to see the resurrection; it
+seeds a `custom_category` through `/api/admin/config_file` and checks the same for
+categories. It replays the original `ConfigFile` string and source order at the end, so
+it is safe to run against a live deployment.
