@@ -99,6 +99,18 @@ are committed, not left in `/tmp`.
   (upstream's `setAdminConfig`): the stored blob is whatever the panel sent, not
   a reconstruction. The data-migration **export** reads `Db.get_admin_config()`
   (the raw blob), not `getConfig()` — that is what makes a re-import round-trip.
+- **Source health check (new, not a port)** is a fourth admin module,
+  `routes/source_test.py` (`POST /api/admin/source/test`, SSE, POST-only, and a
+  `CONCURRENCY = 5` `asyncio.Queue` pool copied from
+  `routes/followings_refresh.py`). It is a separate path rather than a new
+  `action` on `source()` so that switch stays faithful to upstream. The probe
+  is the *same request a search makes* (`api + API_CONFIG["search"]["path"] +
+  PROBE_QUERY`, and `PROBE_QUERY` is **empty** — it asks the site's first page,
+  because `wd=a` makes one live site answer non-JSON and be called dead), and
+  the route is **read-only**: it never calls `Db.save_admin_config`, so testing
+  cannot reorder, re-enable or resurrect anything. An **empty** `list` is a
+  zero-result warning with `count: 0`, not a death — plenty of live sites
+  answer an empty query with no rows (PLAN.md, change 18).
 - **Config-file sources/categories are re-injected on every read**: `refine_config`,
   `get_config` and `reset_config` all merge the blob's `ConfigFile.api_site` map
   (and `custom_category` list) into `SourceConfig`/`CustomCategories` and mark the
@@ -116,6 +128,19 @@ are committed, not left in `/tmp`.
   unconditionally). A frontend edit is invisible until `pnpm build` runs. While an
   admin blob exists its `ConfigFile` is the source of truth — `backend/config.json`
   on disk is only read by `init_config`/`reset_config`.
+- **The panel's source health badges are client state, not wire state**:
+  `frontend/src/app/admin/page.tsx` reads the `localStorage` key
+  `moontv_source_health` (`{at, results}`, the snake-case convention of
+  `db.client.ts`'s `PLAY_RECORDS_KEY`) on mount, so the badges and the summary
+  banner survive a reload with no server help. The 测试源 button's SSE reader is
+  the one copied from `components/DataMigration.tsx` (`getReader` +
+  `TextDecoder` + `split('\n\n')` + `dataLine.slice(5).trim()`), so it only
+  works against the exact `data: {...}\n\n` framing. Healthy is `apple-*`, dead
+  is `red-*`, a zero-result site is `yellow-*`; the badge spans carry
+  `whitespace-nowrap` in their **own** class so a CDP probe can tell them from
+  the enable/disable badges that share `bg-apple-100 ... rounded-full`, and the
+  测试源 button carries it for the same reason (the batch-enable button
+  otherwise matches the selector).
 - `Db` in `storage/db.py` is an **instance** (`Db = DbManager()`), mirroring
   `export const db = new DbManager()`. As a class it silently ate the first
   argument as `self`, so every non-owner login/register path answered
