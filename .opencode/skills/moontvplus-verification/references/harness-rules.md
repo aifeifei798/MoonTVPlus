@@ -17,6 +17,17 @@ writing a new probe.
   then `new Function(...)`. `adfilter_probe.cjs` and `adfilter_cases.cjs` do
   this against `frontend/src/app/play/play-utils.ts`, so they test the code that
   actually ships, not a paraphrase.
+- **A CDP eval that clicks must `await` before it reads.** React's scheduler
+  finishes the re-render in a *later* task, so a synchronous read right after
+  `element.click()` sees the old DOM and every "the button is now there" probe
+  reports 0 — it looks like the click did nothing. `cdp_eval.cjs` passes
+  `awaitPromise: true`, so return a Promise (an `async` IIFE) and measure after a
+  ~1.5 s `setTimeout`. Two more traps in the same probe: an arrow IIFE with a
+  block body needs an explicit `return` (without one the harness prints
+  `{"result":{"type":"undefined"}}`, which is not an exception), and the only
+  safe buttons to click in the admin panel are the tab headers — match them by
+  class (`w-full px-6 py-4 flex items-center justify-between`), never by text,
+  because 管理员设置 ships a live `重置配置` button whose class contains `bg-red`.
 
 ## Python harnesses
 
@@ -33,6 +44,12 @@ writing a new probe.
 - Static/catch-all harnesses must point the backend at the tree with
   `MOONTV_FRONTEND_DIR` (`static.py` also honors `MOONTV_FRONTEND_DIST` and
   `MOONTV_INDEX_HTML`).
+- Vite's content-hash alphabet is base64url, so **`_` is a hash character**:
+  `servecheck.py`'s page-token regex must be `page-[A-Za-z0-9_-]{8}`. Without the
+  `_` a whole chunk (`page-CC_TwyjE`) is skipped and every probe that lives in it
+  reads MISSING — a false regression that looks like the fix was reverted. The
+  token count it prints is the tell (7 → 6). `servecheck.py` also takes `!probe`
+  to assert a literal is **absent**, the only way to see a guard removal.
 
 ## Mutating deployment state
 

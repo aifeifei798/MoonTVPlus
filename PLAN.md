@@ -289,6 +289,17 @@ papered over:
     `scripts/source_delete_check.py` (22/22): the count stays down 6s after the
     delete, past `_CONFIG_TTL_S = 5.0`, the pruned key is absent from
     `ConfigFile.api_site`, and a seeded `custom_category` does not come back.
+    The panel refused the same thing **on the client**, which is why a backend-
+    only fix changes nothing the user sees: `frontend/src/app/admin/page.tsx`
+    rendered the 删除 button only when `from !== 'config'` (no button at all on
+    these rows) and `handleBatchDelete` filtered the selected keys the same way
+    while promising `系统默认源无法删除，将被跳过`. Both guards are gone and the
+    batch payload maps every selected key, so the browser actually sends them;
+    the shipped chunk proves it (`"config"` survives only in the two `useState`
+    defaults, the 删除 button is a direct array child of the row,
+    `keys: y.map(O => O.key)`), and clicking the 视频源管理 tab in the CDP
+    browser renders 10 删除 buttons for the 10 config sources with an empty
+    `window.__errs`.
 
 ## Milestones
 

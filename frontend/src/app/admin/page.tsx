@@ -1274,16 +1274,10 @@ const VideoSourceConfig = ({
   const handleBatchDelete = async () => {
     if (selectedSources.size === 0) return;
     
-    // 检查是否有不可删除的源
-    const deletableSources = sources.filter(s => 
-      selectedSources.has(s.key) && s.from !== 'config'
-    );
-    const nonDeletableCount = selectedSources.size - deletableSources.length;
+    // 系统源 are selectable too: the backend prunes the blob's ConfigFile.api_site
+    const selectedList = sources.filter((s) => selectedSources.has(s.key));
     
-    let confirmText = `确定要删除选中的 ${deletableSources.length} 个自定义视频源吗？`;
-    if (nonDeletableCount > 0) {
-      confirmText += `\n注意：有 ${nonDeletableCount} 个系统默认源无法删除，将被跳过。`;
-    }
+    const confirmText = `确定要删除选中的 ${selectedList.length} 个视频源吗？`;
     
     const { isConfirmed } = await (await import('sweetalert2')).default.fire({
       title: '确认批量删除',
@@ -1300,7 +1294,7 @@ const VideoSourceConfig = ({
     try {
       await callSourceApi({ 
         action: 'batchDelete', 
-        keys: deletableSources.map(s => s.key) 
+        keys: selectedList.map((s) => s.key)
       });
       setSelectedSources(new Set());
     } catch (err) {
@@ -1381,14 +1375,14 @@ const VideoSourceConfig = ({
           >
             {!source.disabled ? '禁用' : '启用'}
           </button>
-          {source.from !== 'config' && (
-            <button
-              onClick={() => handleDelete(source.key)}
-              className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-[#f5f5f7] text-gray-800 hover:bg-[#e8e8ed] dark:bg-[#2d2d2f]/40 dark:hover:bg-[#3a3a3c]/60 dark:text-gray-200 transition-colors'
-            >
-              删除
-            </button>
-          )}
+          {/* 系统源有 a 删除 button too: the backend prunes the blob's
+              ConfigFile.api_site, so the row does not come back (PLAN.md 17) */}
+          <button
+            onClick={() => handleDelete(source.key)}
+            className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-[#f5f5f7] text-gray-800 hover:bg-[#e8e8ed] dark:bg-[#2d2d2f]/40 dark:hover:bg-[#3a3a3c]/60 dark:text-gray-200 transition-colors'
+          >
+            删除
+          </button>
         </td>
       </tr>
     );
@@ -1769,14 +1763,12 @@ const CategoryConfig = ({
           >
             {!category.disabled ? '禁用' : '启用'}
           </button>
-          {category.from !== 'config' && (
-            <button
-              onClick={() => handleDelete(category.query, category.type)}
-              className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-[#f5f5f7] text-gray-800 hover:bg-[#e8e8ed] dark:bg-[#2d2d2f]/40 dark:hover:bg-[#3a3a3c]/60 dark:text-gray-200 transition-colors'
-            >
-              删除
-            </button>
-          )}
+          <button
+            onClick={() => handleDelete(category.query, category.type)}
+            className='inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-[#f5f5f7] text-gray-800 hover:bg-[#e8e8ed] dark:bg-[#2d2d2f]/40 dark:hover:bg-[#3a3a3c]/60 dark:text-gray-200 transition-colors'
+          >
+            删除
+          </button>
         </td>
       </tr>
     );
