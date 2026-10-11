@@ -300,6 +300,49 @@ papered over:
     `keys: y.map(O => O.key)`), and clicking the 视频源管理 tab in the CDP
     browser renders 10 删除 buttons for the 10 config sources with an empty
     `window.__errs`.
+18. **`POST /api/admin/source/test` is new — upstream had no source health
+     surface at all.** A dead source was invisible until a search happened to
+     ask for it and reported a `failedSources` entry, so a deployment with half
+     its sources dead looked healthy and the panel gave no way to find out.
+     It is a separate module rather than a new `action` on `source()`, so that
+     switch stays faithful to upstream and the repo's "each milestone module
+     exports `ROUTES`" shape holds. The probe is the *same first request a
+     search makes* — `api_site["api"] + API_CONFIG["search"]["path"] +
+     encode_uri_component(query)` with `API_CONFIG["search"]["headers"]` — so
+     a source the check calls alive is a source `/api/search` can actually use,
+     and the verdicts agree with the `failedSources` the search already reports
+     on this box. `PROBE_QUERY` is **empty**: it asks the site's first page
+     rather than a title, which is empirically better than `wd=a` (one source
+     answers non-JSON for `a` and would be called dead while it is fine).
+     Classification: alive = 2xx + a JSON object with a `list` array — an
+     **empty** `list` is a yellow zero-result warning with `count: 0`, not a
+     death, because plenty of live sites answer an empty query with no rows;
+     dead = `FetchTimeout`/`FetchFailed`/`FetchNetworkError` (upstream's own
+     timeout/failure/network sentences, reused verbatim), status ≥ 400 (reason
+     `HTTP {status}`), or a body that is not that shape (reason
+     `接口格式错误`). The wire is SSE in `followings_refresh.py`'s vocabulary
+     (`start` / `item_result` / `item_failed` / `complete`, with `key`, `name`,
+     `ms`, `count`, `pagecount` / `reason` / `okCount`, `failedCount`, `total`,
+     `checkedAt`) over the same `CONCURRENCY = 5` `asyncio.Queue` pool, so
+     events arrive per finished source; the route is **read-only** — it never
+     calls `Db.save_admin_config`, so testing cannot reorder or re-enable
+     anything. Body is optional `{keys: [...], timeout: seconds}` with
+     `DEFAULT_TIMEOUT_S = 10` clamped to `MAX_TIMEOUT_S = 60`. The panel
+     persists the run in the `localStorage` key `moontv_source_health`
+     (`{at, results}`, the snake-case convention of `db.client.ts`'s
+     `PLAY_RECORDS_KEY`) so the badges and the summary banner survive a reload,
+     and after a test loads the dead keys into `selectedSources` so the panel's
+     batch disable/delete acts on exactly those rows; the banner only hints
+     that the dead ones *can* be batch-disabled/deleted rather than claiming
+     they are selected, which would be a lie after a reload. Verified by
+     `scripts/source_health_check.py` (33/33): framing, one event per source,
+     `okCount + failedCount == total`, and all four classifications against a
+     local server the harness starts (alive with `count`/`pagecount` read off
+     the body, 404 → `HTTP 404`, 200-with-HTML → the route's own format-error
+     constant, 5 s with `timeout: 1` → `FetchTimeout`'s message) — the expected
+     reason strings are imported from the code, never typed here, and the
+     seeded keys are ASCII and deleted afterwards, so the harness restores the
+     state it started from.
 
 ## Milestones
 
@@ -330,7 +373,11 @@ round trip proving sqlite writes are durable. `/api/m3u8` is in as well:
 plus `routes/m3u8.py` (`POST` parse + `GET` proxy, both at `/api/m3u8` as upstream
 served them) — durations/URLs byte-compared against node, and verified live
 against `test-streams.mux.dev` (64 segments parsed, one 5.3 MB segment proxied
-with `application/octet-stream` + year cache). Remaining: B7 browser-side `.dat`
+with `application/octet-stream` + year cache). The source health check is in as
+well: `routes/source_test.py` (`POST /api/admin/source/test`, SSE, read-only)
+plus the panel's 测试源 button, badges and banner — 33 checks green, including
+the four classifications replayed against a local server the harness starts.
+Remaining: B7 browser-side `.dat`
 migration, then the Redis/Kvrocks
 backends (`create_storage` raises a clear `RuntimeError` until they exist).
 

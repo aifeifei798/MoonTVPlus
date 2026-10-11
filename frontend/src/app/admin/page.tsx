@@ -1069,6 +1069,18 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
   );
 };
 
+// 源健康检查（MoonTVPlus addition: upstream had no way to learn a site died,
+// a dead site was just missing from every search). The badges live in
+// localStorage so a visit still shows which sites died since the last test.
+const SOURCE_HEALTH_KEY = 'moontv_source_health';
+
+interface SourceHealth {
+  ok: boolean;
+  ms?: number;
+  count?: number;
+  reason?: string;
+}
+
 // 视频源配置组件
 const VideoSourceConfig = ({
   config,
@@ -1091,6 +1103,23 @@ const VideoSourceConfig = ({
   
   // 批量操作相关状态
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set());
+
+  // 源健康检查状态（localStorage 上，so a visit still shows which sites died）
+  const [sourceHealth, setSourceHealth] = useState<Record<string, SourceHealth>>({});
+  const [healthAt, setHealthAt] = useState<number | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(SOURCE_HEALTH_KEY) || '');
+      if (cached.results) {
+        setSourceHealth(cached.results);
+        setHealthAt(cached.at || null);
+      }
+    } catch {
+      // 无缓存或缓存损坏： nothing to show until the next test
+    }
+  }, []);
 
   // dnd-kit 传感器
   const sensors = useSensors(
@@ -1196,6 +1225,113 @@ const VideoSourceConfig = ({
       .catch(() => {
         console.error('操作失败', 'sort', order);
       });
+  };
+
+  // 源健康检查：asks every site the first-page request /api/search makes, so
+  // "可用" means "this source can answer a search" (PLAN.md, addition 18).
+  const runSourceTest = async () => {
+    if (testing) return;
+    setTesting(true);
+    const targets = sources.map((s) => s.key);
+    const results: Record<string, SourceHealth> = {};
+    let checkedAt: number | null = null;
+    let okCount = 0;
+    let failedCount = 0;
+
+    try {
+      const response = await fetch('/api/admin/source/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: targets }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `测试失败: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('浏览器不支持流式读取');
+      }
+
+      // 读取 SSE 流
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let reading = true;
+
+      while (reading) {
+        const { done, value } = await reader.read();
+        if (done) {
+          reading = false;
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // 按空行分割 SSE 事件
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || ''; // 保留最后一个不完整的事件
+
+        for (const event of events) {
+          const dataLine = event.split('\n').find((line) => line.startsWith('data:'));
+          if (!dataLine) continue;
+
+          const dataStr = dataLine.slice(5).trim();
+          if (!dataStr) continue;
+
+          let data: any;
+          try {
+            data = JSON.parse(dataStr);
+          } catch {
+            continue;
+          }
+
+          switch (data.type) {
+            case 'item_result':
+              results[data.key] = { ok: true, ms: data.ms, count: data.count };
+              setSourceHealth((prev) => ({ ...prev, [data.key]: results[data.key] }));
+              break;
+            case 'item_failed':
+              results[data.key] = { ok: false, ms: data.ms, reason: data.reason };
+              setSourceHealth((prev) => ({ ...prev, [data.key]: results[data.key] }));
+              break;
+            case 'complete':
+              checkedAt = data.checkedAt || Date.now();
+              okCount = data.okCount ?? 0;
+              failedCount = data.failedCount ?? 0;
+              break;
+          }
+        }
+      }
+
+      if (checkedAt === null) {
+        checkedAt = Date.now();
+        okCount = Object.values(results).filter((h) => h.ok).length;
+        failedCount = Object.values(results).filter((h) => !h.ok).length;
+      }
+
+      setHealthAt(checkedAt);
+      try {
+        localStorage.setItem(
+          SOURCE_HEALTH_KEY,
+          JSON.stringify({ at: checkedAt, results }),
+        );
+      } catch {
+        // 私有模式/配额：the badges still show for this visit
+      }
+
+      // 失效源 gets selected so 批量禁用/批量删除 acts on exactly those rows
+      const deadKeys = targets.filter((key) => results[key]?.ok === false);
+      if (deadKeys.length > 0) {
+        setSelectedSources(new Set(deadKeys));
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : '测试失败');
+      throw err;
+    } finally {
+      setTesting(false);
+    }
   };
 
   // 分组管理功能已迁移至“用户配置”模块，此处不再提供
@@ -1355,7 +1491,9 @@ const VideoSourceConfig = ({
         >
           {source.detail || '-'}
         </td>
-        <td className='px-6 py-4 whitespace-nowrap max-w-[1rem]'>
+        <td
+          className='px-6 py-4 whitespace-nowrap max-w-[1rem]'
+        >
           <span
             className={`px-2 py-1 text-xs rounded-full ${!source.disabled
               ? 'bg-apple-100 dark:bg-apple-900/20 text-apple-800 dark:text-apple-300'
@@ -1364,6 +1502,37 @@ const VideoSourceConfig = ({
           >
             {!source.disabled ? '启用中' : '已禁用'}
           </span>
+        </td>
+        {/* 健康检查结果（/api/admin/source/test）*/}
+        <td className='px-4 py-4 whitespace-nowrap max-w-[9rem] truncate'>
+          {(() => {
+            const health = sourceHealth[source.key];
+            if (!health) {
+              return <span className='px-2 py-1 text-xs rounded-full whitespace-nowrap text-gray-400 dark:text-gray-500'>-</span>;
+            }
+            if (!health.ok) {
+              return (
+                <span
+                  title={health.reason || '失效'}
+                  className='px-2 py-1 text-xs rounded-full whitespace-nowrap bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300'
+                >
+                  {health.reason || '失效'}
+                </span>
+              );
+            }
+            return (
+              <span
+                title={`${health.count} 结果 / ${health.ms}ms`}
+                className={`px-2 py-1 text-xs rounded-full whitespace-nowrap ${
+                  health.count === 0
+                    ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300'
+                    : 'bg-apple-100 dark:bg-apple-900/20 text-apple-800 dark:text-apple-300'
+                  }`}
+              >
+                {health.count} 结果 · {health.ms}ms
+              </span>
+            );
+          })()}
         </td>
         <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2'>
           <button
@@ -1388,6 +1557,11 @@ const VideoSourceConfig = ({
     );
   };
 
+  // 源健康检查的 summary counts, for the banner above the table
+  const testedKeys = Object.keys(sourceHealth);
+  const aliveCount = testedKeys.filter((k) => sourceHealth[k].ok).length;
+  const deadCount = testedKeys.length - aliveCount;
+
   if (!config) {
     return (
       <div className='text-center text-gray-500 dark:text-gray-400'>
@@ -1404,13 +1578,32 @@ const VideoSourceConfig = ({
         <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
           视频源列表
         </h4>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className='px-3 py-1 bg-apple-600 hover:bg-apple-700 text-white text-sm rounded-lg transition-colors'
-        >
-          {showAddForm ? '取消' : '添加视频源'}
-        </button>
+        <div className='flex items-center gap-2'>
+          <button
+            onClick={runSourceTest}
+            disabled={testing || sources.length === 0}
+            className='px-3 py-1 whitespace-nowrap bg-apple-600 hover:bg-apple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors flex items-center gap-1'
+          >
+            <Check size={14} />
+            {testing ? '测试中...' : '测试源'}
+          </button>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className='px-3 py-1 bg-apple-600 hover:bg-apple-700 text-white text-sm rounded-lg transition-colors'
+          >
+            {showAddForm ? '取消' : '添加视频源'}
+          </button>
+        </div>
       </div>
+
+      {/* 上次测试结果（localStorage 上，so a visit still shows which sites died） */}
+      {healthAt !== null && testedKeys.length > 0 && (
+        <div className='px-3 py-2 bg-[#f5f5f7] dark:bg-black rounded-lg border border-[#d2d2d7] dark:border-[#424245] text-sm text-gray-700 dark:text-gray-300'>
+          上次测试 {new Date(healthAt).toLocaleString()} · {aliveCount} 可用 /{' '}
+          {deadCount} 失效
+          {deadCount > 0 && ' · 失效源可批量禁用/批量删除'}
+        </div>
+      )}
 
       {/* 批量操作工具栏 */}
       {sources.length > 0 && (
@@ -1537,6 +1730,9 @@ const VideoSourceConfig = ({
                 </th>
                 <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
                   状态
+                </th>
+                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
+                  测试
                 </th>
                 <th className='px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider'>
                   操作

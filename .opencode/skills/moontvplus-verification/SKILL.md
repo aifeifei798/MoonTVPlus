@@ -88,3 +88,23 @@ later**, past `_CONFIG_TTL_S = 5.0`, which is the only way to see the resurrecti
 seeds a `custom_category` through `/api/admin/config_file` and checks the same for
 categories. It replays the original `ConfigFile` string and source order at the end, so
 it is safe to run against a live deployment.
+
+## Verify the source health check
+
+```bash
+backend/.venv/bin/python scripts/source_health_check.py   # 33/33, restores the state it started from
+```
+
+Two halves, because the two questions are different. The deployment's own sources
+are checked only for **consistency** — exactly one `item_result`/`item_failed`
+event per source, `data: {...}\n\n` framing, `okCount + failedCount == total` —
+because whether a third-party `?ac=videolist` site answers is a property of the
+network, not of this repo (this box has no direct access to most of them, which
+is the same reason `/api/search` reports them failed). The **classification** is
+asserted against a local `ThreadingHTTPServer` the harness starts, so alive /
+HTTP 404 / 200-with-HTML / 5 s-with-`timeout: 1` are deterministic. The expected
+reason strings are imported from the code (`moontv.routes.source_test.FORMAT_ERROR`,
+`str(moontv.fetch.FetchTimeout())`) — typing them into the harness compares
+transcoded codepoints against transcoded codepoints and silently tests nothing.
+Seeded keys are ASCII (`zzok`/`zzbad`/`zzmalformed`/`zzslow`), deleted at the end,
+and the original source order is replayed.

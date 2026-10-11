@@ -50,6 +50,23 @@ writing a new probe.
   reads MISSING — a false regression that looks like the fix was reverted. The
   token count it prints is the tell (7 → 6). `servecheck.py` also takes `!probe`
   to assert a literal is **absent**, the only way to see a guard removal.
+- **An SSE parser must skip the empty trailing chunk.** `text.split("\n\n")` on a
+  body that ends with the framing leaves a final `""`, which does not start with
+  `data: `; a strict parser returns `None` and every check under `if events:` is
+  silently skipped, so the harness prints a green-looking count that never ran.
+  `source_health_check.py`'s `sse()` `continue`s on empty chunks.
+- **The auth gate runs before routing**, so an unauthenticated GET of a POST-only
+  path answers 401, not the 404 the route's own fall-through would. Assert the
+  404 with the cookie, and the 401 as a separate check — conflating them hides a
+  route that was never registered.
+- `http.server` has no `BaseHandler` — the class is `BaseHTTPRequestHandler`, and
+  silencing its access log means overriding `log_message`/`log_error`, not
+  `log` (no such method, so a `log` override is dead code and the harness output
+  becomes a wall of request lines that buries the real result).
+- Deterministic classification needs a **local** server, not the network: seed
+  sources whose `api` points at a `ThreadingHTTPServer` the harness starts, and
+  dispatch on a path marker inside the URL, because the probe appends
+  `?ac=videolist&wd=` to whatever api the panel was given.
 
 ## Mutating deployment state
 

@@ -30,6 +30,7 @@ from .routes import followings_refresh as followings_refresh_routes
 from .routes import detail as detail_routes, search_sub as search_sub_routes
 from .routes import tvbox as tvbox_routes, cron as cron_routes
 from .routes import m3u8 as m3u8_routes
+from .routes import source_test as source_test_routes
 from .static import serve_path
 
 # Route modules register themselves by exporting a `ROUTES` list of
@@ -51,6 +52,7 @@ ROUTE_MODULES = (
     tvbox_routes,
     cron_routes,
     m3u8_routes,
+    source_test_routes,
 )
 
 
