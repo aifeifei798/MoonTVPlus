@@ -68,6 +68,31 @@ writing a new probe.
   dispatch on a path marker inside the URL, because the probe appends
   `?ac=videolist&wd=` to whatever api the panel was given.
 
+## External oracles (the `.dat` backup)
+
+The `.dat` format has no upstream tree to diff against on this machine, so it is
+checked against the libraries that define it. Three traps in that leg:
+
+- **httpx spells it `follow_redirects=`**; `allow_redirects=` is `requests`' name
+  and raises `TypeError` mid-harness, which looks like the route under test broke.
+- **openssl 3.0.13**: `-S <hexsalt>` **suppresses** the `Salted__` header it
+  would otherwise write, so a python blob built with a forced salt can never
+  match openssl's output — compare against openssl's *own* salt, or drive both
+  directions through `enc -aes-256-cbc -md md5 -pass pass:…`. `openssl dec` is
+  not a command (`enc -d` is), and `-md md5` prints a deprecation warning on
+  **stderr while still succeeding**, so a harness must test the exit code, never
+  "stderr is empty".
+- **`readFileSync(2)` means fd 2**, not argv 2 — `EBADF`/`EINVAL` on a script file.
+  Always `process.argv[2]`, and remember a script file's args start at `argv[2]`.
+- `crypto.encode_backup(payload, password)` takes the **JSON string** and does
+  deflate → base64 → AES itself. Feeding it an already-deflated string deflates
+  twice and the openssl comparison fails for a reason that reads like a port gap.
+  `encrypt`/`decrypt` are the AES layer alone; `base64.b64encode(pako_deflate(...))`
+  is the middle layer to compare an openssl decrypt against.
+- The export's `done` event carries `message`/`exportedUsers`/`filename`/`percent`
+  and **no** `serverVersion` — upstream stamps `timestamp` and `serverVersion` in
+  the backup **payload**, so the claim is `backup["serverVersion"] == CURRENT_VERSION`.
+
 ## Mutating deployment state
 
 - **Never write `backend/moontv.db` from a second sqlite connection to seed a

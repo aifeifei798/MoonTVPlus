@@ -11,9 +11,8 @@ are committed, not left in `/tmp`.
 ## Read before porting anything
 
 - `PLAN.md` — the port plan, the rules, the deliberate behavior changes, and
-  milestones (B0–B6 plus `/api/m3u8` are in; B7 still owes the browser side of
-  the `.dat` backup migration, and the Redis/Kvrocks backend is not). Module
-  docstrings point at it.
+  milestones (B0–B7 plus `/api/m3u8` are in; only the Redis/Kvrocks backend is
+  not). Module docstrings point at it.
 - `/home/feifei/develop/MoonTV/src/lib/**` and `src/app/api/**/route.ts` — the
   source of truth for behavior and the wire format. When docs here disagree with
   the TypeScript, the TypeScript wins. That tree is **not on this machine now**,
@@ -241,6 +240,19 @@ are committed, not left in `/tmp`.
   so the `参数 un 非法` branch stays dead like upstream's. Suggestion scoring
   (`_suggest_page`) is verified identical against node on 4 fixture cases; the
   only accepted gap is `len()` vs UTF-16 `.length`.
+- **The `.dat` backup is three layers, and a harness must not confuse them**:
+  `crypto.encode_backup(payload, password)` takes the **JSON string** and does
+  `pako.deflate` → base64 → AES itself, so an openssl probe that wants the middle
+  layer decrypts `encode_backup(payload, pw)` and compares against
+  `base64(pako_deflate(payload))` — feeding `encode_backup` an already-deflated
+  string silently deflates twice and the comparison fails for a reason that looks
+  like a port gap. `encrypt`/`decrypt` are the AES layer alone. The export's `done`
+  event has **no** `serverVersion` — upstream stamps `timestamp` and `serverVersion`
+  in the backup **payload**, so the claim is `backup["serverVersion"] == CURRENT_VERSION`
+  (`moontv/version.py`, `4.2.5` = upstream's `VERSION.txt`). And `import_` calls
+  `Db.clear_all_data()`, which deletes all eight data tables (`douban_cache` stays),
+  so a round trip that eats something is invisible unless the harness seeds records
+  through the panel's own routes first and asserts the census afterwards.
 
 ## Frontend quirks
 
@@ -477,9 +489,15 @@ like upstream), 25 wire checks green plus the node byte-comparisons above.
 node byte-compared on durations/URLs) plus `routes/m3u8.py` (`POST` parse +
 `GET` proxy, both at `/api/m3u8` as upstream served them), verified live
 against `test-streams.mux.dev` (64 segments, 5.3 MB proxied).
-B7 still owes the browser side of the `.dat` backup migration; and the
-Redis/Kvrocks backend is missing (`create_storage` raises a plain
-`RuntimeError` naming PLAN.md instead of a bare `ModuleNotFoundError`).
+B7 is **in** — `routes/data_migration.py` (SSE export + multipart import over
+the `pako.deflate` → base64 → AES pipeline) and the browser half,
+`components/DataMigration.tsx`, which is rendered as the owner-only collapsible
+tab in the admin panel and downloads the `.dat` back to `/api/admin/data_migration/import`.
+`scripts/dat_backup_check.py` is 97 checks green: crypto parity against crypto-js
+and openssl both ways, and a live export → file → import round trip that proves
+the import's `Db.clear_all_data()` (it deletes all eight tables before replaying
+the backup) eats nothing. Only the Redis/Kvrocks backend is missing (`create_storage`
+raises a plain `RuntimeError` naming PLAN.md instead of a bare `ModuleNotFoundError`).
 
 B4 user state is **in** — `routes/user_state.py` (`/api/user/online`,
 `playrecords`, `favorites`, `followings`) and `routes/user_history.py`

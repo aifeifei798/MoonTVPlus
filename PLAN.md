@@ -377,8 +377,18 @@ with `application/octet-stream` + year cache). The source health check is in as
 well: `routes/source_test.py` (`POST /api/admin/source/test`, SSE, read-only)
 plus the panel's 测试源 button, badges and banner — 33 checks green, including
 the four classifications replayed against a local server the harness starts.
-Remaining: B7 browser-side `.dat`
-migration, then the Redis/Kvrocks
+B7 is in as well: `routes/data_migration.py`
+writes and reads the `.dat`, and the panel's data-migration tab
+(`components/DataMigration.tsx`) is the browser half that downloads it and
+posts it back — `scripts/dat_backup_check.py` closes both halves with 97 checks
+green: the AES layer byte-compared against `crypto-js@4.2.0` (the library
+upstream's `crypto.ts` used) and against `openssl enc -aes-256-cbc -md md5` in
+both directions, the DEFLATE layer against node's `zlib` (pako's algorithm and
+level), CryptoJS's forgiving base64 parser replayed word-for-word, and a live
+export → saved `.dat` file → import round trip that seeds every kind of record
+and asserts the deployment is unchanged — the only way to see that the import's
+`Db.clear_all_data()`, which deletes all eight tables first, eats nothing.
+Remaining: the Redis/Kvrocks
 backends (`create_storage` raises a clear `RuntimeError` until they exist).
 
 Frontend: F0 scaffold + F1 build are in and the built document is served by the
