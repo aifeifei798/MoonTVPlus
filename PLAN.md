@@ -38,7 +38,9 @@ organized and which runtime it needs.
     moontv/config.json         the only file-config source, overridable by MOONTV_CONFIG_PATH
     moontv/storage/db.py       src/lib/db.ts — the `Db`/getStorage() capability checks
     moontv/storage/sqlite.py   src/lib/d1.db.ts — table-based, schema from d1-init.sql
-    moontv/storage/redis.py    Redis/Kvrocks backend
+    moontv/storage/redis_base.py src/lib/redis-base.db.ts — the shared backend
+    moontv/storage/redis.py    src/lib/redis.db.ts — the REDIS_URL leaf
+    moontv/storage/kvrocks.py  src/lib/kvrocks.db.ts — the KVROCKS_URL leaf
     moontv/auth.py             src/lib/auth.ts + src/app/api/login HMAC + src/middleware.ts
     moontv/request_origin.py   src/lib/request-origin.ts (Forwarded / X-Forwarded-*)
     moontv/url_guard.py        src/lib/url-guard.ts (SSRF private-host blacklist)
@@ -388,8 +390,21 @@ level), CryptoJS's forgiving base64 parser replayed word-for-word, and a live
 export → saved `.dat` file → import round trip that seeds every kind of record
 and asserts the deployment is unchanged — the only way to see that the import's
 `Db.clear_all_data()`, which deletes all eight tables first, eats nothing.
-Remaining: the Redis/Kvrocks
-backends (`create_storage` raises a clear `RuntimeError` until they exist).
+The Redis/Kvrocks backends are in as well: `storage/redis_base.py` is
+`redis-base.db.ts` (one blob per record, `u:<user>:<kind>:<key>`, the search
+history the only LIST) and `redis.py`/`kvrocks.py` are 14-line leaves, because
+this 4.2.5 tree's `kvrocks.db.ts` uses plain redis commands rather than the
+`exh*` extensions — the two differ only in env var, `clientName` label and the
+global client symbol. `BaseRedisStorage` keeps no `batch_import_*` and no
+`deleteAll*`, so `db.py`'s capability checks and the data-migration per-item
+fallback land exactly as upstream. `scripts/redis_storage_check.py` is 96 checks
+green: the storage layer driven against a real RESP socket (`fakeredis`'s
+`TcpFakeServer` — there is no redis-server on this box, so no claim is made about
+a real server's own behavior), one wire scenario run against sqlite/redis/kvrocks
+and canonicalized, and the upstream-faithful differences asserted as differences
+on the right axis (redis's `LREM key 0 <kw>` dedup is newest-first, D1's
+`CURRENT_TIMESTAMP` ties inside a second; redis hands back the stored JSON, D1
+rebuilds typed columns). Nothing in the milestone list is unported now.
 
 Frontend: F0 scaffold + F1 build are in and the built document is served by the
 catch-all. Remaining: the A/B diff harness that boots old MoonTV next to the new

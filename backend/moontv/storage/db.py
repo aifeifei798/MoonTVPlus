@@ -4,8 +4,10 @@
 backend and keeps the TS capability checks (`typeof (storage as any).x ===
 'function'`), because the data-migration import route branches on whether the
 batch path ran (`true`) or the caller must fall back to per-item writes
-(`false`). sqlite implements the batch methods; a future redis/kvrocks backend
-may not, and the fallback stays reachable through the same check.
+(`false`). sqlite implements the batch methods; the redis/kvrocks backend
+deliberately does not — neither does upstream's `BaseRedisStorage` — so the
+fallback is what those backends actually take, and the check is what keeps it
+reachable instead of a what-if.
 """
 
 from __future__ import annotations
@@ -22,25 +24,18 @@ def create_storage():
     There is no server-side `localstorage` backend in MoonTV either (it returned
     `null`), and `d1` was already SQLite, so both map to the same implementation
     here. `upstash` (REST) and Cloudflare D1 bindings are not ported; see PLAN.md.
+
+    A redis/kvrocks storage with its URL env var unset fails here with upstream's
+    own message (`REDIS_URL env variable not set`), not a silent sqlite fallback.
     """
     match env(STORAGE_TYPE, "sqlite"):
         case "redis":
-            try:
-                from .redis import RedisStorage  # B4: not written yet
-            except ModuleNotFoundError:
-                raise RuntimeError(
-                    "STORAGE_TYPE=redis is not ported yet (see PLAN.md); "
-                    "use sqlite (default) instead"
-                ) from None
+            from .redis import RedisStorage
+
             return RedisStorage()
         case "kvrocks":
-            try:
-                from .kvrocks import KvrocksStorage  # B4: not written yet
-            except ModuleNotFoundError:
-                raise RuntimeError(
-                    "STORAGE_TYPE=kvrocks is not ported yet (see PLAN.md); "
-                    "use sqlite (default) instead"
-                ) from None
+            from .kvrocks import KvrocksStorage
+
             return KvrocksStorage()
         case _:
             return SqliteStorage(env(DB_PATH, "moontv.db"))
