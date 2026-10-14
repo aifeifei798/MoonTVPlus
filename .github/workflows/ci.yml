@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e ./backend
+      - name: Run the wire tests
+        # Must run from `backend/`: pytest only reads `testpaths` and
+        # `asyncio_mode = "auto"` from backend/pyproject.toml when the rootdir is
+        # the backend, and the tests import `moontv.*` relative to it.
+        run: cd backend && ../.venv/bin/python -m pytest -q
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend dependencies
+        run: pnpm install
+        working-directory: frontend
+      - name: Typecheck
+        run: pnpm typecheck
+        working-directory: frontend
+      - name: Build
+        run: pnpm build
+        working-directory: frontend
+      - name: Check the shipped dist
+        # A bare `vite build` leaves dist/ without public/** and without the
+        # Tailwind stylesheet; the backend serves exactly this directory, so the
+        # build is only correct if these files are in it.
+        run: |
+          test -f frontend/dist/index.html
+          test -f frontend/dist/assets/tailwind.css
+          test -f frontend/dist/assets/sweetalert2.min.css
+          test -f frontend/dist/mitm.html
+          test -f frontend/dist/sw.js
