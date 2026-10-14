@@ -414,7 +414,9 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
   return (
     <div className='px-4 py-0 h-full bg-black/10 dark:bg-white/5 flex flex-col overflow-hidden'>
       {/* 主要的 Tab 切换 - 无缝融入设计 */}
-      <div className='flex mb-1 -mx-6 flex-shrink-0'>
+      {/* -mx-4 matches the container's px-4 so the tab row is flush with the panel
+          edges; -mx-6 pushed it 8px past the box and the 换源 tab was clipped. */}
+      <div className='flex mb-1 -mx-4 flex-shrink-0'>
         {totalEpisodes > 1 && (
           <div
             onClick={() => setActiveTab('episodes')}

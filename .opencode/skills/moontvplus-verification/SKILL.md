@@ -137,6 +137,34 @@ actually enters web fullscreen and PiP — see `references/harness-rules.md`,
 "Player-state probes", for the two traps (a synthetic click is not a gesture, and
 the bar is only up after a tap on the video).
 
+## Verify the PC 选集/换源 drawer
+
+```bash
+bash scripts/chrome_start.sh 9334
+AUTH=$(backend/.venv/bin/python scripts/login_cookie.py)
+node scripts/drawer_layout_probe.cjs "$AUTH" "$(cat /tmp/opencode/playurl_tv.txt)" --shots=/tmp/opencode/drawer-shots
+```
+
+`drawer_layout_probe.cjs` walks 1440x900 / 1280x800 / 1024x720 / 900x600 / 375x667 and
+exits non-zero on any FAIL. What it pins: the drawer is a child of
+`.art-video-player` (so it survives native and web fullscreen), it is open by
+default, its bottom clears `.art-controls` (21px at every desktop size), the
+video/poster layers are narrowed to `calc(100% - var(--mntv-drawer-width))` so the
+drawer covers the letterbox rather than the picture, the episode grid renders
+78x36 buttons in a 380px drawer, the control-bar toggle closes and reopens it (the
+video returns to the full player width), the 换源 tab renders `[data-source-key]`
+rows and a click moves `data-active`, the tab row is not clipped by the panel, the
+loading mask is narrowed to the video area, and the drawer's z-index (70) stays
+below Artplayer's settings panel (90). At 375x667 it asserts the opposite: no
+drawer, toggle hidden, panel below the player.
+
+Two traps: the drawer element is **recreated** by the portal on every toggle, so a
+captured reference goes stale — re-query `.mntv-episode-drawer` after toggling; and
+`/assets/*.css` is served with `cache-control: public, max-age=300`, so a Chrome that
+probed the previous build answers from its own cache and the probe measures the OLD
+layout. The harness runs `Network.clearBrowserCache` before navigating for exactly
+this reason.
+
 
 ```bash
 node scripts/cdp_image_fill.cjs "$AUTH" / /douban?type=movie "/search?q=Spider"
