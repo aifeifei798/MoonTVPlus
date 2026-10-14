@@ -17,6 +17,8 @@ lives in `followings_refresh.py`.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import Request
 
 from ..auth import get_auth_info_from_cookie
@@ -25,6 +27,14 @@ from ..env import STORAGE_TYPE, env
 from ..routes import find_user, json_response, user_guard
 from ..storage.db import Db
 from ..utils import js_number, js_truthy, now_ms, split_key
+
+# `/api/user/online` is POSTed on every page load by `UserOnlineUpdate.tsx`, and
+# the handler is a read-modify-write of the whole admin-config blob. What it
+# writes is a heartbeat: the panel's "online" badge is a minute-level thing, so
+# rewriting the same blob 3 seconds later is pure I/O. A heartbeat inside the
+# window is answered from the stored value without touching the DB.
+# `MOONTVPLUS_ONLINE_DEBOUNCE_S=0` restores upstream's write-per-request.
+ONLINE_DEBOUNCE_S = int(os.environ.get("MOONTVPLUS_ONLINE_DEBOUNCE_S", "60"))
 
 LOCALSTORAGE_WRITE_ERROR = "localstorage 模式不支持管理员配置写入"
 
@@ -66,7 +76,18 @@ async def user_online(request: Request):
         if user_entry.get("banned"):
             return json_response({"error": "用户已被封禁"}, 401)
 
-        user_entry["lastOnline"] = now_ms()
+        stored_last_online = user_entry.get("lastOnline")
+        now = now_ms()
+        if (
+            ONLINE_DEBOUNCE_S > 0
+            and isinstance(stored_last_online, int)
+            and now - stored_last_online < ONLINE_DEBOUNCE_S * 1000
+        ):
+            # Same wire shape, same key order; the value is just the one already
+            # in the blob instead of a fresh timestamp.
+            return json_response({"ok": True, "lastOnline": stored_last_online})
+
+        user_entry["lastOnline"] = now
         await Db.save_admin_config(config_self_check(admin_config))
 
         return json_response({"ok": True, "lastOnline": user_entry["lastOnline"]})

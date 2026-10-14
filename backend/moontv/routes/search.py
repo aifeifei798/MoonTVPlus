@@ -63,7 +63,22 @@ def _failure(site, error: str) -> dict:
     return {"name": site.get("name"), "key": site.get("key"), "error": error}
 
 
-async def _search_one_site(site: dict, query: str, disable_yellow: bool, timeout_ms):
+# `?compact=1` is an opt-in projection for the search page. A result carries the
+# full episode URL list and the raw `vod_content` description; the search page
+# only ever reads the *count* of episodes (tv/movie split, 集数 sort, the card
+# badge) and never the URLs or the description. On a ten-site search that is
+# ~350 KB of JSON for a body the client renders as 200 cards. The play page
+# does not pass `compact`, so it still gets the full record.
+_COMPACT_DROPPED = ("desc", "episodes_titles", "episodes")
+
+
+def _compact_result(result: dict) -> dict:
+    projected = {key: value for key, value in result.items() if key not in _COMPACT_DROPPED}
+    projected["episodes_count"] = len(result.get("episodes") or [])
+    return projected
+
+
+async def _search_one_site(site: dict, query: str, disable_yellow: bool, timeout_ms, compact: bool = False):
     """One site's whole run: `(results, failed_or_None)`.
 
     `hasResults` is set from the *unfiltered* page, which is what makes the
@@ -82,7 +97,9 @@ async def _search_one_site(site: dict, query: str, disable_yellow: bool, timeout
                 filtered_results = _yellow_filter(page_results)
             if has_results and len(filtered_results) == 0:
                 raise Exception("结果被过滤")
-            site_results.extend(filtered_results)
+            site_results.extend(
+                (_compact_result(r) for r in filtered_results) if compact else filtered_results
+            )
 
         if not has_results:
             raise Exception("无搜索结果")
@@ -108,6 +125,9 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
     query = request.query_params.get("q")
     stream_param = request.query_params.get("stream")
     enable_stream = stream_param != "0" if stream_param else False
+    # Opt-in projection for the search page (see `_compact_result`). Absent or
+    # `0` keeps the full upstream record, so every existing client is unaffected.
+    compact = request.query_params.get("compact") == "1"
 
     timeout_param = request.query_params.get("timeout")
     timeout_ms = None
@@ -146,7 +166,7 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
     # -------------------------
     if not enable_stream:
         results = await asyncio.gather(
-            *(_search_one_site(site, query, disable_yellow, timeout_ms) for site in api_sites)
+            *(_search_one_site(site, query, disable_yellow, timeout_ms, compact) for site in api_sites)
         )
         aggregated_results = [item for pair in results for item in pair[0]]
         failed_sources = [pair[1] for pair in results if pair[1]]
@@ -171,11 +191,18 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
     # -------------------------
     aggregated_results: list = []
     failed_sources: list = []
-    events: list = []
+    # The events are produced by the site tasks and consumed by the generator
+    # below. A queue makes the generator block on the next event instead of
+    # polling an `events` list and `task.done()` with `asyncio.sleep(0)`: the
+    # polling version spun ~613k times for a 1.4 s ten-site search, which is
+    # CPU the upstream requests never get. Each site puts a `None` sentinel
+    # after its own events, so draining the queue in order yields exactly the
+    # byte sequence the list-based version wrote.
+    queue: asyncio.Queue = asyncio.Queue()
 
     def safe_write(obj) -> None:
         """`writer.write(encoder.encode(JSON.stringify(obj) + '\\n'))`."""
-        events.append(json_dump(obj).encode("utf-8") + b"\n")
+        queue.put_nowait(json_dump(obj).encode("utf-8") + b"\n")
 
     async def run_site(site: dict) -> None:
         has_results = False
@@ -192,8 +219,14 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
                     safe_write({"failedSources": failed_sources})
                     return
 
-                aggregated_results.extend(filtered_results)
-                safe_write({"site": site.get("key"), "pageResults": filtered_results})
+                # The client reads the per-page `pageResults` events, so the
+                # projection has to be applied to the event body too — writing
+                # the full records here would send the 350 KB anyway.
+                page_results = (
+                    [_compact_result(r) for r in filtered_results] if compact else filtered_results
+                )
+                aggregated_results.extend(page_results)
+                safe_write({"site": site.get("key"), "pageResults": page_results})
 
             if not has_results:
                 failed_sources.append(_failure(site, "无搜索结果"))
@@ -202,20 +235,24 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
             print(f"搜索失败 {site.get('name')}: {err}")
             failed_sources.append(_failure(site, _error_message(err)))
             safe_write({"failedSources": failed_sources})
+        finally:
+            queue.put_nowait(None)
 
     async def generate():
         tasks = [asyncio.create_task(run_site(site)) for site in api_sites]
-        pending = set(tasks)
-        index = 0
-        while pending:
-            while index < len(events):
-                yield events[index]
-                index += 1
-            await asyncio.sleep(0)
-            pending = {task for task in pending if not task.done()}
-        while index < len(events):
-            yield events[index]
-            index += 1
+        remaining = len(tasks)
+        while remaining:
+            item = await queue.get()
+            if item is None:
+                remaining -= 1
+                continue
+            yield item
+        # Nothing can be left over (the sentinel is written after a site's own
+        # events), but the drain keeps the framing identical if that changes.
+        while not queue.empty():
+            item = queue.get_nowait()
+            if item is not None:
+                yield item
 
         if failed_sources:
             yield json_dump({"failedSources": failed_sources}).encode("utf-8") + b"\n"
