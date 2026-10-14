@@ -59,9 +59,13 @@ are committed, not left in `/tmp`.
 - `server.sh` options (`--env`, `--host`, `--port`, `--log`) may go before or
   after the command. `--` (verbatim uvicorn args) must go **after** it, because
   everything past `--` is forwarded and the command would be swallowed.
-- pytest: `backend/.venv/bin/python -m pytest` from `backend/`
-  (`testpaths = ["tests"]`, `asyncio_mode = auto`). There is no `tests/` dir yet,
-  so pytest only prints a testpaths warning and collects nothing.
+- pytest: `backend/.venv/bin/python -m pytest` **from `backend/`**
+  (`testpaths = ["tests"]`, `asyncio_mode = auto`). Running it from the repo root
+  makes pytest's rootdir the root, where there is no ini file, so `asyncio_mode`
+  is not applied and every async test/fixture errors out. The suite is offline:
+  `tests/conftest.py` points `MOONTV_DB_PATH` at a temp file and
+  `test_search_stream.py` adds a local `ThreadingHTTPServer` fake `?ac=videolist`
+  media server as a source, so search assertions do not depend on the network.
 
 ## Wiring that filenames do not show
 
@@ -164,6 +168,26 @@ are committed, not left in `/tmp`.
   `USERNAME` are **not** `NEXT_PUBLIC_`-prefixed; `NEXT_PUBLIC_SITE_NAME`,
   `NEXT_PUBLIC_STORAGE_TYPE`, … are. A wrong name silently turns the gate into
   a 307 → `/warning`.
+- **Compression is on, and it makes a size probe lie.** `main.py` registers
+  `GZipMiddleware(minimum_size=1000, compresslevel=6)` before the auth gate, and
+  `static.py` gzips the files it serves from a cache keyed by
+  `(path, size, mtime_ns)` (so the middleware sees `Content-Encoding: gzip` and
+  does not compress twice) and answers `If-None-Match` with a 304. httpx and
+  `TestClient` send `Accept-Encoding: gzip, deflate` and auto-inflate, so a test
+  that wants the raw bytes must send `Accept-Encoding: identity` and a test that
+  wants the wire size must read `content-length`, not `len(response.content)`.
+  Starlette's exclusion list means SSE, images, fonts, video and audio are never
+  compressed — `/api/admin/source/test` and `/api/followings/refresh` stay
+  byte-exact.
+- **`?compact=1` is opt-in, per caller.** `routes/search.py` drops `desc`,
+  `episodes_titles` and `episodes` and adds `episodes_count` only when the query
+  says so; the search page does, the play page's re-search does not. A probe that
+  compares two search payloads must pass the same `compact` value to both or the
+  episode arrays will disagree.
+- **Two knobs are MoonTVPlus-only and default on:** `MOONTVPLUS_ONLINE_DEBOUNCE_S`
+  (60; `0` restores upstream's write-per-heartbeat) and
+  `MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS` (64, the shared httpx pool's
+  `max_connections`; keepalive is `min(20, that)`).
 - A browser that lands on `/warning` after `./server.sh start` means `PASSWORD`
   never reached the process — that is the gate working as designed, not a bug to
   chase in the frontend. `server.sh start` prints the same note; the value comes
