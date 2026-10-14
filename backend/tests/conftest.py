@@ -29,6 +29,10 @@ os.environ["MOONTV_DB_PATH"] = os.path.join(_TMP, "test.db")
 os.environ["PASSWORD"] = "test-password"
 os.environ["USERNAME"] = "test-owner"
 os.environ["NEXT_PUBLIC_STORAGE_TYPE"] = "sqlite"
+# The fake media server and the stub image upstreams in these tests are on
+# 127.0.0.1, which the SSRF guard blocks by default. The guard itself is
+# covered by test_url_guard.py.
+os.environ["MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE"] = "1"
 
 from moontv.main import create_app  # noqa: E402
 from moontv.storage.db import Db  # noqa: E402

@@ -16,13 +16,21 @@ against each other and Python is never the more permissive one: `http://evil.com
 is `evil.com` to `new URL` and `127.0.0.1` to `urlsplit` (blocked here, and it
 is the host httpx would connect to), and `http://127.0.0.1%2devil.com` stays
 literal in Python rather than normalizing to `127.0.0.1-evil.com`.
+
+Two things here are MoonTVPlus additions, not ports (PLAN.md change 36):
+`open_guarded`, which re-runs the blacklist on every redirect hop — checking
+only the URL the caller named is bypassable with a public host that 302s into
+the loopback — and `validate_public_url`, the same checks without the whitelist,
+which is what `/api/image-proxy` and the manifest's own AES-key/segment hosts
+get.
 """
 
 from __future__ import annotations
 
+import os
 import re
 
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from .env import M3U8_PROXY_ALLOW_HOSTS, env_str
 
@@ -48,6 +56,21 @@ DECIMAL_IPV4 = re.compile(r"^[0-9]{1,10}$")
 # WHATWG's URL parser drops these before it parses, which is why
 # `http://127.0.0.1\n.evil.com` is one host to `new URL`, not two.
 URL_WHITESPACE = re.compile(r"[\t\n\r]|\u000c")
+
+
+def guard_allows_private() -> bool:
+    """`MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1` — turn the blacklist off.
+
+    Upstream has no address check at all, so this is the documented way to get
+    that back: posters on a LAN NAS, and the offline test harnesses whose fake
+    media server is `127.0.0.1`. Read per call so a harness can set it without
+    restarting the process.
+    """
+    return os.environ.get("MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 # A WHATWG URL needs a scheme before the first `:`; `urlsplit` would otherwise
 # read the whole string as a path and report no error at all.
@@ -83,33 +106,47 @@ def matches_allow_list(hostname: str, allow_hosts: list[str]) -> bool:
     return False
 
 
-def validate_media_url(raw: object, extra_allow_hosts=None) -> dict:
-    """`validateMediaUrl` — `{ok}` or `{ok: false, reason}`."""
+def _basic_url_check(raw: object) -> tuple[str | None, str]:
+    """The shared part of both validators: `(reason, hostname)`, `reason` None
+    when the URL passes.
+
+    The scheme test stands in for `new URL(raw)`'s throw, the length cap is
+    upstream's, and the private-host blacklist is the SSRF part.
+    """
     if not isinstance(raw, str) or not raw:
-        return {"ok": False, "reason": "缺少 URL 参数"}
+        return "缺少 URL 参数", ""
     if len(raw) > 4096:
-        return {"ok": False, "reason": "URL 过长"}
+        return "URL 过长", ""
 
     # `new URL(raw)` throws for anything without a scheme; `urlsplit` does not,
     # so the scheme test is what stands in for the try/catch.
     normalized = URL_WHITESPACE.sub("", raw).strip()
     if not SCHEME_PATTERN.match(normalized):
-        return {"ok": False, "reason": "URL 格式非法"}
+        return "URL 格式非法", ""
 
     try:
         parsed = urlsplit(normalized)
     except ValueError:
-        return {"ok": False, "reason": "URL 格式非法"}
+        return "URL 格式非法", ""
 
     protocol = parsed.scheme
     if protocol not in ("http", "https"):
-        return {"ok": False, "reason": "仅支持 http/https 协议"}
+        return "仅支持 http/https 协议", ""
 
     # `urlsplit` reports no host as `None` where `new URL` reports `''`, and
     # `isBlockedHost('')` is true either way.
     hostname = parsed.hostname or ""
-    if is_blocked_host(hostname):
-        return {"ok": False, "reason": "不允许访问该地址"}
+    if not guard_allows_private() and is_blocked_host(hostname):
+        return "不允许访问该地址", hostname
+
+    return None, hostname
+
+
+def validate_media_url(raw: object, extra_allow_hosts=None) -> dict:
+    """`validateMediaUrl` — `{ok}` or `{ok: false, reason}`."""
+    reason, hostname = _basic_url_check(raw)
+    if reason is not None:
+        return {"ok": False, "reason": reason}
 
     allow_hosts = read_allow_hosts()
     extra = [
@@ -123,3 +160,62 @@ def validate_media_url(raw: object, extra_allow_hosts=None) -> dict:
         return {"ok": False, "reason": "该域名不在允许列表中"}
 
     return {"ok": True}
+
+
+def validate_public_url(raw: object) -> dict:
+    """The same checks without the host whitelist.
+
+    `/api/image-proxy` has no whitelist upstream, and a redirect target or an
+    AES-key host is never the host the caller named, so only the private-network
+    blacklist applies to them: every poster host a real card can point at is
+    public, and no legitimate media CDN lives on a loopback address.
+    """
+    reason, _ = _basic_url_check(raw)
+    return {"ok": True} if reason is None else {"ok": False, "reason": reason}
+
+
+class BlockedUrl(Exception):
+    """`open_guarded` refused a hop. The reason is the route's `message`."""
+
+
+REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+MAX_REDIRECTS = 5
+
+
+async def open_guarded(client, url, *, validator=validate_media_url, headers=None, timeout_s=None):
+    """GET `url` with redirects followed one hop at a time, guarding every hop.
+
+    `fetch` follows redirects, so validating only the URL the client sent leaves
+    a bypass: `?url=https://some-allowed-site/redirect-to?url=http://127.0.0.1/`
+    passes the guard and then hands back whatever the cluster answers. The entry
+    URL is checked with `validator`; every hop it bounces to is checked against
+    the private-host blacklist only, because a hop is never the host the caller
+    named.
+
+    Returns the final, un-consumed `httpx.Response` — the caller closes it.
+    """
+    entry = validator(url)
+    if not entry.get("ok"):
+        raise BlockedUrl(entry.get("reason") or "不允许访问该地址")
+
+    current = url
+    for _ in range(MAX_REDIRECTS + 1):
+        response = await client.send(
+            client.build_request("GET", current, headers=headers, timeout=timeout_s),
+            stream=True,
+            follow_redirects=False,
+        )
+        if response.status_code not in REDIRECT_STATUSES:
+            return response
+
+        location = response.headers.get("location")
+        await response.aclose()
+        if not location:
+            raise BlockedUrl("重定向缺少 Location 头")
+
+        current = urljoin(current, location)
+        hop = validate_public_url(current)
+        if not hop.get("ok"):
+            raise BlockedUrl(hop.get("reason") or "不允许访问该地址")
+
+    raise BlockedUrl("重定向次数过多")

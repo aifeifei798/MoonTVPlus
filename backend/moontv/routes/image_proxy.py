@@ -19,6 +19,13 @@ poster the douban rows render). Each is tried on the official host, its https fo
 then its mirrors. Every other host is fetched exactly once, exactly as upstream
 did, and the error shapes (`{"error": ...}` at the upstream status, or 500
 `Error fetching image`) are unchanged.
+
+Hardening (MoonTVPlus addition, PLAN.md change 36): the route is unauthenticated
+and takes a user-supplied URL, so it runs through `url_guard`'s private-network
+blacklist and follows redirects hop by hop, re-checking each hop. Without it
+`?url=http://127.0.0.1:6379/` is a free read of whatever is on the box. A blocked
+URL answers 403 `{"error": "地址不被允许", "message": ...}`; `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1`
+restores upstream's "fetch anything" behavior.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from fastapi.responses import StreamingResponse
 
 from ..fetch import get_http_client
 from ..routes import json_response
+from ..url_guard import BlockedUrl, guard_allows_private, open_guarded, validate_public_url
 
 # The browser headers the proxy presents to the image host; douban checks the
 # referer before it serves a poster.
@@ -56,6 +64,15 @@ CACHE_HEADERS = {
 IMAGE_MAX_BYTES = 8 * 1024 * 1024
 _CHUNK = 64 * 1024
 _FETCH_TIMEOUT_S = 10.0
+
+# 上游的 `fetch(imageUrl)` 不做任何地址校验，而这条路由在 auth gate 的 skip 列表
+# 里（`<img>` 带不了 cookie），所以它是一个开放的 SSRF 通道：`?url=http://127.0.0.1:6379/`
+# 会把内网服务的响应吐出来，重定向也能从公网域名跳进内网。这里复用 `url_guard` 的
+# 私有网段黑名单 —— 真实海报域名都是公网的，默认开启不影响任何卡片。
+# `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1` 恢复上游的"任意 URL 都取"（海报放在内网
+# NAS 上的自托管者才需要）。
+def _image_proxy_guard() -> bool:
+    return not guard_allows_private()
 
 # 番组计划（Bangumi）的封面域名 `lain.bgm.tv` 走 Cloudflare，TLS 握手在部分网络
 # 里被中间设备间歇性重置 —— 动漫「每日放送」的海报因此一直加载不出来。这里按
@@ -91,6 +108,11 @@ _DOUBAN_MIRROR_HOSTS = tuple(
 )
 
 _DOUBAN_IMAGE = re.compile(r"img\d+\.doubanio\.com\Z")
+
+
+def _allow_any(_url):
+    """The validator `open_guarded` uses when the guard is turned off."""
+    return {"ok": True}
 
 
 def _mirrors_for(host: str) -> tuple[str, ...] | None:
@@ -143,17 +165,32 @@ async def image_proxy(request: Request):
     if not image_url:
         return json_response({"error": "Missing image URL"}, 400)
 
+    guard = _image_proxy_guard()
+    if guard:
+        check = validate_public_url(image_url)
+        if not check["ok"]:
+            return json_response({"error": "地址不被允许", "message": check["reason"]}, 403)
+
     candidates = _image_candidates(image_url)
     client = get_http_client()
 
     for index, candidate in enumerate(candidates):
         try:
-            upstream = await client.send(
-                client.build_request(
-                    "GET", candidate, headers=IMAGE_HEADERS, timeout=_FETCH_TIMEOUT_S
-                ),
-                stream=True,
+            # Redirects are followed hop by hop so a public host cannot bounce
+            # the request into the cluster.
+            upstream = await open_guarded(
+                client,
+                candidate,
+                validator=validate_public_url if guard else _allow_any,
+                headers=IMAGE_HEADERS,
+                timeout_s=_FETCH_TIMEOUT_S,
             )
+        except BlockedUrl:
+            if index == len(candidates) - 1:
+                return json_response(
+                    {"error": "地址不被允许", "message": "不允许访问该地址"}, 403
+                )
+            continue
         except Exception:  # noqa: BLE001 — upstream's catch-all, try the next host
             if index == len(candidates) - 1:
                 return json_response({"error": "Error fetching image"}, 500)
