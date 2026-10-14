@@ -394,6 +394,29 @@ are committed, not left in `/tmp`.
   appears dead. A capture listener on `.art-control-fullscreen` falls back to
   `fullscreenWeb = true` when no fullscreen mode engages within 600ms
   (desktop/Android go native and never hit the fallback). `theme` is `#0071e3`.
+- **Rotation-driven fullscreen is ours, not Artplayer's.** `autoOrientation` is a
+  control button that calls `screen.orientation.lock()`; nothing upstream enters
+  fullscreen because the phone turned. `usePlayEngine.ts` listens for
+  `screen.orientation` `change` (fallback `window` `orientationchange`) on touch
+  devices only, and the entry prefers native fullscreen with the same 600ms
+  `fullscreenWeb` fallback. Only fullscreen the orientation itself entered is
+  exited by rotating back, and a manual exit while landscape suppresses re-entry
+  until the next portrait→landscape cycle. **Never test "is it fullscreen" with
+  `art.fullscreen`**: Artplayer defines that property as a getter only inside
+  `once("video:loadedmetadata")`, so assigning before then leaves a plain `true`
+  on the instance and every later check reads it as fullscreen — the exact failure
+  when the phone is rotated before the video loads. `isFullscreenEngaged()` reads
+  the DOM (`art-fullscreen`, `art-fullscreen-web`, `document.fullscreenElement`)
+  instead, and the manual-exit listeners are registered right after the player is
+  constructed rather than in `ready` for the same reason.
+- **The 锁定 (lock) progress bar is a CSS fix, not a JS one.** When locked,
+  Artplayer pushes `.art-bottom`'s contents down by
+  `--art-control-height + --art-bottom-gap + --art-progress-height/4`; the controls
+  are clipped by `.art-bottom`'s `overflow: hidden` but the progress bar leaks a
+  sliver inside the player's bottom edge. `globals.css` hides
+  `.art-video-player.art-lock .art-bottom .art-progress` — `!important` is required
+  because Artplayer injects its stylesheet into `head` at runtime, after the
+  Tailwind one.
 - Palette is Apple-style, not Tailwind-default: brand accent is the `apple`
   blue scale in `tailwind.config.ts` (`600 #0071e3` / hover `500 #0077ed` /
   dark `400 #2997ff`; the old `green-*` brand is gone, migrated shade for
@@ -454,7 +477,9 @@ table of fixtures run through both the verbatim TS (in node) and the Python port
 then byte-compared. The reusable harnesses are **committed** in
 `.opencode/skills/moontvplus-verification/scripts/` — `adfilter_cases.cjs` (the
 fixture table), `adfilter_probe.cjs` (the structural census of any manifest),
-`cdp_eval.cjs` and `cdp_net.cjs` (the browser probes), `mkplayurl.py` (derives a
+`cdp_eval.cjs` and `cdp_net.cjs` (the browser probes), `cdp_orientation.cjs`
+(the mobile landscape/portrait lifecycle and the 锁定 progress-bar check),
+`mkplayurl.py` (derives a
 working `/play` URL from data), `login_cookie.py` (the auth cookie), `servecheck.py`
 (stale-dist + shipped-chunk check), `chrome_start.sh` (the headless Chrome the CDP
 harnesses attach to), `_harness.py` (the `sys.path` + `.env` bootstrap) — with the
