@@ -115,6 +115,13 @@ are committed, not left in `/tmp`.
   (upstream's `setAdminConfig`): the stored blob is whatever the panel sent, not
   a reconstruction. The data-migration **export** reads `Db.get_admin_config()`
   (the raw blob), not `getConfig()` — that is what makes a re-import round-trip.
+  **`POST /api/admin/site` validates the whole form first** (`SITE_REQUIRED_TYPES`:
+  nine fields, then the optional ones it is given), so a partial body is a 400
+  `参数格式错误` before anything is written — a harness that sends only the field it
+  cares about tests nothing. `strip_none` at serialization drops the optional fields
+  the form omitted, so the stored `SiteConfig` carries exactly the nine it sent
+  (`None` == JS `undefined`), and `refine_config` fills `TVBoxEnabled`/`TVBoxPassword`
+  with defaults on the served read.
 - **Source health check (new, not a port)** is a fourth admin module,
   `routes/source_test.py` (`POST /api/admin/source/test`, SSE, POST-only, and a
   `CONCURRENCY = 5` `asyncio.Queue` pool copied from
@@ -143,7 +150,14 @@ are committed, not left in `/tmp`.
   `frontend/src/app/admin/page.tsx` (and the row renderers now emit the button
   unconditionally). A frontend edit is invisible until `pnpm build` runs. While an
   admin blob exists its `ConfigFile` is the source of truth — `backend/config.json`
-  on disk is only read by `init_config`/`reset_config`.
+  on disk is only read by `init_config`/`reset_config`. **`cache_time` is in the
+  same family**: `refine_config` re-injects `ConfigFile.cache_time` over
+  `SiteConfig.SiteInterfaceCacheTime` on every read, so the panel's 接口缓存时间
+  field is a no-op on the wire while the config file carries one (this box's
+  `config.json` has 7200, so `/api/detail` emits `max-age=7200` no matter what the
+  panel was told). The panel's POST writes the number into **both** places, so the
+  stored blob does change, and `test_server_config.py` asserts both halves: the
+  blob's 60, and the served `max-age` following the `ConfigFile` value.
 - **The panel's source health badges are client state, not wire state**:
   `frontend/src/app/admin/page.tsx` reads the `localStorage` key
   `moontv_source_health` (`{at, results}`, the snake-case convention of
@@ -206,6 +220,18 @@ are committed, not left in `/tmp`.
   check at all), and `tests/conftest.py` sets it because the offline fake media
   server is `127.0.0.1` — `test_url_guard.py` must undo it per test or the guard
   tests pass vacuously.
+  **An IP literal is decided with `ipaddress`, not with upstream's string list**:
+  `urlsplit().hostname` strips IPv6 brackets, so no pattern can match
+  `::ffff:127.0.0.1` (IPv4-mapped loopback, which returned the app's own logo
+  through both proxies before the fix), `fd00::/8` (ULA), or the decimal IPv4
+  `2130706433`. `address.is_private` covers loopback/RFC1918/ULA/link-local/
+  multicast/reserved in one call; CGNAT `100.64.0.0/10` is **not** `is_private`
+  in Python, so its pattern stays. Public IPv6 literals stay allowed, and
+  `fe80::1%eth0` (a scope id, which `ipaddress` rejects with `ValueError`) is
+  caught by the `^fe80:` pattern first. **DNS rebinding is the guard's documented
+  limitation** — the check is on the string, so a public hostname whose A record
+  points at loopback is not caught; recorded in `is_blocked_host`'s docstring,
+  not implemented.
 - **Streaming routes cancel their outstanding fetches when the client goes away,
   and a probe has to count completions, not starts.** `routes/search.py:
   generate()` has a `try/finally` that cancels the per-site tasks; the pages 2..N
@@ -562,10 +588,11 @@ are committed, not left in `/tmp`.
   The body gradient was removed in `src/app/globals.css`. Semantic colors stay:
   red errors, yellow warnings/ratings, purple source badges. Do not reintroduce
   `green-*`, `emerald-*`, `lime-*` or `teal-*`.
-- pnpm 12 gates dependency build scripts. `frontend/pnpm-workspace.yaml` still
-  carries the unresolved `allowBuilds: esbuild: set this to true or false`
-  placeholder; this machine works because `dangerouslyAllowAllBuilds=true` is set
-  globally. On a fresh machine use `install.sh --allow-builds` or set that key.
+- pnpm 12 gates dependency build scripts. `frontend/pnpm-workspace.yaml` resolves
+  it: `allowBuilds: esbuild: true` (esbuild is the only dependency with a build
+  script, and that script is what makes its native binary available). A fresh
+  machine can also use `install.sh --allow-builds`, which sets
+  `dangerouslyAllowAllBuilds=true` globally.
 
 ## Images and douban (what config owns, what the port does not)
 
@@ -751,6 +778,45 @@ doubles it and the gate bounces back to `/login?redirect=%2F`). Keep the
 browser alive in a background shell; the harness attaches to it and cannot
 start one itself.
 
+**The offline suite's own traps** (the B5/B6 wire modules in `backend/tests/`):
+
+- Tests share the storage singleton and the DB file, so any test that touches user
+  data takes `clean_db`; without it state leaks from one test into the next (search
+  history leaked and made three tests fail). The fake media server and its fixtures
+  (`FAKE_PAGE_1`/`FAKE_PAGE_2`, `serve_fake`, `fake_upstream`, `fake_source`,
+  `fake_only_source`) live in `tests/conftest.py`, not in one module.
+- `fake_only_source` is the only way to get a one-source list: `clean_db` empties
+  the admin blob, `refine_config` re-injects `ConfigFile.api_site` on every read,
+  and replacing the `ConfigFile` string does NOT clear `SourceConfig`. The sequence
+  that empties the list is `/api/admin/source` `batchDelete` over the keys the read
+  produced (it prunes `ConfigFile.api_site` too, PLAN.md change 17).
+- **Query values must be percent-encoded** (`quote(v, safe="")`): a raw `+` in a
+  query string decodes to a space, so `key=FAKE+2` reaches `skipconfigs` as
+  `FAKE 2` and answers `无效的key格式` for a well-formed key.
+- **`await` binds looser than subscript**: `await Db.get_all_play_records(USER)["K"]`
+  subscripts the coroutine and raises `TypeError`; write `(await Db…)[…]`. Every
+  `DbManager` method is async, and `Db.get_admin_config()` returns a str **or** a
+  dict depending on the backend, so a harness parses it when it is a str.
+- `TestClient` keeps the login cookie in its jar once the `cookie` fixture runs, so
+  an "unauthenticated" assertion must `client.cookies.pop("auth", None)`. The gate
+  answers unauthenticated `/api/*` with **plain text** `Unauthorized` at 401, so a
+  route's own `{"error": "Unauthorized"}` branch is unreachable on gated paths
+  exactly as behind Next's middleware. `MATCHER_EXCLUDED` leaves `api/login`,
+  `api/register`, `api/logout`, `api/cron`, `api/server-config`, `api/tvbox/*`,
+  `api/douban/recommends`, `api/admin/tvbox`, `api/m3u8`, `api/image-proxy` open,
+  so those tests assert the route's own answer (tvbox unauthenticated hits its 403
+  `TVBox 接口未开启`, not the gate's 401).
+- **An SSE generator's driver needs a loop turn before it runs.** `ensure_future`
+  schedules the worker pool; the generator yields `start` immediately, so a
+  disconnect probe that closes the generator at the first event measures zero
+  starts. Take `start`, `await asyncio.sleep(0.01)` to get the workers in flight,
+  assert the started count, then `aclose()` and assert completions stay 0 — the
+  `finally` cancels the pool mid-flight.
+- A stubbed fetch only has to answer what the route reads: `source_test._probe`
+  reads `.status_code` and `.json()`, so a `FakeResponse` with those two members
+  exercises every branch (HTTP status, broken JSON, missing `list`, empty `list`)
+  with no network, and the same stub records `timeout_ms` and in-flight concurrency.
+
 ## Not ported yet
 
 B6 is **in** — `routes/detail.py` (`/api/detail`), `routes/search_sub.py`
@@ -784,3 +850,16 @@ against the SSE event vocabulary the client parses.
 B5 (admin + `/api/config`) is in and verified end to end: every action of every
 admin route was exercised with curl against a logged-in cookie, and the CDP
 harness on `/admin` renders the full panel menu with an empty `window.__errs`.
+
+**The offline coverage of the B5/B6 route modules is in too** — the second audit
+pass moved the fake media server into `tests/conftest.py` and added committed wire
+modules for the routes that had only been curl-checked: `test_search_sub.py` (14),
+`test_detail.py` (7), `test_tvbox.py` (14), `test_user_history.py` (18),
+`test_cron.py` (6), `test_server_config.py` (5), `test_source_test.py` (14). The
+suite is 232 green from `backend/` (the 154 baseline plus 78). What they pin that
+curl did not: the gate's plain-text 401 versus the route's own 403 on the
+matcher-excluded tvbox paths, the panel form's required-field validation, the
+`ConfigFile.cache_time` re-injection over the panel's 接口缓存时间, the SSE framing
+and event vocabulary of the source health check, the `CONCURRENCY = 5` pool, the
+disconnect cancel, the seconds-clamped `timeout`, the read-only promise, and the
+zero-result warning.

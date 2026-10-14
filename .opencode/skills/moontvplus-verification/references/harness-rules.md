@@ -74,6 +74,40 @@ writing a new probe.
   sources whose `api` points at a `ThreadingHTTPServer` the harness starts, and
   dispatch on a path marker inside the URL, because the probe appends
   `?ac=videolist&wd=` to whatever api the panel was given.
+- **A disconnect probe on an SSE generator needs a loop turn before it closes.**
+  The worker pool is an `ensure_future`, and the generator yields `start`
+  immediately, so closing at the first event measures zero starts: take `start`,
+  `await asyncio.sleep(0.01)` to get the workers in flight, assert the started
+  count, then `aclose()` and assert completions stay 0. Counting *starts* is the
+  same trap as counting requests in the search route: the signal is completions.
+- **`TestClient` keeps the login cookie in its jar** once any fixture logged in, so
+  an "unauthenticated" assertion must `client.cookies.pop("auth", None)`; without
+  the pop the gate lets the request through and the 401 check passes on a logged-in
+  session. The gate answers unauthenticated `/api/*` with plain text `Unauthorized`,
+  so a route's own `{"error": "Unauthorized"}` branch is unreachable on gated paths
+  and the matcher-excluded paths (`api/tvbox/*`, `api/server-config`, `api/cron`,
+  `api/m3u8`, `api/image-proxy`, …) assert the route's own answer instead.
+- **Percent-encode every query value** (`quote(v, safe="")`): a raw `+` decodes to a
+  space, so `key=FAKE+2` reaches `skipconfigs` as `FAKE 2` and answers
+  `无效的key格式` for a well-formed key.
+- **`await` binds looser than subscript**: `await Db.get_all_play_records(U)["K"]`
+  subscripts the coroutine and raises `TypeError`. Every `DbManager` method is async,
+  and `Db.get_admin_config()` returns a str **or** a dict depending on the backend.
+- **Tests share the storage singleton and the DB file**, so any test that touches
+  user data takes `clean_db`; without it state leaks from one test into the next
+  (search history leaked and made three tests fail). `fake_only_source` is the only
+  way to get a one-source list: `clean_db` empties the blob, `refine_config`
+  re-injects `ConfigFile.api_site` on every read, and replacing the `ConfigFile`
+  string does NOT clear `SourceConfig` — the sequence that empties the list is
+  `batchDelete` over the keys the read produced.
+- **A panel form harness must send the whole form.** `POST /api/admin/site`
+  validates nine required fields before writing, so a partial body is a 400
+  `参数格式错误` and the harness measures nothing; `strip_none` then drops the
+  optional fields it omitted, so the stored blob carries exactly the fields sent.
+- A stubbed fetch only has to answer what the route reads: `source_test._probe`
+  reads `.status_code` and `.json()`, so a two-member `FakeResponse` exercises every
+  branch (HTTP status, broken JSON, missing `list`, empty `list`) with no network,
+  and the same stub records `timeout_ms` and in-flight concurrency.
 
 ## External oracles (the `.dat` backup)
 

@@ -680,16 +680,34 @@ papered over:
       master playlist, the segment bytes, the streamed TS proxy, and the AES key
       URL a manifest names — go through it as well.
 
+    - `is_blocked_host` decides an **IP literal** with `ipaddress`, not with the
+      string patterns upstream had. `urlsplit().hostname` strips the brackets from
+      an IPv6 literal, so no string pattern in upstream's list can match
+      `::ffff:127.0.0.1` (IPv4-mapped loopback) or `fd00::/8` (site-local ULA):
+      `http://[::ffff:127.0.0.1]:3000/logo.svg` returned the app's own logo through
+      **both** proxies before the fix, and `2130706433` (a decimal IPv4 in the host
+      position) was open too. `address.is_private` covers loopback, RFC1918, ULA,
+      link-local, and the multicast and reserved ranges in one call; the CGNAT
+      `100.64.0.0/10` range is not `is_private` in Python, so its pattern stays.
+      Public IPv6 literals (`2001:4860:4860::8888`, `2606:4700:4700::1111`) stay
+      allowed, and `fe80::1%eth0` (a scope id, which `ipaddress` rejects) is caught
+      by the `^fe80:` pattern first. **DNS rebinding remains the guard's documented
+      limitation**: the check is on the string, so a public hostname whose A record
+      points at loopback is not caught, and that is recorded in the docstring rather
+      than implemented.
+
     A blocked URL answers `403 {"error": "地址不被允许", "message": <reason>}`, the
     same shape `/api/m3u8` already used for a bad media URL. `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1`
     restores upstream's "fetch whatever the caller named" for deployments whose
     posters or manifests really are on a LAN address (the offline test suite needs
     it: its fake media server is `127.0.0.1`). `backend/tests/test_url_guard.py` is
-    39 checks: the host table, the reason strings, the whitelist-vs-public split,
+    48 checks: the host table, the reason strings, the whitelist-vs-public split,
     the escape hatch, stub-client hop cases (relative `Location`, missing
-    `Location`, the five-hop limit), and the wire 403s on both verbs of `/api/m3u8`
-    and on `/api/image-proxy`, including a private *hop* answering 403 rather than
-    500.
+    `Location`, the five-hop limit), the IP-literal table (mapped loopback, mapped
+    metadata, mapped RFC1918, ULA, decimal IPv4, the public IPv6 pair), and the wire
+    403s on both verbs of `/api/m3u8` and on `/api/image-proxy`, including a private
+    *hop* answering 403 rather than 500 and all six encodings of the mapped loopback
+    answer 403 on both proxies.
 
   37. **Streaming routes stop working when the client goes away.** `/api/search`
     (stream mode), `/api/search/ws`, `/api/followings/refresh` and the data-migration
@@ -823,7 +841,11 @@ against `test-streams.mux.dev` (64 segments parsed, one 5.3 MB segment proxied
 with `application/octet-stream` + year cache). The source health check is in as
 well: `routes/source_test.py` (`POST /api/admin/source/test`, SSE, read-only)
 plus the panel's 测试源 button, badges and banner — 33 checks green, including
-the four classifications replayed against a local server the harness starts.
+the four classifications replayed against a local server the harness starts, and
+`backend/tests/test_source_test.py` (14 wire tests) which pins the SSE framing,
+the zero-result warning, the format/HTTP/no-api reasons, the `CONCURRENCY = 5`
+pool, the disconnect cancel, the seconds-clamped `timeout`, and the read-only
+promise.
 B7 is in as well: `routes/data_migration.py`
 writes and reads the `.dat`, and the panel's data-migration tab
 (`components/DataMigration.tsx`) is the browser half that downloads it and
