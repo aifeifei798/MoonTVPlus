@@ -17,7 +17,7 @@ from fastapi import Request
 from fastapi.responses import StreamingResponse
 
 from ..m3u8 import parse_m3u8, stream_ts_segment
-from ..url_guard import validate_media_url
+from ..url_guard import BlockedUrl, validate_media_url
 from . import json_response
 
 
@@ -46,7 +46,11 @@ async def m3u8_parse(request: Request):
         if not guard.get("ok"):
             return json_response({"error": "地址不被允许", "message": guard.get("reason")}, 403)
 
-        task = await parse_m3u8(url)
+        try:
+            task = await parse_m3u8(url)
+        except BlockedUrl as error:
+            # A redirect hop, or the manifest's own AES-key host, is private.
+            return json_response({"error": "地址不被允许", "message": str(error)}, 403)
 
         return json_response({
             "success": True,
@@ -102,6 +106,9 @@ async def m3u8_proxy(request: Request):
             head = await segments.__anext__()
         except StopAsyncIteration:
             head = None
+        except BlockedUrl as error:
+            # The entry URL passed the guard; a redirect hop did not.
+            return json_response({"error": "地址不被允许", "message": str(error)}, 403)
         except Exception as error:  # noqa: BLE001 — 首块之前失败，状态码还能改
             print("代理下载失败:", error)
             return json_response(

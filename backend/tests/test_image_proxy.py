@@ -30,7 +30,7 @@ class StubClient:
     def build_request(self, method, url, headers=None, timeout=None):
         return httpx.Request(method, url, headers=headers or {})
 
-    async def send(self, request, stream=True):
+    async def send(self, request, stream=True, follow_redirects=False):
         self.attempted.append(str(request.url))
         answer = self.responses.get(request.url.host)
         if answer is None:

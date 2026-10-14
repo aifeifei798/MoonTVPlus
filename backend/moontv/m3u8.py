@@ -20,6 +20,7 @@ import re
 from urllib.parse import urljoin, urlsplit, parse_qsl
 
 from .fetch import get_http_client
+from .url_guard import BlockedUrl, open_guarded, validate_media_url, validate_public_url
 
 # 上游是裸 `fetch(url)`（没传 timeout）；共享 client 的默认 10s（`fetch.py`）就是
 # 这里的上限，播放列表/AES key 同样适用——一个 hang 住的上游不该把请求挂住。
@@ -87,18 +88,32 @@ def _extract_title(url: str) -> str:
     return f"video_{now.year}{now.month:02d}{now.day:02d}_{now.hour:02d}{now.minute:02d}{now.second:02d}"
 
 
-async def _fetch_text(url: str) -> str:
+async def _fetch_text(url: str, *, validator=validate_media_url) -> str:
     """Plain `fetch(url)` + `.text()`: no status check — like `fetch`, an HTTP
-    error page is still a body, and the `#EXTM3U` check below rejects it."""
-    client = get_http_client()
-    response = await client.get(url, timeout=_FETCH_TIMEOUT_S)
-    return response.text
+    error page is still a body, and the `#EXTM3U` check below rejects it.
+
+    Redirects are followed hop by hop so the guard sees every hop, not just the
+    URL the caller named.
+    """
+    response = await open_guarded(
+        get_http_client(), url, validator=validator, timeout_s=_FETCH_TIMEOUT_S
+    )
+    try:
+        await response.aread()
+        return response.text
+    finally:
+        await response.aclose()
 
 
-async def _fetch_bytes(url: str) -> bytes:
-    client = get_http_client()
-    response = await client.get(url, timeout=_FETCH_TIMEOUT_S)
-    return response.content, response.status_code
+async def _fetch_bytes(url: str, *, validator=validate_media_url) -> tuple[bytes, int]:
+    response = await open_guarded(
+        get_http_client(), url, validator=validator, timeout_s=_FETCH_TIMEOUT_S
+    )
+    try:
+        await response.aread()
+        return response.content, response.status_code
+    finally:
+        await response.aclose()
 
 
 async def parse_m3u8(url: str, depth: int = 0) -> dict:
@@ -148,7 +163,10 @@ async def parse_m3u8(url: str, depth: int = 0) -> dict:
         if aes_uri:
             # A throw here fails the whole parse, exactly like upstream's
             # `await fetch(...)` inside `parseM3U8`.
-            key_bytes, _status = await _fetch_bytes(aes_uri)
+            # The key URI comes from the manifest, not from the caller, so it is
+            # checked against the private-host blacklist only — a CDN that is not
+            # in M3U8_PROXY_ALLOW_HOSTS must still be able to serve it.
+            key_bytes, _status = await _fetch_bytes(aes_uri, validator=validate_public_url)
             aes_key = key_bytes
 
     return {
@@ -180,12 +198,11 @@ _TS_TIMEOUT_S = 10.0
 async def stream_ts_segment(url: str):
     """`downloadTsSegment` 的流式版：64KB 分块 yield，超 ~2MB 断流，10s 超时。
 
-    状态码语义与 buffered 版一致（>=400 即抛 `下载失败: <status>`）。
+    状态码语义与 buffered 版一致（>=400 即抛 `下载失败: <status>`）。重定向逐跳
+    跟随，每一跳都重新跑 guard，所以一个允许过的公网域名不能 302 到内网。
     """
     client = get_http_client()
-    response = await client.send(
-        client.build_request("GET", url, timeout=_TS_TIMEOUT_S), stream=True
-    )
+    response = await open_guarded(client, url, timeout_s=_TS_TIMEOUT_S)
     if response.status_code >= 400:
         await response.aclose()
         raise Exception(f"下载失败: {response.status_code}")
