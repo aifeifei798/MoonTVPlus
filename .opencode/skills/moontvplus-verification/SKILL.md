@@ -173,7 +173,7 @@ showing `viaProxy` equal to the number of posters in the row.
 ## Verify the record poster chain (豆瓣 → 源 → 站点图标)
 
 ```bash
-node scripts/cdp_eval.cjs "$AUTH" "/" @scripts/record_poster_census.js 14000
+node scripts/cdp_eval.cjs "$AUTH" "/" @scripts/record_poster_census.js 60000
 ```
 
 `poster_census.js` only knows whether an image painted; it cannot say **which link**
@@ -181,10 +181,20 @@ of the chain the card chose. `record_poster_census.js` scopes to the record rows
 (继续观看 / 追更 / 收藏 — the only cards that do the douban lookup) and classifies each
 poster as `douban`, `source` or `fallback-logo`, so a card that fell back to the
 source cover because the lookup silently 500'd is distinguishable from one that fell
-back because douban had no match. Seed the third link through the panel's own route
-(the script's header has the curl) — never by writing `backend/moontv.db` from a
-second connection, since the running server keeps serving the blob it already has
-open. Green is `unpainted: 0` with the seeded trio reporting one of each link.
+back because douban had no match. The home page is a `CapsuleSwitch` with tabs
+首页 / 历史 / 追更 / 收藏夹 and only one view is mounted at a time, so the probe
+**clicks each record tab** (the button whose text is exactly the label) and sleeps
+2.5 s for React's scheduler to mount the view plus 9 s for the douban lookups (4
+concurrent, `poster.client.ts`) to advance the chain — a census of the default view
+sees only the 继续观看 cards, which is the failure mode the 14 s timeout hid. Seed
+the third link through the panel's own route (the script's header has the curl) —
+never by writing `backend/moontv.db` from a second connection, since the running
+server keeps serving the blob it already has open. Green is `unpainted: 0` with the
+seeded trio reporting one of each link: 继续观看 → `douban` direct, 收藏 → `douban`
+with `proxied: true, retried: true` (the direct-mode doubanio poster retried through
+`/api/image-proxy` and painted), 追更 → `fallback-logo` (title douban does not know
+plus a cover that 404s, so the chain is exhausted). The 追更 view renders the same
+card twice (有新未观看集数 + 全部追更), so `recordCards` is 4, not 3.
 
 The route behind it is additive surface, not a port: `/api/douban/search?q=…` scrapes
 `search.douban.com/movie/subject_search` and parses `window.__DATA__ = {...}`. Offline

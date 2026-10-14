@@ -296,3 +296,12 @@ back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
   does not know, through `POST /api/playrecords` — writing the db file from a second
   `sqlite3` connection leaves the running server serving the blob it already has
   open, so the probe silently tests nothing.
+- **A census of the default view is not a census of the page.** The home page is a
+  `CapsuleSwitch` (首页 / 历史 / 追更 / 收藏夹) and only one view is mounted at a time,
+  so a probe that navigates to `/` and counts record cards sees only 继续观看 and
+  reports `recordCards: 1` for a page that has all three rows. `record_poster_census.js`
+  clicks each tab (the button whose `innerText` is exactly the label), sleeps 2.5 s for
+  React's scheduler to mount the view, then 9 s for the douban lookups to advance the
+  chain, and censuses each view. `element.click()` is enough for a tab switch (no
+  transient activation needed, unlike PiP), but reading the DOM in the same task as the
+  click measures the old view.
