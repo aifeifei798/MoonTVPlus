@@ -380,6 +380,90 @@ papered over:
      (`requestFullscreen()` answers "Permissions check failed"), so the harness
      asserts the `fullscreenWeb` fallback — the path iPhone needs anyway.
 
+20. **Responses are gzipped, and the shipped assets are compressed at the source.**
+    `main.py` adds `GZipMiddleware(minimum_size=1000, compresslevel=6)` **before**
+    the auth gate, so every JSON body over 1KB is compressed. Starlette's own
+    exclusion list already leaves `text/event-stream`, images, fonts, video and
+    audio alone, which is why the SSE routes keep their exact framing (and why
+    `/api/admin/source/test` arrives uncompressed). `static.py` compresses the
+    files it serves itself and caches the blob keyed by `(path, size, mtime_ns)`,
+    so the middleware sees a `Content-Encoding: gzip` body and passes it through
+    rather than compressing twice, and the same response answers `If-None-Match`
+    with a 304 (`Vary: Accept-Encoding` on every compressed one). Measured against
+    the live server: the assets a first page load asks for are 1,532,061 B on disk
+    and 452,869 B on the wire (~70% less), `gunzip` reproduces the file byte for
+    byte, and a request with no `Accept-Encoding` still gets the raw bytes.
+21. **The search stream no longer busy-polls.** The port's stream generator used to
+    drain the per-site tasks with `await asyncio.sleep(0)` in a loop, which burned
+    CPU the upstream requests never got. It now pushes events onto an
+    `asyncio.Queue` and each site puts a `None` sentinel after its own events, so
+    the generator blocks on the next event and draining the queue yields exactly
+    the same order. Framing and event vocabulary are unchanged (NDJSON, one JSON
+    object per line). Measured over five `stream=1` searches against the ten
+    configured sources: 4,615,314 `sleep(0)` wakeups and 11.35 s CPU before, 468
+    wakeups and 0.28 s after.
+22. **`?compact=1` is an opt-in projection for the search page.** A result carries
+    `desc`, `episodes_titles` and the full `episodes` array — on a real query that
+    is 347,506 B of which 37,669 B is `desc` and 1,006 entries are episode URLs,
+    none of which the search list renders. With `compact=1` those three keys are
+    dropped and `episodes_count` is added so the row can still show the episode
+    count. It is opt-in per caller because the play page re-searches without it
+    (`usePlayEngine.ts`) and needs the full `episodes`. Same 234 results, same ids
+    and titles, same 1006 episode total, 85,021 B vs 15,153 B gz. The consequence
+    for the panel: `components/VideoCard.tsx` aggregates several sources under one
+    card and derived both the episode badge and the `stype` from
+    `item.episodes?.length`, so a compact payload would have made every aggregate
+    0 episodes and typed every one `stype=tv` — the play page's `typeMatch` then
+    filters a 1-episode movie out of its re-search and renders 未找到匹配结果. It
+    now reads `item.episodes?.length ?? item.episodes_count ?? 0`, and the probe
+    that replays that formula over a real query (3 results, 2 movie aggregates)
+    agrees with the full payload on ids, per-item counts and group keys.
+23. **`POST /api/user/online` writes the config once per 60 s, not once per page
+    view.** Upstream's heartbeat is a read-modify-write of the whole admin blob,
+    and the panel posts it on every page load. The debounce skips the write inside
+    the window and returns the `lastOnline` already stored rather than a fabricated
+    timestamp, so the wire shape and key order are identical.
+    `MOONTVPLUS_ONLINE_DEBOUNCE_S=0` restores upstream's write-per-request.
+    Verified: ten heartbeats produce one `save_admin_config` call and the same
+    `lastOnline` ten times; with the window monkeypatched past 60 s the second write
+    happens.
+24. **sqlite runs in WAL and the heavy writes leave the event loop.**
+    `journal_mode=WAL`, `synchronous=NORMAL` and `busy_timeout=5000` are set on
+    every connect (WAL is persistent in the file, `synchronous` is not), and the
+    five `batch_import_*` methods plus `clear_all_data` run through
+    `asyncio.to_thread`. Without WAL the offloaded import would stall every other
+    request; the test that imports 500 records while 50 reads are in flight is what
+    proves it does not.
+25. **Upstream fan-out is bounded by the httpx pool, not a semaphore.** The shared
+    client's `Limits` are now `MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS` (default 64,
+    keepalive `min(20, that)`) instead of the hard-coded 100/20 from change 15(e).
+    An `asyncio.Semaphore` around per-site fetches was tried and rejected: it is
+    `_LoopBoundMixin`-bound, so a harness that builds a new event loop per request
+    (`TestClient`) breaks with "attached to a different loop". The pool limit is the
+    same bound expressed where the requests actually queue.
+26. **The download manager is a lazy chunk, and a 4.8MB unused image is gone.**
+    `GlobalDownloadManager.tsx` dynamic-imports `DownloadManager` on the first
+    `showDownloadManager`/`addDownloadTask` event and buffers the tasks that arrive
+    before the chunk loads (replay deferred one tick so the component is mounted).
+    The entry chunk went 692,825 B → 456,555 B; `AddDownloadModal` (207,976 B) and
+    `DownloadManager` (28,265 B) are now separate chunks fetched only when someone
+    opens the panel. `frontend/public/screenshot1.png` (4,785,287 B) was referenced
+    by nothing in the tree and is deleted. `@fontsource/inter`'s `.woff` fallbacks
+    were left alone — browsers pick the `.woff2` listed first.
+27. **`js_number` returns `None` for NaN.** The docstring already promised it, but a
+    Python `float('nan')` is truthy, so every caller's `js_number(x) or 0` kept the
+    NaN where JS's `Number(x) || 0` would have produced `0`, and `js_min(NaN, 5)`
+    returned 5 where `Math.min` returns NaN. Both now behave like JS.
+28. **There is a pytest suite, and CI runs it.** `backend/tests/` (70 tests) covers
+    the auth gate, the static/gzip surface, the stream framing and projection, the
+    heartbeat, the three-layer `.dat` pipeline cross-checked against
+    `openssl -md md5` and node's raw DEFLATE, the m3u8 parser against a local
+    playlist server and the committed live fixture, and the sqlite layer. Upstream
+    sites are replaced by a local fake `?ac=videolist` media server so the
+    assertions are deterministic and offline. `.github/workflows/ci.yml` runs it on
+    3.11 and 3.12 and builds the frontend, asserting `dist/` contains the files a
+    bare `vite build` would have left out.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search
