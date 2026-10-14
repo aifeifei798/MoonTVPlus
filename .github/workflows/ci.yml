@@ -11,7 +11,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 20 is EOL (2026-04-30) and setup-node annotates it; 22 is the
+          # active LTS. The tree builds green on node 24 locally, so 22 is the
+          # conservative pin, not a requirement.
+          node-version: "22"
       # ubuntu runners do not ship pnpm, and corepack needs a `packageManager`
       # field this tree does not have, so pin the version the tree was built with.
       - name: Install pnpm
