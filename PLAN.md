@@ -482,6 +482,33 @@ papered over:
     parity is unaffected: the manifest still points at the same four icon paths,
     and `/favicon.ico` is still served at `image/x-icon`.
 
+ 30. **The control bar collapses when the pointer leaves the player.** Artplayer
+    5.3.0 hides the bottom bar when `!controls.isHover && Date.now() -
+    controls.timer >= CONTROL_HIDE_TIME` (3 s), but `isHover` is only ever
+    refreshed by a `document` `mousemove` (`includeFromEvent(e, $bottom)`). A
+    pointer that exits the window straight from the bar never produces a mousemove
+    inside the page, so `isHover` stays `true` and the bar stays on screen
+    forever. In web fullscreen the player fills the viewport, so "leaving the
+    player" *is* "leaving the page" — which is why the symptom shows up only there
+    (in normal mode the pointer usually crosses the page around the player first,
+    and the bar hides). `usePlayEngine.ts` adds
+    `art.on('hover', v => { if (!v) art.controls.isHover = false })`: Artplayer's
+    own `hover` event fires on the player's `mouseleave`, and clearing the flag
+    lets Artplayer's own timer do the hiding, so the bar still takes ~3 s instead
+    of vanishing instantly. Verified by two committed harnesses:
+    `scripts/artplayer_hide_probe.cjs` runs the gesture against the pinned Artplayer
+    5.3.0 out of `frontend/node_modules` with the listener toggled off by
+    `?nofix=1` and the 30 s clip in `fixtures/probe.mp4` — **fix collapses the bar
+    at 3000 ms, no-fix never does**; `scripts/cdp_control_hide.cjs` drives the real
+    shipped `/play` page (pointer on the bar → `isHover=true`; pointer off the
+    viewport → `isHover=false`; bar collapses 2794 ms later; pinning
+    `isHover=true` with no following mousemove reproduces the stuck bar). The live
+    probe has to make the page actually play, since the hide gate runs inside
+    `video:timeupdate`: it destroys `video.hls` (hls.js's `sourceopen` handler
+    otherwise puts its blob `src` back), removes `crossOrigin` (the app sets
+    `anonymous` via `moreVideoAttr` and there is no ACAO), and inlines
+    `fixtures/probe.mp4` as a data URL.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

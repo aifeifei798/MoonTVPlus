@@ -178,6 +178,33 @@ Get the cookie from `POST /api/login` and pass the **value** half of the
 `name: 'auth'`, so prefixing another `auth=` doubles it and the gate bounces
 back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
 
+## Player-state probes
+
+- Artplayer 5.3.0 hides the bottom bar inside `video:timeupdate`
+  (`!setting.show && !controls.isHover && !isInput && playing && show &&
+  Date.now() - controls.timer >= CONTROL_HIDE_TIME`), so a probe watching
+  `controls.show` measures **nothing** on a page where `playing` is false. On a
+  real `/play` page that is the normal state here (the manifest XHR 404s), so
+  point the `<video>` at a local mp4 first: `inst.video.hls.destroy()` —
+  otherwise hls.js's `sourceopen` handler puts its blob `src` back — and
+  `v.removeAttribute('crossOrigin')`, because the app sets
+  `crossOrigin="anonymous"` through `moreVideoAttr` and the local probe server
+  sends no ACAO, so the swap silently fails and Artplayer's reconnect logic
+  restores the blob.
+- `controls.isHover` is refreshed only by a `document` mousemove that actually
+  lands on `$bottom` (only `.art-progress` and `.art-controls` carry
+  `pointer-events: auto`), so a probe that guesses a y inside the bar's
+  bounding rect can report `isHover=false` while the bar is visible. Install a
+  capture-phase `mousemove` listener with `Page.addScriptToEvaluateOnNewDocument`
+  and sweep y until `isHover` is true before concluding anything.
+- `PlayStatusView`'s `VideoLoadingMask` (`z-[120]`) covers the player whenever
+  the source is still "loading" and swallows every mouse event. Take it out of
+  the way before probing the bar, and report whether it was there.
+- A counterfactual has to be pinned **without** a following mousemove: setting
+  `controls.isHover = true` and then moving the pointer re-runs the
+  `document:mousemove` handler, which sets `isHover` from the hit test and
+  quietly undoes the pin.
+
 ## What a harness cannot see
 
 - `TestClient` checks the wire, never the runtime: it does not execute the

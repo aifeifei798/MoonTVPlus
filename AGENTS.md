@@ -450,6 +450,26 @@ are committed, not left in `/tmp`.
   `.art-video-player.art-lock .art-bottom .art-progress` — `!important` is required
   because Artplayer injects its stylesheet into `head` at runtime, after the
   Tailwind one.
+- **The control bar that never hides is an `isHover` leak, not a CSS one.**
+  Artplayer 5.3.0 collapses the bottom bar inside `video:timeupdate` on
+  `!setting.show && !controls.isHover && !isInput && playing && show && Date.now() - controls.timer >= CONTROL_HIDE_TIME (3000)`, and
+  `controls.isHover` is refreshed **only** by a `document` mousemove that lands on
+  `$bottom` (only `.art-progress` and `.art-controls` carry `pointer-events: auto`).
+  A pointer that exits the window straight from the bar produces no such move, so
+  `isHover` stays `true` forever and the bar stays up. In web fullscreen the player
+  fills the viewport, so "leaving the player" *is* "leaving the page" — which is why
+  the symptom ("网页全屏后鼠标离开,播放条没隐藏") only shows there. `usePlayEngine.ts`
+  registers `artPlayerRef.current.on('hover', ...)` (Artplayer fires `hover` on the
+  player's `mouseleave`) and sets `controls.isHover = false`; the collapse still
+  follows Artplayer's own 3 s timer, so the bar does not vanish instantly. Proving
+  it needs a **playing** video: the source CDN answers the manifest XHR with 404 +
+  no ACAO in this browser, so `scripts/cdp_control_hide.cjs` destroys `video.hls`
+  (otherwise hls.js's `sourceopen` handler puts its blob `src` back), drops
+  `crossOrigin` (the app sets `anonymous` via `moreVideoAttr` and there is no ACAO),
+  and inlines `fixtures/probe.mp4` as a data URL. It reports 2794 ms on the shipped
+  bundle; `scripts/artplayer_hide_probe.cjs` is the counterfactual, running the same
+  gesture against the pinned `node_modules/artplayer` with the listener toggled off
+  by `?nofix=1` (fix → 3000 ms, no-fix → never).
 - Palette is Apple-style, not Tailwind-default: brand accent is the `apple`
   blue scale in `tailwind.config.ts` (`600 #0071e3` / hover `500 #0077ed` /
   dark `400 #2997ff`; the old `green-*` brand is gone, migrated shade for
