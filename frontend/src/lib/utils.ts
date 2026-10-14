@@ -47,6 +47,28 @@ export function retryImageThroughProxy(target: HTMLImageElement): boolean {
 }
 
 /**
+ * 海报作为 CSS background 时的 URL（Artplayer 的 `.art-poster` 是
+ * `background-image`，不是 `<img>`，所以没有 `onError` 可以挂钩，不能像卡片那样
+ * "先直连、失败再代理"）。豆瓣图片站对浏览器直连一律失败（无 Referer 418，本站
+ * Referer 403），因此 `direct` 模式下的豆瓣海报在这里预先走服务端代理；其余模式
+ * 与 `processImageUrl` 一致。
+ */
+export function posterUrlForCss(originalUrl: string): string {
+  const processed = processImageUrl(originalUrl);
+  // `processImageUrl` 已经把 http 图片（混合内容）和 `server` 模式换成代理 URL，
+  // 那种结果不能再包一层：`/api/image-proxy?url=%2Fapi%2Fimage-proxy%3F...` 的
+  // 内层不是绝对地址，代理会拒绝。所以只处理仍是绝对地址的豆瓣海报。
+  if (
+    /^https?:\/\//i.test(processed) &&
+    processed.includes('doubanio.com') &&
+    getDoubanImageProxyConfig().proxyType === 'direct'
+  ) {
+    return `/api/image-proxy?url=${encodeURIComponent(processed)}`;
+  }
+  return processed;
+}
+
+/**
  * 处理图片 URL，如果设置了图片代理则使用代理
  */
 export function processImageUrl(originalUrl: string): string {

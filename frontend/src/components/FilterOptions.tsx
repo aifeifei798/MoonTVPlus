@@ -221,6 +221,9 @@ const FilterOptions: React.FC<FilterOptionsProps> = ({
               <button
                 onClick={() => setCollapsed(!collapsed)}
                 className="p-1 border rounded hover:bg-[#e8e8ed] dark:hover:bg-[#3a3a3c]"
+                title={collapsed ? "展开筛选" : "收起筛选"}
+                aria-label={collapsed ? "展开筛选" : "收起筛选"}
+                aria-expanded={!collapsed}
               >
                 {collapsed ? (
                   <ChevronDown className="w-4 h-4" />

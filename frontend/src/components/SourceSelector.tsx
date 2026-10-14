@@ -172,6 +172,7 @@ export default function SourceSelector({
           <button
             className={`flex items-center gap-1 px-3 ${heightClass} text-sm font-medium opacity-50`}
             disabled
+            aria-label='源设置（加载中）'
           >
             <Settings className="w-4 h-4" />
             <ChevronDown className="w-4 h-4" />
@@ -187,6 +188,9 @@ export default function SourceSelector({
         <button
           ref={buttonRef}
           onClick={toggleOpen}
+          title='源设置'
+          aria-label={`源设置（已选 ${selectedSources.length} 个源）`}
+          aria-expanded={open}
           className={`flex items-center gap-1 px-3 ${heightClass} text-sm font-medium hover:bg-[#d2d2d7] dark:hover:bg-[#3a3a3c] transition-colors`}
         >
           <Settings className="w-4 h-4" />

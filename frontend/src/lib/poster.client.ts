@@ -52,21 +52,31 @@ function score(candidate: any, title: string, year: string): number {
   return value;
 }
 
+// The cache is parsed once and kept in memory: a page of 30 record cards used to
+// `JSON.parse` the same 500-entry blob 30 times, and every store re-parsed it too.
+let diskCache: Record<string, Entry> | null = null;
+
 function readDiskCache(): Record<string, Entry> {
+  if (diskCache !== null) return diskCache;
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return {};
+    if (!raw) {
+      diskCache = {};
+      return diskCache;
+    }
     const parsed = JSON.parse(raw) as Record<string, Entry>;
-    if (!parsed || typeof parsed !== 'object') return {};
-    return parsed;
+    diskCache = parsed && typeof parsed === 'object' ? parsed : {};
+    return diskCache;
   } catch {
-    return {};
+    diskCache = {};
+    return diskCache;
   }
 }
 
 function writeDiskCache(cache: Record<string, Entry>) {
   const keys = Object.keys(cache);
   if (keys.length <= CACHE_MAX) {
+    diskCache = cache;
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     return;
   }
@@ -76,6 +86,7 @@ function writeDiskCache(cache: Record<string, Entry>) {
     .slice(0, CACHE_MAX);
   const trimmed: Record<string, Entry> = {};
   for (const key of kept) trimmed[key] = cache[key];
+  diskCache = trimmed;
   localStorage.setItem(CACHE_KEY, JSON.stringify(trimmed));
 }
 

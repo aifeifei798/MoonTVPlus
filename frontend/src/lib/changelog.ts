@@ -22,6 +22,7 @@ export const changelog: ChangelogEntry[] = [
       "播放器音量: 默认 0.7，「声音增强」2x GainNode（默认开启），设置面板音量滑杆（移动端唯一可用的音量控制）",
       "手机横屏自动进入全屏（旋转驱动），600ms 后回退到网页全屏",
       "豆瓣标题搜索 `/api/douban/search?q=`（上游没有的功能）：抓取 `search.douban.com/movie/subject_search` 的 `window.__DATA__`，缓存与其它豆瓣接口一致",
+      "SSRF 防护覆盖两个代理与每一次重定向: /api/image-proxy 与 /api/m3u8 的入口地址、跳转的每一跳、以及 manifest 里的 AES key 地址都走内网地址黑名单（MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1 可关闭，恢复上游的「照原样抓取」）",
       "CI: 后端 wire 测试 (Python 3.11/3.12) + 前端 typecheck/build 并校验 dist 里的 tailwind.css、sweetalert2.min.css、mitm.html、sw.js"
     ],
     changed: [
@@ -32,10 +33,19 @@ export const changelog: ChangelogEntry[] = [
       "上游请求共享 httpx 连接池，上限 MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS（默认 64）",
       "sqlite 启用 WAL 与批量写入事务（每 100 行一个显式事务，失败回滚）",
       "继续观看 / 追更 / 收藏 卡片的海报改为三级链 豆瓣 → 源 → 站点图标：豆瓣同名海报优先，取不到退回源海报，两者都取不到显示站点图标（public/poster-fallback.svg），而不是空白灰框",
+      "播放页封面同样走 豆瓣 → 源 链（与卡片共用 poster.client.ts 的缓存，第二次查询不重复请求豆瓣），VideoDetailPanel 的海报链在每次 onError 前进一格",
+      "导入 .dat 备份的大小上限 MOONTVPLUS_IMPORT_MAX_BYTES（默认 50 MB）：上传按 1 MB 分块读取，超过上限立即拒绝，而不是先读进内存再解密失败",
       "下载管理器懒加载，入口 chunk 692,825 B -> 456,579 B",
-      "版本号单一来源: 仓库根 VERSION.txt，检查更新指向 MoonTVPlus 自己的 VERSION.txt 而非上游"
+      "版本号单一来源: 仓库根 VERSION.txt，检查更新指向 MoonTVPlus 自己的 VERSION.txt 而非上游",
+      "manifest.json 的站点名由服务端在响应时替换（__SITE_NAME__），改站点名不需要重新构建前端；被替换的资源 ETag 按实际响应字节计算，改站点名后不会返回 304"
     ],
     fixed: [
+      "修复登录 cookie 的 Expires 被当成「从现在起 N 秒」: 上游的 7*24*3600 得到 2083 年过期，登出的 expires=0 只是「现在过期」而不是已过期，登出后同一秒内重新打开标签页仍带着有效 cookie",
+      "修复客户端离开后搜索流仍继续抓取所有源: 流生成器在客户端断开时取消未完成的请求（/api/search 流模式、/api/search/ws、/api/followings/refresh、导出备份都如此）",
+      "修复 /api/douban/search 的 q 没有长度上限（现在最多 200 字符，超出返回 400，且在请求豆瓣之前拦截）",
+      "修复导入备份后进程内缓存的配置没有更新: set_cached_config 是 async，之前未 await，导入的配置要等缓存过期才生效",
+      "修复 ScrollableRow 的左右箭头按钮没有 aria-label，屏幕阅读器读到两个无名按钮（源设置按钮与筛选展开按钮同样补上 aria-label）",
+      "修复豆瓣海报在浏览器直连下全部显示不出来: 豆瓣对无 Referer 的请求回 418，对本站 Referer 回 403，所以海报链先走服务端代理兜底、兜底失败才前进一格；播放器封面是 CSS background（没有 onError 可挂钩），direct 模式下预先走代理",
       "修复网页全屏后鼠标离开播放器，底部控制栏不收起: Artplayer 的 controls.isHover 只在 document mousemove 里刷新，指针从控制栏直接移出窗口时卡在 true，收起条件永远不满足",
       "修复 VideoCard 集数徽章与 stype 因 episodes 缺失得到 NaN 的问题（回退到 episodes_count）",
       "修复 config 文件里的源/分类删不掉: 每次读取都会重新注入，现在同时剪掉 ConfigFile 里的键",

@@ -120,6 +120,25 @@ def _accepts_gzip(request: Request) -> bool:
     return "gzip" in (request.headers.get("accept-encoding", "")).lower()
 
 
+async def _substituted_body(candidate: Path) -> bytes | None:
+    """Serve-time values for the assets that are not content-hashed.
+
+    `manifest.json` is the one other document besides the app HTML that carries a
+    site name: a PWA installed under "MoonTV" while the page says whatever the
+    admin set is the same mismatch `__SITE_NAME__` fixes in `<title>`. The marker
+    sits inside a JSON string, so the value is escaped as JSON rather than HTML.
+    Returns `None` for every asset that needs no substitution.
+    """
+    if candidate.name != "manifest.json":
+        return None
+    text = candidate.read_text(encoding="utf-8")
+    if SITE_NAME_MARKER not in text:
+        return None
+    site_name = (await runtime_layout())["siteName"]
+    value = json.dumps(site_name, ensure_ascii=False)[1:-1]
+    return text.replace(SITE_NAME_MARKER, value).encode("utf-8")
+
+
 def _frontend_root() -> Path:
     """`frontend/` next to `backend/`, overridable for tests."""
     return Path(os.environ.get("MOONTV_FRONTEND_DIR", Path(__file__).parents[2] / "frontend"))
@@ -148,7 +167,14 @@ async def serve_path(request: Request, full_path: str):
     if candidate is not None:
         stat = candidate.stat()
         media_type = MEDIA_TYPES.get(candidate.suffix.lower(), "application/octet-stream")
-        etag = _etag_of(stat)
+        body = await _substituted_body(candidate)
+        # A substituted asset's etag has to describe what was actually sent, not
+        # the file on disk, or a site-name change would still answer 304.
+        etag = (
+            _etag_of(stat)
+            if body is None
+            else f'"{len(body):x}-{stat.st_mtime_ns:x}"'
+        )
         cache_control = _asset_cache_control(candidate)
 
         if request.headers.get("if-none-match") == etag:
@@ -157,13 +183,28 @@ async def serve_path(request: Request, full_path: str):
             # in full every 5 minutes. An ETag makes the revalidation a 304.
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": cache_control})
 
-        if (
-            candidate.suffix.lower() in COMPRESSIBLE_SUFFIXES
-            and stat.st_size >= 1000
-            and _accepts_gzip(request)
-        ):
+        if body is None:
+            if (
+                candidate.suffix.lower() in COMPRESSIBLE_SUFFIXES
+                and stat.st_size >= 1000
+                and _accepts_gzip(request)
+            ):
+                return Response(
+                    content=_gzipped(candidate, stat),
+                    media_type=media_type,
+                    headers={
+                        "Cache-Control": cache_control,
+                        "Content-Encoding": "gzip",
+                        "Vary": "Accept-Encoding",
+                        "ETag": etag,
+                    },
+                )
+
+            body = candidate.read_bytes()
+        elif _accepts_gzip(request) and candidate.suffix.lower() in COMPRESSIBLE_SUFFIXES and len(body) >= 1000:
+            body = gzip.compress(body, 6)
             return Response(
-                content=_gzipped(candidate, stat),
+                content=body,
                 media_type=media_type,
                 headers={
                     "Cache-Control": cache_control,
@@ -174,7 +215,7 @@ async def serve_path(request: Request, full_path: str):
             )
 
         return Response(
-            content=candidate.read_bytes(),
+            content=body,
             media_type=media_type,
             headers={"Cache-Control": cache_control, "ETag": etag},
         )
