@@ -43,6 +43,7 @@ export const changelog: ChangelogEntry[] = [
     ],
     fixed: [
       "修复登录 cookie 的 Expires 被当成「从现在起 N 秒」: 上游的 7*24*3600 得到 2083 年过期，登出的 expires=0 只是「现在过期」而不是已过期，登出后同一秒内重新打开标签页仍带着有效 cookie",
+      "修复内网地址黑名单漏掉 IPv6 写法: `urlsplit().hostname` 会去掉 IPv6 的方括号，上游的字符串模式匹配不到 `[::ffff:127.0.0.1]`（IPv4-mapped 回环，修复前两个代理都把它当公网地址、返回本站 logo）、`fd00::/8`（站内 ULA）和十进制 IPv4 `2130706433`。现在 IP 字面量用 ipaddress 判定（is_private 一次覆盖回环/RFC1918/ULA/链路本地/组播/保留段），CGNAT 100.64.0.0/10 不是 is_private 所以保留原模式，公网 IPv6 字面量照旧放行",
       "修复客户端离开后搜索流仍继续抓取所有源: 流生成器在客户端断开时取消未完成的请求（/api/search 流模式、/api/search/ws、/api/followings/refresh、导出备份都如此）",
       "修复 /api/douban/search 的 q 没有长度上限（现在最多 200 字符，超出返回 400，且在请求豆瓣之前拦截）",
       "修复导入备份后进程内缓存的配置没有更新: set_cached_config 是 async，之前未 await，导入的配置要等缓存过期才生效",

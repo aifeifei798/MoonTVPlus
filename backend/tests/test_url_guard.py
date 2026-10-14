@@ -48,6 +48,12 @@ BLOCKED_HOSTS = [    "localhost",
     "::1",
     "fc00::1",
     "fe80::1",
+    "fd00::1",  # the assigned half of fc00::/7, which `^fc00:` cannot match
+    "fd12:3456:7890::1",
+    "::ffff:127.0.0.1",  # IPv4-mapped loopback: the string list misses it
+    "::ffff:169.254.169.254",
+    "::ffff:10.0.0.1",
+    "::ffff:192.168.1.1",
     "2130706433",  # 127.0.0.1 written as a decimal
     "",
 ]
@@ -58,6 +64,8 @@ ALLOWED_HOSTS = [
     "172.15.0.1",  # just outside the 172.16/12 private block
     "100.63.0.1",
     "100.128.0.1",
+    "2001:4860:4860::8888",  # public IPv6 (Google DNS)
+    "2606:4700:4700::1111",  # public IPv6 (Cloudflare)
     "test-streams.mux.dev",
 ]
 
@@ -320,3 +328,41 @@ def test_a_private_hop_is_a_403_not_the_catch_all_500(client, monkeypatch):
     response = client.post("/api/m3u8", json={"url": entry})
     assert response.status_code == 403
     assert response.json() == {"error": "地址不被允许", "message": "不允许访问该地址"}
+
+
+def test_ipv4_mapped_ipv6_is_refused_on_both_proxies(client, monkeypatch):
+    """The bypass this fix exists for: `http://[::ffff:127.0.0.1]:3000/logo.svg`
+    reaches the app's own logo through `/api/image-proxy` when the blacklist is
+    only the string list, because `urlsplit().hostname` is `::ffff:127.0.0.1` and
+    no pattern in `PRIVATE_HOST_PATTERNS` matches it. The guard must answer 403
+    **without connecting**, so no stub is installed: a stub that has no answer for
+    the URL raises `ConnectError`, and a 500 here would mean the fetch happened.
+    """
+    monkeypatch.delenv("MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE", raising=False)
+    mapped = "http://[::ffff:127.0.0.1]:3000/logo.svg"
+
+    response = client.get("/api/image-proxy", params={"url": mapped})
+    assert response.status_code == 403, "IPv4-mapped loopback must be refused"
+    assert response.json() == {"error": "地址不被允许", "message": "不允许访问该地址"}
+
+    for url in (
+        "http://[::ffff:169.254.169.254]/latest/meta-data/",
+        "http://[::ffff:10.0.0.1]/x.jpg",
+        "http://[fd00::1]/x.jpg",
+    ):
+        response = client.get("/api/image-proxy", params={"url": url})
+        assert response.status_code == 403, f"{url} should be refused"
+
+    response = client.get("/api/m3u8", params={"url": "http://[::ffff:127.0.0.1]:3000/x.m3u8"})
+    assert response.status_code == 403
+    response = client.post("/api/m3u8", json={"url": "http://[::ffff:127.0.0.1]:3000/x.m3u8"})
+    assert response.status_code == 403
+
+    # A public IPv6 literal must stay reachable: the fix is about private ranges,
+    # not about IPv6 in general.
+    hop = "https://[2606:4700:4700::1111]/a.jpg"
+    stub = StubClient({hop: (200, {"content-type": "image/jpeg"})})
+    monkeypatch.setattr(image_proxy, "get_http_client", lambda: stub)
+    response = client.get("/api/image-proxy", params={"url": hop})
+    assert response.status_code == 200
+    assert stub.attempted == [hop]

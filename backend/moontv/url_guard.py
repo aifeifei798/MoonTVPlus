@@ -22,11 +22,15 @@ Two things here are MoonTVPlus additions, not ports (PLAN.md change 36):
 only the URL the caller named is bypassable with a public host that 302s into
 the loopback — and `validate_public_url`, the same checks without the whitelist,
 which is what `/api/image-proxy` and the manifest's own AES-key/segment hosts
-get.
+get. The blacklist is also wider than upstream's string list: an IP literal is
+additionally decided by `ipaddress`, which is what catches IPv4-mapped IPv6
+(`::ffff:127.0.0.1`) and `fd00::/8`. Neither is reachable by a string pattern,
+and the mapped form was proved live against the shipped proxies.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 
@@ -78,13 +82,37 @@ SCHEME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
 
 def is_blocked_host(hostname: str) -> bool:
-    """`isBlockedHost`."""
+    """`isBlockedHost`, plus the two ranges the string list cannot see.
+
+    `urlsplit().hostname` has already dropped the brackets of an IPv6 literal, so
+    the string patterns can only ever match the spellings they were written for.
+    Two families survive that:
+
+    * **IPv4-mapped IPv6** — `::ffff:127.0.0.1` is loopback to the resolver, and
+      `http://[::ffff:127.0.0.1]:3000/logo.svg` reaches this app's own logo
+      through `/api/image-proxy` and `/api/m3u8` with the string list in place
+      (proved live). Same for `::ffff:169.254.169.254` and `::ffff:10.0.0.1`.
+    * **`fd00::/8`** — `fc00::/7` is unique-local space, and the half that is
+      actually assigned is `fd00::/8`, which `^fc00:` does not match.
+
+    So an IP literal is decided by `ipaddress` as well as by the patterns. A
+    hostname is not: the blacklist is a string check, and a public name whose A
+    record points at loopback is the one thing it cannot catch (see the PLAN.md
+    note). CGNAT `100.64.0.0/10` is not `is_private` in Python, so its pattern
+    stays.
+    """
     host = hostname.strip().lower()
     if not host:
         return True
     if DECIMAL_IPV4.match(host):
         return True
-    return any(pattern.match(host) for pattern in PRIVATE_HOST_PATTERNS)
+    if any(pattern.match(host) for pattern in PRIVATE_HOST_PATTERNS):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_private
 
 
 def read_allow_hosts() -> list[str]:
