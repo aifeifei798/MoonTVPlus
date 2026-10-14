@@ -759,6 +759,37 @@ papered over:
     name follows `NEXT_PUBLIC_SITE_NAME` instead of the string baked into the file at
     build time; substituted assets get an etag computed from the served bytes so a
     site-name change does not answer 304.
+  41. **The phone keeps its 画中画 and 网页全屏 buttons.** Upstream's `globals.css`
+    hid `.art-control-pip` and `.art-control-fullscreenWeb` under
+    `@media (max-width: 768px)`, so a phone never saw either control — but
+    Artplayer 5.3.0 adds both regardless of `isMobile` (only `screenshot` is gated
+    on `!isMobile`) and their handlers need no hover, so the hiding was pure CSS.
+    Only `.art-control-volume` stays hidden on mobile: its panel is
+    `opacity: 0; pointer-events: none` until `:hover`, which a touchscreen can never
+    reach, and volume is already the settings panel's slider.
+    `scripts/cdp_mobile_player.cjs` taps the buttons with `Input.dispatchTouchEvent`
+    and confirms they work: at 414x896 tapping 画中画 yields
+    `document.pictureInPictureElement` and `art.state === "pip"` (entering PiP drops
+    web fullscreen, which is Artplayer's own `state` setter), and the same tap on a
+    paused video still enters PiP; tapping 网页全屏 makes the player cover the
+    viewport and puts the sticky top nav behind it. Calling
+    `video.requestPictureInPicture()` from script instead of tapping answers
+    `NotAllowedError: … Must be handling a user gesture …`, which is why every tap
+    in the probe is a real touch event.
+    `scripts/cdp_bar_overflow.cjs` then censuses the bar across widths: the row is
+    left 160 (play/next/time) + middle 100 + right 152 (setting/pip/fullscreenWeb/
+    fullscreen) = 412px against a container of player width − 2 × `--art-padding`,
+    and the middle group is the danmuku plugin's toggle and config icon
+    (`emitter: false` in `play-utils.ts`, so 28 + 24 gap + 28 plus the group's own
+    20px padding). `flex: 1` cannot shrink below that min-content, and `.art-bottom`'s
+    `overflow: hidden` clips the excess instead of wrapping it — 52px clipped at
+    360px (the 全屏 button entirely off the bar), 92px at 320px, 0 at 414px. So
+    `@media (max-width: 412px)` hides that middle group; the danmaku switch is still
+    reachable from the settings panel's 弹幕源 entry, and the bar now fits at every
+    width tested (320/360/414/430/440/480, overflow 0). iOS Safari has no
+    `requestPictureInPicture`; Artplayer's pip module falls back to
+    `webkitSupportsPresentationMode` / `webkitSetPresentationMode`, which this Chrome
+    cannot exercise.
 
 ## Milestones
 
