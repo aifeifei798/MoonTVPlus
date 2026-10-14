@@ -344,6 +344,19 @@ are committed, not left in `/tmp`.
   so re-renders do not stack duplicate `load`/`error` listeners.
   Next.js here is genuinely multi-page, which is why those three shims have to
   keep `history` populated the same way.
+- **`fill` in the image shim must be CSS.** `width="100%" height="100%"` are not
+  valid HTML attribute values (percentages are rejected), so a `fill` image falls
+  back to Tailwind preflight's `img, video { max-width: 100%; height: auto }` and
+  is sized **by its width**: a poster whose natural ratio is not 2/3 leaves a gray
+  strip at the bottom of the card or is clipped by the box's `overflow: hidden`,
+  and a failed poster renders as the 16 px broken-image glyph. `shims/image.tsx`
+  therefore sets `position: absolute; inset: 0; width: 100%; height: 100%` (Next's
+  own fill semantics) merged with the caller's `style`. `scripts/cdp_image_fill.cjs
+  <auth-cookie> <path> …` censuses every poster `<img>` on a live page and fails if
+  any rendered box is smaller than its `overflow: hidden` + `aspect-*` container;
+  it also inserts the attribute-fill and CSS-fill variants side by side as the
+  counterfactual. Plain `<img className='w-full h-full object-cover'>` usages
+  (`VideoDetailPanel`, `EpisodeSelector`) were never affected.
 - The entry is `frontend/index.html`; Vite's build entry defaults to it. The
   backend serves the built `dist/index.html` with `__SITE_NAME__`,
   `__RUNTIME_CONFIG__` and `__RUNTIME_LAYOUT__` substituted at serve time.
