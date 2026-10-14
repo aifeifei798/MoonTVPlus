@@ -8,17 +8,34 @@
  * itself, which is what the callers expect (`VideoCard` uses `onLoad` to
  * clear its placeholder state and `onError` to fall back to a placeholder).
  *
- * `fill` becomes `width/height: 100%`, the same box Next produced; the
- * callers' `object-cover` className does the rest.
+ * `fill` is CSS, not attributes. Next renders a filled image as
+ * `position: absolute; inset: 0; width: 100%; height: 100%`, and the callers'
+ * `object-cover` className does the rest. Writing it as `width="100%"`
+ * `height="100%"` attributes does not work: a percentage is not a valid HTML
+ * `width`/`height` value, so the element falls back to Tailwind's preflight
+ * (`img, video { max-width: 100%; height: auto }`) and is sized **by its width**
+ * with the height taken from the natural ratio. Every card whose poster is not
+ * exactly 2/3 then either leaves a strip of the box empty at the bottom or gets
+ * clipped by the box's `overflow: hidden` — the "图片下面缺了一块" symptom.
  */
 import * as React from 'react';
 
 export default function Image(props: Record<string, unknown>) {
-  const { fill, onLoad, onError, ...rest } = props;
+  const { fill, onLoad, onError, style, ...rest } = props;
   const attrs: Record<string, unknown> = { ...rest };
   if (fill) {
-    attrs.width = '100%';
-    attrs.height = '100%';
+    attrs.style = {
+      ...(style as Record<string, unknown> | undefined),
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+    };
+  } else if (style) {
+    attrs.style = style;
   }
 
   return (

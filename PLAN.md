@@ -528,6 +528,28 @@ papered over:
     placeholder `0.1.0` to `5.0.0` so `pip install -e ./backend` reports the same
     release.
 
+ 32. **`fill` in the `next/image` shim is CSS, not attributes.** Every list card
+    poster is drawn by `VideoCard` inside a `relative aspect-[2/3] overflow-hidden`
+    box with `<Image … fill className="object-cover">`. The shim rendered `fill` as
+    the HTML attributes `width="100%" height="100%"`, and a percentage is not a
+    valid HTML `width`/`height` value, so the element fell back to Tailwind's
+    preflight (`img, video { max-width: 100%; height: auto }`): the poster was
+    sized **by its width** and its height came from the natural ratio. A poster
+    that is not exactly 2/3 then either left a strip of the card empty at the
+    bottom (ratio < 1.5, e.g. douban's 270x337 posters → 180x225 in a 180x270 box,
+    the "图片下面缺了一块" report) or was cut off by the box's `overflow: hidden`
+    (ratio > 1.5), and a poster that failed to load collapsed to the 16 px broken
+    image glyph. The shim now emits Next's own fill semantics —
+    `position: absolute; inset: 0; width: 100%; height: 100%` — merged with any
+    caller `style`, so `object-cover` crops instead of leaving a gap. Nothing on
+    the wire changes; the box is still `aspect-[2/3]` like upstream.
+    `scripts/cdp_image_fill.cjs` is the regression probe: it censuses every
+    poster `<img>` on a live page and requires its rendered box to equal its
+    container's, and it also inserts the two variants side by side in one 180x270
+    box with a 270x337 poster — attributes → 180x225, CSS fill → 180x270 — so the
+    cause is measured, not asserted. Green on `/` (73/73), `/douban?type=movie`
+    (25/25) and `/search?q=Spider` (22/22).
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

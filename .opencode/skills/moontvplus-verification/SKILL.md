@@ -80,6 +80,21 @@ against the pinned `node_modules/artplayer` with the listener toggled off by
 things that make the local-clip swap stick) and measured **2794 ms** on the shipped
 bundle.
 
+## Verify the card posters fill their box
+
+```bash
+node scripts/cdp_image_fill.cjs "$AUTH" / /douban?type=movie "/search?q=Spider"
+```
+
+Every list card is a `relative aspect-[2/3] overflow-hidden` box with an
+`object-cover` poster. The probe censuses each poster `<img>` on a live page and
+requires its rendered box to equal the container's, then inserts the two `fill`
+mechanisms side by side in one 180x270 box with a 270x337 poster: the attribute
+form (`width="100%" height="100%"`, which HTML rejects as a percentage and which
+therefore falls back to Tailwind preflight's `max-width: 100%; height: auto`)
+renders **180x225** — the missing bottom chunk — while the CSS form renders
+**180x270**. Exit code is non-zero if any poster box is not covered.
+
 ## Reproduce the desync
 
 The desync is not measurable in the CDP browser (the manifest XHR fails CORS).
