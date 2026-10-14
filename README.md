@@ -1,5 +1,7 @@
 # MoonTVPlus
 
+![MoonTVPlus logo](frontend/public/logo.svg)
+
 A rewrite of MoonTV (Next.js 14, upstream version `4.2.5`,
 `https://github.com/Stardm0/MoonTV`) as two separate packages:
 
@@ -14,10 +16,8 @@ SSE/NDJSON framing, same auth cookie format, same environment variable names.
 Browser client libs, TVBox/OrionTV style external clients and existing
 `docker run -e ...` / docker-compose files keep working against this server.
 
-> Work in progress. Backend milestones B0–B3, B5 (the admin panel surface and
-> data migration) and frontend F0/F1 are in; B4, B6 and B7 (user state,
-> external services, m3u8 proxy + browser-side backup migration) are not.
-> See [`PLAN.md`](PLAN.md) for the full port plan and the list of deliberate
+> All backend milestones (B0–B7) and the frontend port are in. See
+> [`PLAN.md`](PLAN.md) for the full port plan and the list of deliberate
 > behavior changes.
 
 ## Requirements
@@ -26,7 +26,7 @@ Browser client libs, TVBox/OrionTV style external clients and existing
 |---|---|
 | Backend | CPython ≥ 3.11, `fastapi`, `uvicorn`, `httpx`, `cryptography`, `redis`, `python-multipart` (installed into `backend/.venv`) |
 | Frontend | Node.js ≥ 20 and `pnpm` (only for building the UI; the backend just serves `frontend/dist`) |
-| Storage | SQLite (stdlib, default) — Redis or Kvrocks optional, backend not ported yet |
+| Storage | SQLite (stdlib, default) — Redis or Kvrocks optional (`REDIS_URL` / `KVROCKS_URL`) |
 
 ## Getting started
 

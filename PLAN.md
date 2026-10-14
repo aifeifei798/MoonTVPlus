@@ -464,6 +464,24 @@ papered over:
     3.11 and 3.12 and builds the frontend, asserting `dist/` contains the files a
     bare `vite build` would have left out.
 
+29. **The brand assets are regenerated from one geometry.** The upstream logo was
+    a 204 KB raster illustration (crescent + retro TV) that did not match the
+    Apple-style palette the UI uses. `frontend/scripts/make-logo.py` draws the
+    mark from a single set of constants — a crescent (disc `r=195` at `(260,256)`
+    minus disc `r=155` at `(360,256)`, so the two tips are the exact circle
+    intersections) cradling a play triangle — in apple-600 `#0071e3` and
+    apple-400 `#2997ff`, and renders it four ways: `public/logo.svg` (251 B),
+    `public/logo.png` (6 KB instead of 204 KB), `public/favicon.ico` (16/32/48
+    PNG entries packed by hand, since ImageMagick writes only one frame), and
+    `public/icons/icon-{192,256,384,512}.png`, which is the same silhouette
+    inverted onto a rounded square — a solid tile stays legible at 16 px on both
+    a light and a dark browser chrome. The mark is now actually used: the nav
+    bars and the login page render `/logo.svg` next to the site name, so
+    `/logo.svg` joins `SKIP_PATHS` in `auth.py` alongside `/logo.png` (the login
+    page is drawn by the app itself, before anyone is authenticated). Wire
+    parity is unaffected: the manifest still points at the same four icon paths,
+    and `/favicon.ico` is still served at `image/x-icon`.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

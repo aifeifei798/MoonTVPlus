@@ -132,6 +132,7 @@ SKIP_PATHS = (
     "/manifest.json",
     "/icons/",
     "/logo.png",
+    "/logo.svg",
     "/screenshot.png",
     "/api/m3u8",
     "/api/image-proxy",
