@@ -39,7 +39,9 @@ export const changelog: ChangelogEntry[] = [
       "修复 config 文件里的源/分类删不掉: 每次读取都会重新注入，现在同时剪掉 ConfigFile 里的键",
       "修复未知 /api/... 路径返回 200 的 HTML 文档，管理面板把它当 JSON 解析报错（现在返回 404 的 not-found 文档）",
       "修复 锁定 状态下进度条在播放器底边露出一小截",
-      "修复 React 19 元素级 ref 在 detach 时传 null 导致图片监听抛错、页面重新渲染后白屏的问题"
+      "修复 React 19 元素级 ref 在 detach 时传 null 导致图片监听抛错、页面重新渲染后白屏的问题",
+      "修复卡片海报不填满 2/3 海报框: next/image shim 的 fill 改为 CSS（position:absolute; inset:0），属性写法 width=\"100%\" height=\"100%\" 被 HTML 拒绝百分比，退化成按宽度自适应，海报底部露出一截",
+      "修复动漫「每日放送」海报一直加载不出来、很不稳定: lain.bgm.tv 的 TLS 握手被中间设备间歇性重置，/api/image-proxy 现在对 *.bgm.tv 图片按官源 -> https 版本 -> 镜像（默认 lain.fxbgm.tv，MOONTVPLUS_BANGUMI_IMAGE_MIRRORS 可覆盖）依次尝试；日历请求也加 10s 超时与 fxbgm.tv 兜底"
     ]
   },
   {
