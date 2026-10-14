@@ -11,9 +11,20 @@ Upstream's `fetch(imageUrl)` has no timeout; the port takes `fetch.py`'s 10s
 client default so one dead upstream cannot pin a request forever. The response
 streams the image bytes in 64KB chunks with the upstream's `Content-Type` and the
 half-year cache headers, capped at 8MB, not a JSON envelope.
+
+Resilience (MoonTVPlus addition, not a port): a `*.bgm.tv` image URL — the 动漫
+「每日放送」 posters — is tried on the official host, its https form, then
+`lain.fxbgm.tv`, because `lain.bgm.tv` is Cloudflare-fronted and its TLS handshake
+is intermittently reset from mainland China, which is why those posters came back
+broken. Every other host is fetched exactly once, exactly as upstream did, and the
+error shapes (`{"error": ...}` at the upstream status, or 500 `Error fetching
+image`) are unchanged.
 """
 
 from __future__ import annotations
+
+import os
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
@@ -45,6 +56,50 @@ IMAGE_MAX_BYTES = 8 * 1024 * 1024
 _CHUNK = 64 * 1024
 _FETCH_TIMEOUT_S = 10.0
 
+# 番组计划（Bangumi）的封面域名 `lain.bgm.tv` 走 Cloudflare，TLS 握手在部分网络
+# 里被中间设备间歇性重置 —— 动漫「每日放送」的海报因此一直加载不出来。这里按
+# `douban.py` 的镜像思路换 host（path/query 不动），官源优先，失败才试镜像。
+# 镜像是社区反代，同一 `/pic/cover/...` 路径返回的字节与官源一致。
+# `MOONTVPLUS_BANGUMI_IMAGE_MIRRORS` 覆盖列表（逗号分隔，空值 = 只用官源）。
+_BANGUMI_MIRROR_HOSTS = tuple(
+    host
+    for host in (
+        item.strip()
+        for item in os.environ.get(
+            "MOONTVPLUS_BANGUMI_IMAGE_MIRRORS", "lain.fxbgm.tv"
+        ).split(",")
+    )
+    if host
+)
+
+
+def _image_candidates(url: str) -> list[str]:
+    """`[original, https 版本, *镜像]` — only for `*.bgm.tv` image hosts.
+
+    Anything else gets the single URL back, so the proxy behaves exactly as
+    upstream for every other host.
+    """
+    try:
+        parts = urlsplit(url)
+    except Exception:  # noqa: BLE001 — unparseable means no mirrors
+        return [url]
+    host = parts.hostname or ""
+    if not host.endswith("bgm.tv"):
+        return [url]
+
+    candidates = [url]
+    if parts.scheme == "http":
+        # 上游日历里的封面是 http，先升到 https 再换镜像：省一次 301，也让镜像
+        # 与官源在同一 scheme 上可比。
+        candidates.append(
+            urlunsplit(("https", host, parts.path, parts.query, parts.fragment))
+        )
+    for mirror in _BANGUMI_MIRROR_HOSTS:
+        candidates.append(
+            urlunsplit(("https", mirror, parts.path, parts.query, parts.fragment))
+        )
+    return list(dict.fromkeys(candidates))
+
 
 async def image_proxy(request: Request):
     """`/api/image-proxy?url=<encoded image url>`."""
@@ -53,18 +108,29 @@ async def image_proxy(request: Request):
     if not image_url:
         return json_response({"error": "Missing image URL"}, 400)
 
-    try:
-        client = get_http_client()
-        upstream = await client.send(
-            client.build_request(
-                "GET", image_url, headers=IMAGE_HEADERS, timeout=_FETCH_TIMEOUT_S
-            ),
-            stream=True,
-        )
+    candidates = _image_candidates(image_url)
+    client = get_http_client()
+
+    for index, candidate in enumerate(candidates):
+        try:
+            upstream = await client.send(
+                client.build_request(
+                    "GET", candidate, headers=IMAGE_HEADERS, timeout=_FETCH_TIMEOUT_S
+                ),
+                stream=True,
+            )
+        except Exception:  # noqa: BLE001 — upstream's catch-all, try the next host
+            if index == len(candidates) - 1:
+                return json_response({"error": "Error fetching image"}, 500)
+            continue
 
         # `!imageResponse.ok` → pass the upstream's status and sentence through.
+        # A 5xx from the official host is the Cloudflare flake the mirrors exist
+        # for, so it falls through; every other status is the answer.
         if not 200 <= upstream.status_code < 400:
             await upstream.aclose()
+            if upstream.status_code >= 500 and index < len(candidates) - 1:
+                continue
             return json_response(
                 {"error": upstream.reason_phrase or ""}, upstream.status_code
             )
@@ -97,8 +163,9 @@ async def image_proxy(request: Request):
                 await upstream.aclose()
 
         return StreamingResponse(_gen(), status_code=200, headers=headers)
-    except Exception:  # noqa: BLE001 — upstream's catch-all, message unused
-        return json_response({"error": "Error fetching image"}, 500)
+
+    # 每个候选都试过仍失败 —— 与上游的 catch-all 同一个形状。
+    return json_response({"error": "Error fetching image"}, 500)
 
 
 ROUTES = [("/api/image-proxy", image_proxy, ["GET"])]
