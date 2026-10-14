@@ -8,8 +8,9 @@ writing a new probe.
 - **Name them `.cjs`.** A `.mjs` is treated as ESM, where `require` is
   undefined, so every `require('he')` fails at load.
 - Installed packages need
-  `NODE_PATH=/home/feifei/develop/MoonTVPlus/frontend/node_modules` (or the
-  repo-relative equivalent) to be `require`-able.
+  `NODE_PATH=<repo>/frontend/node_modules` to be `require`-able. The committed
+  Python harnesses derive it from `_harness.ROOT`, so it follows the checkout
+  instead of a hard-coded absolute path.
 - `node -e` sees its args at `argv[1]`; a **script file** at `argv[2]`. A
   harness written for one form silently reads `undefined` when run as the other.
 - To run the shipped TypeScript instead of a re-typed copy, slice the function

@@ -509,6 +509,25 @@ papered over:
     `anonymous` via `moreVideoAttr` and there is no ACAO), and inlines
     `fixtures/probe.mp4` as a data URL.
 
+ 31. **MoonTVPlus has its own version line: `5.0.0`.** Upstream MoonTV is still
+    `4.2.5`, and the wire protocol is unchanged, so the number is a release label
+    rather than a protocol marker. The root `VERSION.txt` is the single source of
+    truth; `backend/moontv/version.py` (which stamps `serverVersion` into every
+    `.dat` backup) and `frontend/src/lib/version.ts` (the `v…` on the login page,
+    the user menu and the version panel) both read it, and
+    `backend/tests/test_version.py` asserts the three agree plus that
+    `changelog.ts` has an entry for the current version — without one the panel
+    renders an empty "current version" block. `version.ts`'s update check used to
+    point at upstream's `VERSION.txt`, which would compare `5.0.0` against `4.2.5`
+    and always answer "no update"; it now fetches
+    `raw.githubusercontent.com/aifeifei798/MoonTVPlus/main/VERSION.txt` with the
+    `master` branch as fallback. The login page's `v…` badge and the panel's two
+    前往仓库 links pointed at `Stardm0/MoonTV`; they now point at
+    `aifeifei798/MoonTVPlus`, since the number they display is this repo's.
+    `backend/pyproject.toml` is bumped from the
+    placeholder `0.1.0` to `5.0.0` so `pip install -e ./backend` reports the same
+    release.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

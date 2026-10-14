@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 
 
-const CURRENT_VERSION = '4.2.5';
+const CURRENT_VERSION = '5.0.0';
 
 // 版本检查结果枚举
 export enum UpdateStatus {
@@ -10,9 +10,12 @@ export enum UpdateStatus {
   FETCH_FAILED = 'fetch_failed', // 获取失败
 }
 
-// 远程版本检查URL配置
+// 远程版本检查URL配置：MoonTVPlus 自己的 VERSION.txt（仓库根），
+// master 分支作为 main 不可达时的回退。上游 MoonTV 仍是 4.2.5，
+// 本重写是独立的 5.0.0 版本线，不能拿上游的版本号做比较。
 const VERSION_CHECK_URLS = [
-  'https://raw.githubusercontent.com/Stardm0/MoonTV/main/VERSION.txt',
+  'https://raw.githubusercontent.com/aifeifei798/MoonTVPlus/main/VERSION.txt',
+  'https://raw.githubusercontent.com/aifeifei798/MoonTVPlus/master/VERSION.txt',
 ];
 
 /**
