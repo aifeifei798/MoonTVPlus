@@ -42,6 +42,7 @@ from functools import cmp_to_key
 from fastapi import Request
 from fastapi.responses import StreamingResponse
 
+
 from ..auth import get_auth_info_from_cookie
 from ..config import get_available_api_sites, get_cache_time, get_config
 from ..downstream import search_from_api_stream
@@ -310,9 +311,10 @@ async def _stream(api_sites: list, query: str, config: dict):
     """The `ReadableStream`'s `start()` — one SSE event per yielded chunk.
 
     Every source starts at once (upstream's `apiSites.map(async …)`), so the
-    events land in completion order. As in `followings_refresh`, a client that
-    hangs up mid-stream is not detected: the remaining sources keep fetching and
-    their events are simply dropped.
+    events land in completion order. Starlette races this generator against
+    `http.disconnect`, so a client that hangs up closes it and the `finally`
+    cancels the worker driver: the remaining sources stop fetching instead of
+    finishing into a socket that is gone.
     """
     out: asyncio.Queue = asyncio.Queue()
     closed = False

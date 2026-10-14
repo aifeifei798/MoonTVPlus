@@ -241,22 +241,34 @@ async def GET(request: Request):  # noqa: F402 — mirrors the TS export name
     async def generate():
         tasks = [asyncio.create_task(run_site(site)) for site in api_sites]
         remaining = len(tasks)
-        while remaining:
-            item = await queue.get()
-            if item is None:
-                remaining -= 1
-                continue
-            yield item
-        # Nothing can be left over (the sentinel is written after a site's own
-        # events), but the drain keeps the framing identical if that changes.
-        while not queue.empty():
-            item = queue.get_nowait()
-            if item is not None:
+        try:
+            while remaining:
+                item = await queue.get()
+                if item is None:
+                    remaining -= 1
+                    continue
                 yield item
+            # Nothing can be left over (the sentinel is written after a site's own
+            # events), but the drain keeps the framing identical if that changes.
+            while not queue.empty():
+                item = queue.get_nowait()
+                if item is not None:
+                    yield item
 
-        if failed_sources:
-            yield json_dump({"failedSources": failed_sources}).encode("utf-8") + b"\n"
-        yield json_dump({"aggregatedResults": aggregated_results}).encode("utf-8") + b"\n"
+            if failed_sources:
+                yield json_dump({"failedSources": failed_sources}).encode("utf-8") + b"\n"
+            yield json_dump({"aggregatedResults": aggregated_results}).encode("utf-8") + b"\n"
+        finally:
+            # MoonTVPlus addition (PLAN.md change 36): a client that hangs up
+            # mid-search used to leave every site task running to completion —
+            # measured with a local fake source, the pages the parallel gather
+            # had already started were fetched to the end and their events were
+            # written into a socket that was gone. Starlette races the body
+            # iterator against `http.disconnect` (uvicorn reports spec 2.3), so
+            # this `finally` runs the moment the client goes. The bytes a client
+            # that stays connected receives are unchanged.
+            for task in tasks:
+                task.cancel()
 
     cache_time = await get_cache_time()
     return StreamingResponse(
