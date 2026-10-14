@@ -159,6 +159,64 @@ div[data-media-provider] video {
   background-color: #000 !important; /* 其余区域填充为黑色 */
 }
 
+/* PC 端选集/换源浮层：右侧列收进播放器内部 —— 选集按钮按面板宽度自适应（和
+   手机版一样大），换集/换源在网页全屏与原生全屏里同样可用（右侧列在全屏里根本
+   看不见）。浮层打开时把视频区域缩到左侧，浮层盖的是 letterbox 的黑边而不是画面。
+   浮层底边停在控制栏之上，所以设置/画中画/全屏按钮仍然可点。 */
+.art-video-player {
+  --mntv-drawer-width: min(380px, 45%);
+}
+
+.mntv-episode-drawer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: calc(var(--art-control-height) + var(--art-bottom-gap) + var(--art-progress-height) + 10px);
+  width: var(--mntv-drawer-width);
+  /* 高于 .art-bottom(60)，低于 .art-settings(90)：Artplayer 的设置面板贴在播放器
+     右侧，浮层若盖在它上，画质/字幕/音量面板就打不开。加载遮罩
+     (VideoLoadingMask, z-[120]) 在浮层打开时只盖视频区域（见 .mntv-loading-mask）。 */
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgba(245, 245, 247, 0.92);
+  border-left: 1px solid rgba(210, 210, 215, 0.55);
+  backdrop-filter: blur(6px);
+  box-shadow: -10px 0 26px rgba(0, 0, 0, 0.28);
+}
+
+.dark .mntv-episode-drawer {
+  background: rgba(29, 29, 31, 0.92);
+  border-left-color: rgba(66, 66, 69, 0.5);
+}
+
+.art-video-player.mntv-drawer-open .art-video,
+.art-video-player.mntv-drawer-open .art-poster,
+.art-video-player.mntv-drawer-open .art-danmuku,
+.art-video-player.mntv-drawer-open .art-subtitle {
+  width: calc(100% - var(--mntv-drawer-width));
+}
+
+.art-video-player.mntv-drawer-open .mntv-drawer-toggle {
+  color: var(--art-theme);
+}
+
+/* 加载遮罩铺满播放器（z-[120]），浮层打开时它只盖视频区域，否则选集/换源
+   在"视频加载中..."期间点不了。 */
+.art-video-player.mntv-drawer-open .mntv-loading-mask {
+  right: var(--mntv-drawer-width);
+}
+
+/* 移动端选集/换源在播放器下方占一整行，浮层开关用不上。断点用 767px 而不是
+   768px，因为 JS 的 isDesktop 是 `min-width: 768px`（Tailwind 的 md），
+   768px 本身是 PC 布局，开关必须可见。 */
+@media (max-width: 767px) {
+  .mntv-drawer-toggle {
+    display: none !important;
+  }
+}
+
 /* 播放器内顶栏：和底部控制栏同步显隐，锁屏时一并藏起 */
 .art-video-player .moontv-play-header {
   transition: opacity 0.2s ease, visibility 0.2s ease;

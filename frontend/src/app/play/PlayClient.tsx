@@ -24,6 +24,25 @@ function stopPlayerPointer(event: { stopPropagation: () => void }) {
 }
 
 /**
+ * 视口是否达到 PC 布局（≥768px，即 Tailwind 的 md 断点）。
+ * 手机版选集/换源在播放器下方占一整行，PC 版把它收进播放器内的浮层。
+ */
+function useDesktopLayout(): boolean {
+  const query = '(min-width: 768px)';
+  const [matches, setMatches] = useState<boolean>(
+    typeof window !== 'undefined' && window.matchMedia(query).matches
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
+    mq.addEventListener('change', onChange);
+    setMatches(mq.matches);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+  return matches;
+}
+
+/**
  * 播放页客户端组件。
  *
  * 仅负责：调用 {@link usePlayEngine} 获取状态/回调，并按视图分层渲染。
@@ -75,12 +94,28 @@ export default function PlayClient() {
     // 缓存管理
     showCacheManager,
     setShowCacheManager,
+    // PC 端选集/换源浮层
+    showEpisodeDrawer,
+    setShowEpisodeDrawer,
     // 收藏 / 追更
     favorited,
     following,
     handleToggleFavorite,
     handleToggleFollowing,
   } = usePlayEngine();
+
+  const isDesktop = useDesktopLayout();
+
+  // 浮层打开时给播放器加 .mntv-drawer-open：globals.css 把视频区域缩到左侧，
+  // 浮层盖的是 letterbox 的黑边而不是画面（见 globals.css 的注释）。
+  React.useEffect(() => {
+    if (!playerHost) return;
+    if (isDesktop && showEpisodeDrawer) {
+      playerHost.classList.add('mntv-drawer-open');
+    } else {
+      playerHost.classList.remove('mntv-drawer-open');
+    }
+  }, [playerHost, showEpisodeDrawer, isDesktop]);
 
   if (loading) {
     return (
@@ -114,14 +149,33 @@ export default function PlayClient() {
     );
   }
 
+  const selectorProps = {
+    totalEpisodes: totalEpisodes,
+    episodes_titles: detail?.episodes_titles || [],
+    value: currentEpisodeIndex + 1,
+    onChange: handleEpisodeChange,
+    onSourceChange: handleSourceChange,
+    currentSource: currentSource,
+    currentId: currentId,
+    videoTitle: searchTitle || videoTitle,
+    availableSources: availableSources,
+    sourceSearchLoading: sourceSearchLoading,
+    sourceSearchError: sourceSearchError,
+    precomputedVideoInfo: precomputedVideoInfo,
+    preferBestSource: preferBestSource,
+    setLoading: setLoading,
+    setIsVideoLoading: setIsVideoLoading,
+    setVideoLoadingStage: setVideoLoadingStage,
+  };
+
   return (
     <PageLayout activePath='/play'>
       <div className='flex flex-col px-0'>
         {/* 播放器和选集：顶对齐导航栏，左右铺满 */}
         <div>
           <div className='grid lg:h-[500px] xl:h-[650px] 2xl:h-[750px] grid-cols-1 md:grid-cols-4 md:gap-0'>
-            {/* 播放器 */}
-            <div className='h-full md:col-span-3'>
+            {/* 播放器：PC 端铺满整行，选集/换源是播放器内部的浮层 */}
+            <div className='h-full md:col-span-4'>
               {/* 注意：不能加 `isolate`。`isolation: isolate` 会建 stacking context，
                   把网页全屏时 `position: fixed; z-index: 9999` 的播放器困在里面，
                   `sticky z-50` 的顶栏反而盖在播放器上面。`relative` 保留，
@@ -193,30 +247,50 @@ export default function PlayClient() {
                     </>,
                     playerHost
                   )}
+                {/* PC 端选集/换源浮层：挂在播放器节点里，网页全屏与原生全屏
+                    同样可用（右侧列在全屏里根本看不见）。 */}
+                {playerHost && isDesktop && showEpisodeDrawer &&
+                  createPortal(
+                    <div
+                      className='mntv-episode-drawer'
+                      onClick={stopPlayerPointer}
+                      onMouseDown={stopPlayerPointer}
+                    >
+                      <div className='flex items-center justify-between px-3 py-2 flex-shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400'>
+                        <span>选集 / 换源</span>
+                        <button
+                          onClick={() => setShowEpisodeDrawer(false)}
+                          aria-label='关闭选集面板'
+                          className='w-6 h-6 rounded-md flex items-center justify-center text-gray-500 hover:text-apple-600 hover:bg-black/10 dark:text-gray-400 dark:hover:text-apple-400 dark:hover:bg-white/10'
+                        >
+                          <svg
+                            className='w-4 h-4'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <path d='M6 6l12 12M18 6L6 18' />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className='flex-1 min-h-0'>
+                        <EpisodeSelector {...selectorProps} />
+                      </div>
+                    </div>,
+                    playerHost
+                  )}
               </div>
             </div>
 
-            {/* 选集和换源 */}
-            <div className='h-[300px] lg:h-full md:overflow-hidden md:col-span-1'>
-              <EpisodeSelector
-                totalEpisodes={totalEpisodes}
-                episodes_titles={detail?.episodes_titles || []}
-                value={currentEpisodeIndex + 1}
-                onChange={handleEpisodeChange}
-                onSourceChange={handleSourceChange}
-                currentSource={currentSource}
-                currentId={currentId}
-                videoTitle={searchTitle || videoTitle}
-                availableSources={availableSources}
-                sourceSearchLoading={sourceSearchLoading}
-                sourceSearchError={sourceSearchError}
-                precomputedVideoInfo={precomputedVideoInfo}
-                preferBestSource={preferBestSource}
-                setLoading={setLoading}
-                setIsVideoLoading={setIsVideoLoading}
-                setVideoLoadingStage={setVideoLoadingStage}
-              />
-            </div>
+            {/* 手机版：选集和换源在播放器下方占一整行 */}
+            {!isDesktop && (
+              <div className='h-[300px] md:overflow-hidden md:col-span-1'>
+                <EpisodeSelector {...selectorProps} />
+              </div>
+            )}
           </div>
         </div>
 

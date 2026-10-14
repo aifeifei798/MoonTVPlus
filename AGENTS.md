@@ -531,6 +531,27 @@ are committed, not left in `/tmp`.
   `.art-video-player.art-lock .art-bottom .art-progress` — `!important` is required
   because Artplayer injects its stylesheet into `head` at runtime, after the
   Tailwind one.
+- **The PC 选集/换源 panel is a drawer inside the player, not a grid column.**
+  `PlayClient.tsx` gives the player wrapper `md:col-span-4` and portals the
+  `EpisodeSelector` into the `.art-video-player` node (`.mntv-episode-drawer`), so the
+  drawer is a child of the player and survives native and web fullscreen. It is open
+  by default (`showEpisodeDrawer` in `usePlayEngine.ts`) and collapsible from a × in
+  the drawer or the `mntv-drawer-toggle` control button; closing it removes
+  `.mntv-drawer-open` from the player, which is what restores the full video width.
+  Width is `min(380px, 45%)` and the bottom stops at
+  `--art-control-height + --art-bottom-gap + --art-progress-height + 10px` so the
+  control bar stays clickable. z-index is **70** — above `.art-bottom` (60), below
+  `.art-settings` (90): raising it above 90 covers Artplayer's right-docked settings
+  panel. When open, `.mntv-drawer-open` narrows `.art-video`, `.art-poster`,
+  `.art-danmuku` and `.art-subtitle` to `calc(100% - var(--mntv-drawer-width))`, so
+  the drawer covers the letterbox, not the picture, and `VideoLoadingMask`
+  (`.mntv-loading-mask`, z-120) is narrowed the same way so 选集/换源 are clickable
+  while the video is still loading. `<768px` keeps the old layout (panel below the
+  player, toggle hidden by `globals.css`). The portal div is **recreated** on every
+  toggle, so any probe that holds a reference to the drawer must re-query it.
+  `EpisodeSelector`'s tab row is `-mx-4`, matching the container's `px-4`; upstream's
+  `-mx-6` made the row 16px wider than the panel and the 换源 tab's highlight was
+  clipped 8px by `overflow: hidden`.
 - **The control bar that never hides is an `isHover` leak, not a CSS one.**
   Artplayer 5.3.0 collapses the bottom bar inside `video:timeupdate` on
   `!setting.show && !controls.isHover && !isInput && playing && show && Date.now() - controls.timer >= CONTROL_HIDE_TIME (3000)`, and
@@ -727,7 +748,9 @@ working `/play` URL from data), `login_cookie.py` (the auth cookie), `servecheck
 (stale-dist + shipped-chunk check), `page_audit.js` (a whole-page sweep: broken
 images, dead links, buttons with no `aria-label`, containers that overflow),
 `record_poster_census.js` and `play_poster_probe.js` (which link of the poster chain
-each card and the play page actually paint), `chrome_start.sh` (the headless Chrome the CDP
+each card and the play page actually paint), `drawer_layout_probe.cjs` (the PC
+选集/换源 drawer: geometry, toggle, tabs, source switch, fullscreen, mobile),
+`chrome_start.sh` (the headless Chrome the CDP
 harnesses attach to), `_harness.py` (the `sys.path` + `.env` bootstrap) — with the
 captured manifests in `fixtures/live-source-*.m3u8` and the trap list in
 `references/harness-rules.md`. The one-off probes from earlier sessions

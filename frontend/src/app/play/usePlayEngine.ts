@@ -291,6 +291,8 @@ export function usePlayEngine() {
   const [selectedDanmakuEpisode, setSelectedDanmakuEpisode] = useState<number | undefined>(undefined);
   const [showDanmakuSelector, setShowDanmakuSelector] = useState(false);
   const [showCacheManager, setShowCacheManager] = useState(false);
+  // PC 端选集/换源浮层：默认展开（和手机版一样始终可见），可收起让播放器铺满宽度。
+  const [showEpisodeDrawer, setShowEpisodeDrawer] = useState(true);
   const selectedDanmakuSourceRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -2498,6 +2500,18 @@ export function usePlayEngine() {
               handleNextEpisode();
             },
           },
+          {
+            // PC 端选集/换源浮层的开关。移动端选集面板在播放器下方，
+            // 这个按钮由 globals.css 的 @media (max-width: 767px) 隐藏。
+            position: 'right',
+            index: 10,
+            html:
+              '<i class="art-icon flex mntv-drawer-toggle"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 5h16M3 11h16M3 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></i>',
+            tooltip: '选集 / 换源',
+            click: function () {
+              setShowEpisodeDrawer((prev) => !prev);
+            },
+          },
         ],
       });
 
@@ -3092,6 +3106,9 @@ export function usePlayEngine() {
     // 缓存管理
     showCacheManager,
     setShowCacheManager,
+    // PC 端选集/换源浮层
+    showEpisodeDrawer,
+    setShowEpisodeDrawer,
     // 收藏 / 追更
     favorited,
     following,
