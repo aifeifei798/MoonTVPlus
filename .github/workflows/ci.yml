@@ -5,27 +5,6 @@ on:
   pull_request:
 
 jobs:
-  backend-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install backend dependencies
-        run: |
-          python -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -e ./backend
-      - name: Run the wire tests
-        # Must run from `backend/`: pytest only reads `testpaths` and
-        # `asyncio_mode = "auto"` from backend/pyproject.toml when the rootdir is
-        # the backend, and the tests import `moontv.*` relative to it.
-        run: cd backend && ../.venv/bin/python -m pytest -q
-
   frontend-build:
     runs-on: ubuntu-latest
     steps:
@@ -33,6 +12,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # ubuntu runners do not ship pnpm, and corepack needs a `packageManager`
+      # field this tree does not have, so pin the version the tree was built with.
+      - name: Install pnpm
+        run: npm install -g pnpm@12.4.1
       - name: Install frontend dependencies
         run: pnpm install
         working-directory: frontend
@@ -52,3 +35,37 @@ jobs:
           test -f frontend/dist/assets/sweetalert2.min.css
           test -f frontend/dist/mitm.html
           test -f frontend/dist/sw.js
+          test -f frontend/dist/favicon.ico
+          test -f frontend/dist/logo.svg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    # The static/gzip/ETag tests are measured against the built dist, so the
+    # build has to exist before they run (conftest skips them otherwise).
+    needs: frontend-build
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e ./backend
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Run the wire tests
+        # Must run from `backend/`: pytest only reads `testpaths` and
+        # `asyncio_mode = "auto"` from backend/pyproject.toml when the rootdir is
+        # the backend, and the tests import `moontv.*` relative to it.
+        run: cd backend && ../.venv/bin/python -m pytest -q
