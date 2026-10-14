@@ -9,9 +9,10 @@ The framing is the wire surface: one `data: {...}` event per entry as soon as
 that entry finishes, so `db.client.ts`'s reader can update the UI mid-flight.
 Upstream wrote into a `ReadableStream` and watched `controller.desiredSize` to
 notice a client that stopped reading; here the events go into a queue this
-generator drains, and a disconnect is not detected mid-flight — the refresh
-keeps running and its remaining events are dropped, so the only observable
-difference is that a cancelled refresh still spends its HTTP requests.
+generator drains, and Starlette races that drain against `http.disconnect`, so a
+hung-up client closes the generator and the `finally` cancels the driver. What
+cannot be reproduced is upstream's `desiredSize` check itself: the drain notices
+the hang-up at the next chunk boundary, not in the middle of a fetch.
 
 The worker pool keeps upstream's `CONCURRENCY = 5` rather than running the
 entries one at a time, because the whole point of the route is that a user with
