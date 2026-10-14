@@ -3,12 +3,16 @@
 .run/
 *.db
 *.db-journal
+# WAL side files created by `PRAGMA journal_mode=WAL`
+*.db-shm
+*.db-wal
 
 # python
 backend/.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
 
 # frontend build deps & output (rebuild with `pnpm build`)
 frontend/node_modules/

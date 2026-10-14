@@ -51,6 +51,12 @@ def load_env():
             if line and not line.startswith("#") and "=" in line and not line[0].isspace():
                 k, v = line.split("=", 1)
                 out[k] = v
+    # A deployment started with `USERNAME=... ./server.sh start` has no ./.env at
+    # all; the harnesses then have to read the same shell the server got its
+    # credentials from, or every authenticated probe fails with
+    # `{"error":"用户名不能为空"}`.
+    for name in ("USERNAME", "PASSWORD"):
+        out.setdefault(name, os.environ.get(name, ""))
     return out
 
 
