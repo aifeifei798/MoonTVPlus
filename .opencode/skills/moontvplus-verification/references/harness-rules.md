@@ -211,6 +211,21 @@ back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
   `controls.isHover = true` and then moving the pointer re-runs the
   `document:mousemove` handler, which sets `isHover` from the hit test and
   quietly undoes the pin.
+- **A mobile probe must tap, not click.** `element.click()` from `Runtime.evaluate`
+  grants no transient activation, and `video.requestPictureInPicture()` answers
+  `NotAllowedError: … Must be handling a user gesture if there isn't already an
+  element in Picture-in-Picture`, so a probe that "clicks" the 画中画 button reports
+  PiP as broken. Use `Input.dispatchTouchEvent` with `type: "touchStart"` +
+  `touchPoints: [{x, y}]` followed by `type: "touchEnd"` with `touchPoints: []`.
+- **The bar is down until the video is tapped.** On a phone Artplayer's control
+  module registers `click -> isMobile ? this.toggle() : this.show = true`, and while
+  neither `art-control-show` nor `art-hover` is present the controls are translated by
+  `--art-bottom-offset` (20px) below the player. A probe that measures or taps a
+  control before that first tap measures a bar the user never sees.
+- `tailwind.css` keeps its URL across builds, so a probe that wants the CSS of the
+  build it just made must call `Network.setCacheDisabled` first — the Chrome profile
+  otherwise serves the previous build's stylesheet and the probe silently measures
+  stale rules.
 
 ## What a harness cannot see
 

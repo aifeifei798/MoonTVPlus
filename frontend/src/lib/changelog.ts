@@ -21,6 +21,7 @@ export const changelog: ChangelogEntry[] = [
       "品牌标识: 月牙 + 播放三角的扁平 logo，由 frontend/scripts/make-logo.py 生成 logo.svg/png、favicon.ico 与 192-512 图标",
       "播放器音量: 默认 0.7，「声音增强」2x GainNode（默认开启），设置面板音量滑杆（移动端唯一可用的音量控制）",
       "手机横屏自动进入全屏（旋转驱动），600ms 后回退到网页全屏",
+      "移动端画中画与网页全屏: 竖屏 414x896 实测点击画中画进入浏览器 PiP（document.pictureInPictureElement、art.state=pip），视频暂停时同样可用；点击网页全屏让播放器铺满视口并盖住顶部导航",
       "豆瓣标题搜索 `/api/douban/search?q=`（上游没有的功能）：抓取 `search.douban.com/movie/subject_search` 的 `window.__DATA__`，缓存与其它豆瓣接口一致",
       "SSRF 防护覆盖两个代理与每一次重定向: /api/image-proxy 与 /api/m3u8 的入口地址、跳转的每一跳、以及 manifest 里的 AES key 地址都走内网地址黑名单（MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1 可关闭，恢复上游的「照原样抓取」）",
       "CI: 后端 wire 测试 (Python 3.11/3.12) + 前端 typecheck/build 并校验 dist 里的 tailwind.css、sweetalert2.min.css、mitm.html、sw.js"
@@ -37,7 +38,8 @@ export const changelog: ChangelogEntry[] = [
       "导入 .dat 备份的大小上限 MOONTVPLUS_IMPORT_MAX_BYTES（默认 50 MB）：上传按 1 MB 分块读取，超过上限立即拒绝，而不是先读进内存再解密失败",
       "下载管理器懒加载，入口 chunk 692,825 B -> 456,579 B",
       "版本号单一来源: 仓库根 VERSION.txt，检查更新指向 MoonTVPlus 自己的 VERSION.txt 而非上游",
-      "manifest.json 的站点名由服务端在响应时替换（__SITE_NAME__），改站点名不需要重新构建前端；被替换的资源 ETag 按实际响应字节计算，改站点名后不会返回 304"
+      "manifest.json 的站点名由服务端在响应时替换（__SITE_NAME__），改站点名不需要重新构建前端；被替换的资源 ETag 按实际响应字节计算，改站点名后不会返回 304",
+      "移动端控制栏: 画中画与网页全屏按钮不再在 ≤768px 被隐藏（Artplayer 的这两个按钮不依赖 hover，触屏点击同样触发），音量按钮仍隐藏（它的弹层只在 hover 出现，触屏打不开，音量走设置面板滑杆）；≤412px 收起控制栏中间的弹幕开关与配置图标，否则右侧四个按钮被 .art-bottom 的 overflow:hidden 裁掉（实测 360px 裁 52px，全屏按钮完全打不到），弹幕开关在设置面板的「弹幕源」里仍然可达"
     ],
     fixed: [
       "修复登录 cookie 的 Expires 被当成「从现在起 N 秒」: 上游的 7*24*3600 得到 2083 年过期，登出的 expires=0 只是「现在过期」而不是已过期，登出后同一秒内重新打开标签页仍带着有效 cookie",

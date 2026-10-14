@@ -189,17 +189,36 @@ div[data-media-provider] video {
   position: absolute;
 }
 
-/* 隐藏移动端竖屏时的 pip 按钮 */
+/* 移动端控制栏。画中画和网页全屏以前被藏起来（上游也是这么写的），但
+   Artplayer 的这两个按钮不依赖 hover —— 触屏点击同样触发 —— 而且竖屏
+   414px 的手机上右侧四个按钮（设置/画中画/网页全屏/全屏）只有 152px，
+   不会溢出播放器，所以手机上应当照样能用。
+   音量仍然隐藏：它的弹层是 `.art-control-volume .art-volume-panel`
+   （opacity:0 + pointer-events:none，只有 :hover 才出现），触屏打不开，
+   音量走设置面板里的「音量」滑块。 */
 @media (max-width: 768px) {
-  .art-control-pip {
-    display: none !important;
-  }
-
-  .art-control-fullscreenWeb {
-    display: none !important;
-  }
-
   .art-control-volume {
+    display: none !important;
+  }
+}
+
+/* 窄屏（iPhone SE / 小安卓机）上图标缩小一档，给控制栏留出余量。 */
+@media (max-width: 420px) {
+  .art-video-player {
+    --art-control-icon-size: 30px;
+  }
+}
+
+/* 控制栏三段撑破播放器：可用宽度 = 播放器宽 - 2 * --art-padding，而三段是
+   左 160（播放/下一集/时间）+ 中间 100（弹幕插件的开关与配置图标，emitter
+   已关闭）+ 右 152（设置/画中画/网页全屏/全屏）= 412。中间那段是 flex:1，
+   但 min-content 就是 100，缩不动，于是右侧四个按钮被 .art-bottom 的
+   overflow:hidden 裁掉 —— 实测 360px 裁 52px（全屏按钮完全打不到），320px
+   裁 92px，414px 正好贴右边缘，所以阈值取 412。
+   收起中间那段后左 160 + 右 152 = 312 正好贴右边缘，四个按钮都在；弹幕开关
+   在设置面板的「弹幕源」里仍然可达。 */
+@media (max-width: 412px) {
+  .art-controls-center {
     display: none !important;
   }
 }

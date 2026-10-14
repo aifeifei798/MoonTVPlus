@@ -525,6 +525,35 @@ are committed, not left in `/tmp`.
   bundle; `scripts/artplayer_hide_probe.cjs` is the counterfactual, running the same
   gesture against the pinned `node_modules/artplayer` with the listener toggled off
   by `?nofix=1` (fix → 3000 ms, no-fix → never).
+- **Mobile 画中画 / 网页全屏 are gated by CSS, not by Artplayer.** Artplayer 5.3.0
+  adds the `pip` and `fullscreenWeb` controls regardless of `isMobile` (only
+  `screenshot` is gated on `!isMobile`), so upstream's `@media (max-width: 768px)`
+  `display: none !important` on `.art-control-pip` / `.art-control-fullscreenWeb` is
+  the whole reason a phone never saw them; `globals.css` now hides only
+  `.art-control-volume` there (its panel is hover-only `opacity: 0;
+  pointer-events: none`, unreachable on touch — volume is the settings slider).
+  At `max-width: 412px` the control bar's middle group is hidden instead: the row is
+  left 160 + middle 100 + right 152 = 412px, the middle group is the danmuku plugin's
+  toggle/config icons (`emitter: false` in `play-utils.ts`, so 28 + 24 + 28 plus the
+  group's 20px padding) and `flex: 1` cannot shrink below that min-content, so
+  `.art-bottom`'s `overflow: hidden` clips the right-hand buttons — measured 52px at
+  360px, 92px at 320px, 0 at 414px. `scripts/cdp_bar_overflow.cjs` re-measures this
+  and injects the counterfactual (`display: flex !important` on
+  `.art-controls-center`) so the "before" numbers are reproducible on the shipped CSS.
+  Two CDP traps make a mobile probe lie: `element.click()` from `Runtime.evaluate` is
+  **not** a user gesture, and `requestPictureInPicture()` requires transient
+  activation, so taps must go through `Input.dispatchTouchEvent` (`touchStart` +
+  `touchEnd` with `touchPoints`); and on a phone the bar is only up after a tap on the
+  video (Artplayer's control module does `click -> isMobile ? this.toggle() :
+  this.show = true`), so while neither `art-control-show` nor `art-hover` is set the
+  controls sit `--art-bottom-offset` (20px) below the player and every tap misses.
+  `scripts/cdp_mobile_player.cjs` (14 checks) taps the video first, then the buttons,
+  and asserts PiP (`document.pictureInPictureElement`, `art.state === "pip"`) and web
+  fullscreen (player covering the viewport, `elementFromPoint` at the top hitting the
+  player) at 320x568, 414x896 and 896x414. iOS Safari has no `requestPictureInPicture`
+  (WebKit bug 303885); Artplayer's own pip module falls back to
+  `webkitSupportsPresentationMode` / `webkitSetPresentationMode`, which no harness here
+  can exercise.
 - Palette is Apple-style, not Tailwind-default: brand accent is the `apple`
   blue scale in `tailwind.config.ts` (`600 #0071e3` / hover `500 #0077ed` /
   dark `400 #2997ff`; the old `green-*` brand is gone, migrated shade for

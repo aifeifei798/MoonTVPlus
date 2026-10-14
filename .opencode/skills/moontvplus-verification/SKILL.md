@@ -80,7 +80,25 @@ against the pinned `node_modules/artplayer` with the listener toggled off by
 things that make the local-clip swap stick) and measured **2794 ms** on the shipped
 bundle.
 
-## Verify the card posters fill their box
+## Verify the mobile control bar (PiP / 网页全屏)
+
+```bash
+bash scripts/chrome_start.sh 9334
+AUTH=$(backend/.venv/bin/python scripts/login_cookie.py)
+node scripts/cdp_bar_overflow.cjs "$AUTH" "$(cut -c1- /tmp/opencode/playurl.txt)"
+node scripts/cdp_mobile_player.cjs "$AUTH" "$(cut -c1- /tmp/opencode/playurl.txt)" --width=320 --height=568
+node scripts/cdp_mobile_player.cjs "$AUTH" "$(cut -c1- /tmp/opencode/playurl.txt)" --landscape
+```
+
+`cdp_bar_overflow.cjs` censuses the control row at 320/360/414/430/440/480 and exits
+non-zero if the right-hand controls hang outside the player; it also re-adds the
+middle group (`display: flex !important`) so the pre-fix numbers (92px clipped at
+320px, 52px at 360px) are reproducible on the shipped CSS. `cdp_mobile_player.cjs`
+taps 网页全屏 and 画中画 with `Input.dispatchTouchEvent` and asserts the browser
+actually enters web fullscreen and PiP — see `references/harness-rules.md`,
+"Player-state probes", for the two traps (a synthetic click is not a gesture, and
+the bar is only up after a tap on the video).
+
 
 ```bash
 node scripts/cdp_image_fill.cjs "$AUTH" / /douban?type=movie "/search?q=Spider"
