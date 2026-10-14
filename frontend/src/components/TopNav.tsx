@@ -455,6 +455,12 @@ const TopNav = ({ activePath }: TopNavProps) => {
                 }
               }}
             >
+              <img
+                src='/logo.svg'
+                alt=''
+                aria-hidden='true'
+                className='h-7 w-7'
+              />
               <span className='text-2xl font-bold text-apple-600 tracking-tight'>
                 {siteName}
               </span>
@@ -470,6 +476,12 @@ const TopNav = ({ activePath }: TopNavProps) => {
               }
             }}
           >
+            <img
+              src='/logo.svg'
+              alt=''
+              aria-hidden='true'
+              className='h-7 w-7'
+            />
             <span className='text-2xl font-bold text-apple-600 tracking-tight'>
               {siteName}
             </span>

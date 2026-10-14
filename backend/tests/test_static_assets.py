@@ -11,6 +11,8 @@ are compared against the file on disk after inflation.
 
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from conftest import DIST
@@ -114,3 +116,32 @@ def test_path_traversal_is_not_served_as_an_asset(client, cookie):
     response = client.get("/..%2f..%2fbackend%2fconfig.json", headers={"Cookie": cookie})
     assert "api_site" not in response.text
     assert "<html" in response.text
+
+
+def test_brand_assets_are_public_and_the_ico_is_well_formed(client, dist_available):
+    """The login page is drawn by the app itself, so the mark must load unauthenticated.
+
+    `make-logo.py` packs the ICO by hand (ImageMagick writes a single frame), so
+    the container is parsed here: three PNG entries, each offset inside the file
+    and each sized to the bytes that follow it.
+    """
+    for path in ("/favicon.ico", "/logo.svg", "/logo.png", "/icons/icon-192x192.png"):
+        response = client.get(path)  # deliberately no cookie
+        assert response.status_code == 200, path
+
+    svg = (DIST / "logo.svg").read_text()
+    assert svg.count("<path") == 2  # crescent + play triangle
+    assert "image/svg+xml" in client.get("/logo.svg").headers["content-type"]
+
+    ico = (DIST / "favicon.ico").read_bytes()
+    reserved, kind, count = struct.unpack("<HHH", ico[:6])
+    assert (reserved, kind) == (0, 1)
+    assert count == 3
+    for index in range(count):
+        width, height, _, _, planes, depth, size, offset = struct.unpack(
+            "<BBBBHHII", ico[6 + 16 * index : 22 + 16 * index]
+        )
+        assert (width, height) in {(16, 16), (32, 32), (48, 48)}
+        assert planes == 0 and depth == 32
+        assert ico[offset : offset + 8] == b"\x89PNG\r\n\x1a\n"
+        assert offset + size <= len(ico)

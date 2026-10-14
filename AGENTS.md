@@ -382,6 +382,15 @@ are committed, not left in `/tmp`.
   default for an app build (there is no `build.format` outside library mode,
   and no `build.polyfill` in Vite 6 — both were removed after being silently
   ignored).
+- **The brand assets are generated, not hand-edited**: `python3 frontend/scripts/make-logo.py`
+  draws the crescent-and-play mark from one set of geometry constants and writes
+  `public/logo.svg`, `public/logo.png`, `public/favicon.ico` and
+  `public/icons/icon-{192,256,384,512}.png`. It needs ImageMagick (`convert`) and
+  packs the ICO by hand with `struct`, because IM 6 writes only one frame per
+  `.ico`. The nav bars and the login page render `/logo.svg` next to the site
+  name, so both `/logo.png` and `/logo.svg` are in `auth.py`'s `SKIP_PATHS`;
+  changing the mark without rebuilding the frontend leaves the old tile in
+  `dist/` (postbuild copies `public/**` verbatim).
 - `mux.js` is vendored at `src/vendor/muxjs` (the `Momo707577045/mux.js` fork,
   not on npm) and its entry is `index.cjs` because rollup only gives a CJS
   module a `default` export under that extension.

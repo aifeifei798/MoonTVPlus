@@ -76,8 +76,14 @@ const MobileHeader = ({ showBackButton = false }: MobileHeaderProps) => {
           {showBackButton && <BackButton />}
           <Link
             href='/'
-            className='text-xl font-bold text-apple-600 tracking-tight hover:opacity-80 transition-opacity'
+            className='flex items-center gap-2 text-xl font-bold text-apple-600 tracking-tight hover:opacity-80 transition-opacity'
           >
+            <img
+              src='/logo.svg'
+              alt=''
+              aria-hidden='true'
+              className='h-6 w-6'
+            />
             {siteName}
           </Link>
         </div>
