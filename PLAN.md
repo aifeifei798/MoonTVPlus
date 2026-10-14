@@ -550,6 +550,39 @@ papered over:
     cause is measured, not asserted. Green on `/` (73/73), `/douban?type=movie`
     (25/25) and `/search?q=Spider` (22/22).
 
+ 33. **Bangumi posters get a mirror chain.** 动漫 → 每日放送 is the one section
+    whose data is not ours at all: `frontend/src/lib/bangumi.client.ts` calls
+    `https://api.bgm.tv/calendar` from the browser and every card's poster is an
+    `http://lain.bgm.tv/pic/cover/…` URL from that payload. `lain.bgm.tv` is
+    Cloudflare-fronted and its TLS handshake is intermittently reset by middleboxes
+    on mainland-China networks (the community threads "为什么我的 bangumi 看不了图片"
+    and the mirror list in `bgm.tv/group/topic/463877` are the same complaint), so
+    the proxy returned 500 and the cards rendered the placeholder — the "图片显示
+    一直有问题，很不稳定" report. Two changes, both opt-out:
+
+    - `routes/image_proxy.py` now expands a `*.bgm.tv` image URL into
+      `[as-given, https form, *mirrors]` and tries them in order, falling through
+      only on a connection failure or a 5xx (a 404 from the official host is still
+      the answer, so a bad id does not go looking for a mirror). The default mirror
+      is `lain.fxbgm.tv`, a community reverse proxy that serves the identical
+      `/pic/cover/…` path — verified byte-for-byte here (176,975 B from the mirror
+      vs 176,975 B from the official host through a working route). Every other
+      host is fetched exactly once, exactly as upstream did, and the error shapes
+      (`{"error": …}` at the upstream status, or 500 `Error fetching image`) are
+      unchanged. `MOONTVPLUS_BANGUMI_IMAGE_MIRRORS` replaces the list (comma
+    separated; empty value = official host only).
+    - `bangumi.client.ts` tries `api.bgm.tv/calendar` then `fxbgm.tv/calendar`,
+      each with a 10 s `AbortController`, instead of a single untimed `fetch` —
+      the calendar itself is blocked by the same middlebox, and an untimed fetch
+      left the section spinning on its skeleton forever.
+
+    `backend/tests/test_image_proxy.py` is the offline probe: a stub client records
+    the URLs the proxy tries, so the assertions are about order and error shapes
+    without touching a network. Live: `/api/image-proxy?url=http://lain.bgm.tv/…`
+    answers 200 with the real JPEG here, and the CDP census reports 12/12 posters
+    loaded on `/douban?type=anime` and 12/12 on the home page's 新番放送 row (was
+    0/12).
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

@@ -550,6 +550,21 @@ are committed, not left in `/tmp`.
 - `lain.bgm.tv` poster 500s in the server log here are this environment's network
   (`ConnectError [Errno 101] Network is unreachable` for both schemes), not a
   port bug — upstream would 500 identically.
+- **动漫「每日放送」 posters are the one image path with a mirror chain.** That
+  section's data is client-side Bangumi (`frontend/src/lib/bangumi.client.ts` →
+  `api.bgm.tv/calendar`), and every poster is an `http://lain.bgm.tv/pic/cover/…`
+  URL, so it always goes through `/api/image-proxy` (the mixed-content fallback).
+  `routes/image_proxy.py: _image_candidates` expands a `*.bgm.tv` URL into
+  `[as-given, https form, *mirrors]` and tries them in order, falling through only
+  on a connection error or a 5xx — a 404 from the official host is still the
+  answer, so a bad id does not go hunting. Default mirror `lain.fxbgm.tv`
+  (community reverse proxy, byte-identical covers);
+  `MOONTVPLUS_BANGUMI_IMAGE_MIRRORS` replaces the list, empty value = official
+  only. `bangumi.client.ts` likewise tries `api.bgm.tv/calendar` then
+  `fxbgm.tv/calendar`, each with a 10 s `AbortController`. Offline coverage is
+  `backend/tests/test_image_proxy.py` (a stub client records the attempted URLs);
+  live coverage is a CDP census counting `img[src*="lain.bgm.tv"]` with
+  `naturalWidth > 0`.
 
 ## Verification pattern
 

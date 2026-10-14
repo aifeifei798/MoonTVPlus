@@ -39,7 +39,13 @@ writing a new probe.
   `backend/.venv/bin/python <skill>/scripts/x.py` works from any cwd.
 - `trust_env=False` on every local call: this machine exports
   `http_proxy=http://127.0.0.1:10808` and `ALL_PROXY=socks://…`, and curl
-  through them mangles percent-encoded UTF-8 query params.
+  through them mangles percent-encoded UTF-8 query params. So **a host that
+  `curl` reaches is not evidence the app can**: the backend never uses those
+  proxies. Before blaming a route for a dead host, reproduce it with
+  `httpx.AsyncClient(trust_env=False)` — `lain.bgm.tv` here connects on TCP but
+  the TLS handshake is `ConnectionResetError(104)` (an SNI-selective middlebox;
+  `api.bgm.tv` on the *same* IP handshakes fine), which is why the 每日放送
+  posters were blank and why "but curl works" is not a counterexample.
 - `TestClient` follows redirects by default, so a 307 auth bounce looks like a
   200 `text/html`. Assert with `allow_redirects=False`.
 - Static/catch-all harnesses must point the backend at the tree with
