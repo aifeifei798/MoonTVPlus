@@ -57,7 +57,8 @@ export const changelog: ChangelogEntry[] = [
       "修复 React 19 元素级 ref 在 detach 时传 null 导致图片监听抛错、页面重新渲染后白屏的问题",
       "修复卡片海报不填满 2/3 海报框: next/image shim 的 fill 改为 CSS（position:absolute; inset:0），属性写法 width=\"100%\" height=\"100%\" 被 HTML 拒绝百分比，退化成按宽度自适应，海报底部露出一截",
       "修复动漫「每日放送」海报一直加载不出来、很不稳定: lain.bgm.tv 的 TLS 握手被中间设备间歇性重置，/api/image-proxy 现在对 *.bgm.tv 图片按官源 -> https 版本 -> 镜像（默认 lain.fxbgm.tv，MOONTVPLUS_BANGUMI_IMAGE_MIRRORS 可覆盖）依次尝试；日历请求也加 10s 超时与 fxbgm.tv 兜底",
-      "修复海报（含「继续观看」）显示不出来: 浏览器直连 img*.doubanio.com 无 Referer 会被回 418，而卡片都是 referrerPolicy='no-referrer'；图片加载失败时现在自动改走 /api/image-proxy 重试一次（代理带上游 Referer，并对豆瓣图片按官源 -> img.doubanio.cmliussss.net/img.doubanio.cmliussss.com 镜像尝试，MOONTVPLUS_DOUBAN_IMAGE_MIRRORS 可覆盖）。海报彻底取不到时占位符不再持续闪烁，以免看起来像「还在加载」"
+      "修复海报（含「继续观看」）显示不出来: 浏览器直连 img*.doubanio.com 无 Referer 会被回 418，而卡片都是 referrerPolicy='no-referrer'；图片加载失败时现在自动改走 /api/image-proxy 重试一次（代理带上游 Referer，并对豆瓣图片按官源 -> img.doubanio.cmliussss.net/img.doubanio.cmliussss.com 镜像尝试，MOONTVPLUS_DOUBAN_IMAGE_MIRRORS 可覆盖）。海报彻底取不到时占位符不再持续闪烁，以免看起来像「还在加载」",
+      "换源列表的顺序: 上游把当前生效源排在最底部，点击一个源后它反而沉底；现在生效源置顶并标注「生效源」，上一个生效的源沉到列表最下面（未生效的源保持优选评分顺序，切回上一个源时两者互换，历史去重不堆积）"
     ]
   },
   {
