@@ -114,6 +114,26 @@ stub client, so the assertions are about **order and error shapes** (official
 first, fall through only on a connection error or a 5xx, a 404 from the official
 host is still the answer) without touching a network.
 
+## Verify the poster fallback chain
+
+```bash
+node scripts/cdp_eval.cjs "$AUTH" "/" @scripts/poster_census.js 12000
+node scripts/cdp_eval.cjs "$AUTH" "/douban?type=anime" @scripts/poster_census.js 12000
+```
+
+`img*.doubanio.com` answers a referer-less request with **418 / 14 bytes**, and
+every card is `referrerPolicy='no-referrer'`, so with the default
+`DoubanImageProxyType: direct` the browser cannot load a douban poster at all —
+before the fix the home page census reported 60 broken of 76. `retryImageThroughProxy`
+(`frontend/src/lib/utils.ts`) retries a failed `<img>` once through
+`/api/image-proxy?url=…`, which sends the upstream `Referer` and, for the douban
+family, walks `img.doubanio.cmliussss.net` / `img.doubanio.cmliussss.com`
+(`MOONTVPLUS_DOUBAN_IMAGE_MIRRORS`). The census forces every lazy poster to
+attempt a fetch (`img.loading = 'eager'`) and then counts only images the browser
+actually tried; it reports per-section `broken` and `viaProxy`, so a rescue that
+silently did nothing is visible. Green means `brokenCount: 0` with the douban rows
+showing `viaProxy` equal to the number of posters in the row.
+
 ## Reproduce the desync
 
 The desync is not measurable in the CDP browser (the manifest XHR fails CORS).

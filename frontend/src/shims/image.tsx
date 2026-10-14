@@ -17,8 +17,19 @@
  * with the height taken from the natural ratio. Every card whose poster is not
  * exactly 2/3 then either leaves a strip of the box empty at the bottom or gets
  * clipped by the box's `overflow: hidden` — the "图片下面缺了一块" symptom.
+ *
+ * A poster the browser cannot fetch is retried through the app's own
+ * `/api/image-proxy` before the caller's `onError` is allowed to fire. That is
+ * what makes a broken poster render instead of leaving the card on its skeleton
+ * forever: `img*.doubanio.com` answers a referer-less request with 418 (every
+ * card is `referrerPolicy='no-referrer'`, so `direct` douban posters never
+ * load), and a source CDN that is unreachable from the viewer's network but
+ * reachable from the server fails the same way. The server-side proxy sends the
+ * upstream `Referer` and, for the douban and bangumi poster families, walks a
+ * mirror chain, so the second attempt succeeds where the first could not.
  */
 import * as React from 'react';
+import { retryImageThroughProxy } from '@/lib/utils';
 
 export default function Image(props: Record<string, unknown>) {
   const { fill, onLoad, onError, style, ...rest } = props;
@@ -51,7 +62,13 @@ export default function Image(props: Record<string, unknown>) {
         // listeners die with the node.
         if (element === null) return;
         const load = (event: Event) => (onLoad as ((e: Event) => void) | undefined)?.(event);
-        const error = (event: Event) => (onError as ((e: Event) => void) | undefined)?.(event);
+        const error = (event: Event) => {
+          // One retry through the server before the caller sees the failure: the
+          // proxy sends the Referer the host wants and walks the mirror chain for
+          // the douban/bangumi poster families.
+          if (retryImageThroughProxy(element)) return;
+          (onError as ((e: Event) => void) | undefined)?.(event);
+        };
         element.addEventListener('load', load);
         element.addEventListener('error', error);
         // React 19 treats the ref callback's return value as cleanup, so a

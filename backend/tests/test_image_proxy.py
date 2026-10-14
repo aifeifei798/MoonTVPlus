@@ -2,9 +2,11 @@
 
 `/api/image-proxy` is the reason posters render at all: `processImageUrl` sends
 every `http://` image (and every douban poster in `server` mode) through it. The
-MoonTVPlus addition is the `*.bgm.tv` mirror chain — the 动漫「每日放送」 covers
-come from `lain.bgm.tv`, whose TLS handshake is intermittently reset from
-mainland China, so the proxy retries the same path on a mirror.
+MoonTVPlus addition is the mirror chain — the 动漫「每日放送」 covers come from
+`lain.bgm.tv`, whose TLS handshake is intermittently reset from mainland China,
+and the douban posters come from `img<N>.doubanio.com`, which answers a
+referer-less request with 418. In both cases the proxy retries the same path on a
+mirror.
 
 These tests never touch the network: a stub client records the URLs the proxy
 tries and answers with canned responses, so the assertions are about the order
@@ -68,11 +70,33 @@ def test_mirrors_can_be_turned_off(monkeypatch):
     ]
 
 
+def test_douban_poster_chain_is_official_first():
+    candidates = image_proxy._image_candidates(
+        "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg"
+    )
+    assert candidates == [
+        "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg",
+        "https://img.doubanio.cmliussss.net/view/photo/s_ratio_poster/public/p2561037850.jpg",
+        "https://img.doubanio.cmliussss.com/view/photo/s_ratio_poster/public/p2561037850.jpg",
+    ]
+
+
+def test_douban_mirrors_can_be_turned_off(monkeypatch):
+    monkeypatch.setattr(image_proxy, "_DOUBAN_MIRROR_HOSTS", ())
+    assert image_proxy._image_candidates(
+        "http://img2.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg"
+    ) == [
+        "http://img2.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg",
+        "https://img2.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg",
+    ]
+
+
 def test_other_hosts_get_one_candidate():
     for url in (
-        "https://img3.doubanio.com/view/photo/s_ratio_poster/public/p2561037850.jpg",
+        "https://img.bfzypic.com/upload/vod/20230424-43/574cef591171edc25a4b48545a091f74.jpg",
         "http://example.com/a.jpg",
         "https://www.bing.com/op?q=1",
+        "https://img3.doubanio.com.example.com/a.jpg",
     ):
         assert image_proxy._image_candidates(url) == [url]
 

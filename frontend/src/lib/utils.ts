@@ -26,6 +26,27 @@ function getDoubanImageProxyConfig(): {
 }
 
 /**
+ * 图片加载失败时的兜底：改走服务端 `/api/image-proxy`。
+ *
+ * 浏览器直连海报失败的两类原因：豆瓣图片站对**没有 Referer** 的请求直接回 418
+ * （卡片都是 `referrerPolicy='no-referrer'`，所以 `direct` 模式的海报全部显示
+ * 不出来），以及源站 CDN 在观看者所在的网络里不可达但服务器可达。代理带上游的
+ * `Referer`，并对豆瓣/番组计划两族海报走镜像链，所以第二次尝试通常成功。
+ *
+ * 只重试一次，且只有绝对 URL 可以代理；返回 `false` 表示兜底已经用尽，调用方
+ * 自己处理（占位符或隐藏）。
+ */
+export function retryImageThroughProxy(target: HTMLImageElement): boolean {
+  const src = target.getAttribute('src') || '';
+  if (!/^https?:\/\//i.test(src)) return false;
+  // 标记存的是"已经兜底过的原始 URL"，所以换海报后仍可再兜底一次。
+  if (target.dataset.imageProxyRetried === src) return false;
+  target.dataset.imageProxyRetried = src;
+  target.src = `/api/image-proxy?url=${encodeURIComponent(src)}`;
+  return true;
+}
+
+/**
  * 处理图片 URL，如果设置了图片代理则使用代理
  */
 export function processImageUrl(originalUrl: string): string {

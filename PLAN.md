@@ -583,6 +583,43 @@ papered over:
     loaded on `/douban?type=anime` and 12/12 on the home page's 新番放送 row (was
     0/12).
 
+ 34. **A poster the browser cannot fetch is retried through the server.** The
+    report "继续观看的图片无法显示" is not a play-record bug: the row renders
+    `record.cover`, whatever host the source used. The measured cause is that the
+    browser's request, not the server's, is the one that fails. `img<N>.doubanio.com`
+    answers a request with **no Referer at 418** (14 bytes), and every card is
+    `referrerPolicy='no-referrer'`, so with the default `DoubanImageProxyType: direct`
+    every douban poster is broken — the home page census counted 60 of 76 `<img>`s
+    with `naturalWidth === 0`, all of them doubanio. The referer matrix was measured
+    directly: no Referer → 418; `https://movie.douban.com/`, `https://www.douban.com/`,
+    `https://www.google.com/` and even `Referer: ""` → 200; the app's own origin → 403.
+    So `referrerPolicy='origin'` is not a fix, and changing the config default would
+    change what `DoubanImageProxyType` means. Two changes, both opt-out:
+
+    - `frontend/src/lib/utils.ts: retryImageThroughProxy` — when an `<img>` errors,
+      and its `src` is an absolute http(s) URL that is not already the proxy, retry
+      it once through `/api/image-proxy?url=…` (the flag stores the URL it retried,
+      so a card whose poster later changes can still fall back). The `next/image`
+      shim calls it before the caller's `onError`, and the two plain `<img>` posters
+      on the play page (`VideoDetailPanel`, `EpisodeSelector`) call it before hiding
+      themselves. `VideoCard`'s 2 s retry of the *same* URL that just failed is gone;
+      instead `ImagePlaceholder` takes a `failed` prop and stops pulsing, so a poster
+      that is genuinely unavailable reads as "no poster" rather than "still loading".
+    - `routes/image_proxy.py` now treats `img<N>.doubanio.com` as a second mirror
+      family, `[official, https form, img.doubanio.cmliussss.net, img.doubanio.cmliussss.com]`
+      — the same pair the frontend's `cmliussss-cdn-*` modes already use — so the
+      rescue attempt survives an official-host failure too. `MOONTVPLUS_DOUBAN_IMAGE_MIRRORS`
+      replaces the list (empty value = official host only, which still keeps the
+      http → https upgrade). Every other host is still fetched exactly once.
+
+    Measured, not asserted: the home page census goes 60 broken → 0 broken (76 imgs,
+    all attempted, 60 of them rescued by the proxy); the 继续观看 row seeded with a
+    doubanio-cover record goes 1 broken → 0; `/douban?type=movie` 27/27 and
+    `/search?q=Spider` 24/24 load; and forcing the play page's plain `<img>` at a
+    doubanio poster ends with `src` rewritten to `/api/image-proxy?url=…` and a
+    rendered 270x405 poster. `backend/tests/test_image_proxy.py` covers the chain
+    order, the mirror-off case and the unchanged error shapes offline.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

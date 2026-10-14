@@ -550,7 +550,7 @@ are committed, not left in `/tmp`.
 - `lain.bgm.tv` poster 500s in the server log here are this environment's network
   (`ConnectError [Errno 101] Network is unreachable` for both schemes), not a
   port bug — upstream would 500 identically.
-- **动漫「每日放送」 posters are the one image path with a mirror chain.** That
+- **动漫「每日放送」 posters are one of two image paths with a mirror chain.** That
   section's data is client-side Bangumi (`frontend/src/lib/bangumi.client.ts` →
   `api.bgm.tv/calendar`), and every poster is an `http://lain.bgm.tv/pic/cover/…`
   URL, so it always goes through `/api/image-proxy` (the mixed-content fallback).
@@ -565,6 +565,27 @@ are committed, not left in `/tmp`.
   `backend/tests/test_image_proxy.py` (a stub client records the attempted URLs);
   live coverage is a CDP census counting `img[src*="lain.bgm.tv"]` with
   `naturalWidth > 0`.
+- **Every poster has a server-side rescue, because it is the browser that fails,
+  not the server.** `img*.doubanio.com` answers a referer-less request with **418 /
+  14 bytes**, and every card is `referrerPolicy='no-referrer'`, so with the default
+  `DoubanImageProxyType: direct` all douban posters are broken (home page census:
+  60 of 76 `<img>`s with `naturalWidth === 0`). The referer matrix is measured: no
+  Referer → 418; `movie.douban.com`, `www.douban.com`, `www.google.com` and even
+  `Referer: ""` → 200; the app's own origin → 403 — so `referrerPolicy='origin'` is
+  not a fix. `frontend/src/lib/utils.ts: retryImageThroughProxy` is the fix: on
+  `<img>` error it retries the absolute URL once through `/api/image-proxy?url=…`
+  (the dataset flag stores the URL it retried, so a poster that later changes can
+  still fall back). The `next/image` shim calls it **before** the caller's `onError`,
+  and `VideoDetailPanel`/`EpisodeSelector` call it before hiding their plain
+  `<img>`s; `VideoCard` no longer retries the same failing URL and instead passes
+  `failed` to `ImagePlaceholder`, which stops pulsing. The proxy's candidate chain
+  covers two families — `*.bgm.tv` and `img<N>.doubanio.com`
+  (`MOONTVPLUS_DOUBAN_IMAGE_MIRRORS`, default
+  `img.doubanio.cmliussss.net,img.doubanio.cmliussss.com`) — and every other host is
+  still fetched exactly once, so upstream's wire behavior is unchanged for them. A
+  census that counts `naturalWidth === 0` without making the lazy posters attempt a
+  fetch measures nothing (below-the-fold `loading='lazy'` images never errored): set
+  `img.loading = 'eager'` first, or scroll the page.
 
 ## Verification pattern
 
