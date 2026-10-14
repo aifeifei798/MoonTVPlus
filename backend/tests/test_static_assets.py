@@ -98,6 +98,52 @@ def test_content_hashed_assets_are_immutable_and_others_are_short_lived(client, 
     assert response.headers["etag"]
 
 
+async def test_the_manifest_name_follows_the_runtime_site_name(client, dist_available):
+    """PLAN.md change 40: the PWA name is substituted at serve time.
+
+    `generate-manifest.mjs` writes the marker, so renaming the site in the panel
+    does not require a rebuild; the file on disk still has the marker, which is
+    what makes the substitution observable from here.
+    """
+    from moontv.runtime import runtime_layout
+
+    raw = (DIST / "manifest.json").read_text(encoding="utf-8")
+    assert "__SITE_NAME__" in raw
+
+    expected = (await runtime_layout())["siteName"]
+    response = client.get("/manifest.json")
+    assert response.status_code == 200
+    assert "application/json" in response.headers["content-type"]
+    assert "__SITE_NAME__" not in response.text
+    assert response.json()["name"] == expected
+    assert response.json()["short_name"] == expected
+
+
+async def test_a_substituted_asset_etag_describes_the_served_bytes(client, dist_available, monkeypatch):
+    """Otherwise a site-name change would still answer 304 to a client holding
+    the etag of the old name."""
+    from moontv import static
+
+    original = static.runtime_layout
+
+    async def renamed():
+        layout = dict(await original())
+        layout["siteName"] = "Renamed Site"
+        return layout
+
+    first = client.get("/manifest.json")
+    etag = first.headers["etag"]
+    assert int(etag.strip('"').split("-")[0], 16) == len(first.content)
+
+    monkeypatch.setattr(static, "runtime_layout", renamed)
+    second = client.get("/manifest.json", headers={"If-None-Match": etag})
+    assert second.status_code == 200, "the old etag must not match a different body"
+    assert "Renamed Site" in second.text
+    assert second.headers["etag"] != etag
+    # And the new etag does revalidate.
+    assert client.get("/manifest.json", headers={"If-None-Match": second.headers["etag"]}).status_code == 304
+
+
 def test_gzip_cache_is_reused_across_requests(client, dist_available):
     """The compressed blob is built once per (path, size, mtime), not per request."""
     from moontv.static import _GZIP_CACHE
