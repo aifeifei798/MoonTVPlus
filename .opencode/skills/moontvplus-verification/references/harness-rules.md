@@ -29,6 +29,14 @@ writing a new probe.
   safe buttons to click in the admin panel are the tab headers — match them by
   class (`w-full px-6 py-4 flex items-center justify-between`), never by text,
   because 管理员设置 ships a live `重置配置` button whose class contains `bg-red`.
+- **Inside a CDP expression written as a template literal, every regex escape needs
+  doubling.** `` const EXPR = `...replace(/\s+/g, ' ')...` `` evaluates as `/s+/g`,
+  because a template literal turns the unknown escape `\s` into the letter `s`.
+  `drawer_layout_probe.cjs` printed 换源 tile text as `非凡144.7 MB/` for exactly
+  this reason — the regex ate the `s` of every `MB/s`. The geometry assertions were
+  still correct, which is what makes the trap dangerous: only the human-readable
+  echo lies, so the harness reports ALL PASS while its own evidence is garbled.
+  Write `\\s` (or `new RegExp('\\s+')`) inside backticks.
 
 ## Python harnesses
 

@@ -552,6 +552,18 @@ are committed, not left in `/tmp`.
   `EpisodeSelector`'s tab row is `-mx-4`, matching the container's `px-4`; upstream's
   `-mx-6` made the row 16px wider than the panel and the 换源 tab's highlight was
   clipped 8px by `overflow: hidden`.
+- **The 换源 list is a grid of tiles, not upstream's full-width cards.** Each tile is a
+  `<button>` in `grid grid-cols-3 sm:grid-cols-4 gap-2` (same columns as the episode
+  grid) with two lines: `source_name` (12px, `truncate`) and the measured speed
+  (10px mono, red on failure, `...` while unprobed) — 81x48 px in the 380px drawer,
+  4 per row; upstream's card (poster + title + quality badge + episode count + speed +
+  ping) fit only three per screen and made switching sources a long scroll. Quality and
+  episode count live only in the tile's `title`. `data-source-key` / `data-active` are
+  kept on the tiles, which is what `drawer_layout_probe.cjs` asserts (it also counts
+  how many tiles share the first row's `top`). Probing is no longer limited to the
+  active source: opening the 换源 tab queues every source through `getVideoInfo` with
+  `PROBE_CONCURRENCY = 3` (4s timeout per probe, module-level 10 min cache keyed by
+  episode URL), otherwise the grid would be a wall of `...`.
 - **The control bar that never hides is an `isHover` leak, not a CSS one.**
   Artplayer 5.3.0 collapses the bottom bar inside `video:timeupdate` on
   `!setting.show && !controls.isHover && !isInput && playing && show && Date.now() - controls.timer >= CONTROL_HIDE_TIME (3000)`, and

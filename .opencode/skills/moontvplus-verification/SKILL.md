@@ -145,18 +145,22 @@ AUTH=$(backend/.venv/bin/python scripts/login_cookie.py)
 node scripts/drawer_layout_probe.cjs "$AUTH" "$(cat /tmp/opencode/playurl_tv.txt)" --shots=/tmp/opencode/drawer-shots
 ```
 
-`drawer_layout_probe.cjs` walks 1440x900 / 1280x800 / 1024x720 / 900x600 / 375x667 and
-exits non-zero on any FAIL. What it pins: the drawer is a child of
+`drawer_layout_probe.cjs` walks 1440x900 / 1280x800 / 1024x720 / 900x600 / 768x600 /
+767x600 / 375x667 and exits non-zero on any FAIL. What it pins: the drawer is a child of
 `.art-video-player` (so it survives native and web fullscreen), it is open by
 default, its bottom clears `.art-controls` (21px at every desktop size), the
 video/poster layers are narrowed to `calc(100% - var(--mntv-drawer-width))` so the
 drawer covers the letterbox rather than the picture, the episode grid renders
 78x36 buttons in a 380px drawer, the control-bar toggle closes and reopens it (the
 video returns to the full player width), the 换源 tab renders `[data-source-key]`
-rows and a click moves `data-active`, the tab row is not clipped by the panel, the
-loading mask is narrowed to the video area, and the drawer's z-index (70) stays
-below Artplayer's settings panel (90). At 375x667 it asserts the opposite: no
-drawer, toggle hidden, panel below the player.
+tiles that sit **several per row** (>= 2 tiles share the first row's `top`) and are
+compact (<= 60px tall, less than half the panel width — 81x48 in a 380px drawer,
+109x48 at 375px), every tile has a second line with the measured speed (`...` while
+unprobed, `测速失败` in red when the probe failed), a click moves `data-active`, the
+tab row is not clipped by the panel, the loading mask is narrowed to the video area,
+and the drawer's z-index (70) stays below Artplayer's settings panel (90). At
+767x600 and 375x667 it asserts the opposite: no drawer, toggle hidden, panel below
+the player — and the same compact 换源 grid still applies there.
 
 Two traps: the drawer element is **recreated** by the portal on every toggle, so a
 captured reference goes stale — re-query `.mntv-episode-drawer` after toggling; and
