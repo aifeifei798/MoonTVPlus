@@ -42,11 +42,12 @@ import {
   PlaybackRecovery,
 } from '@/lib/playback-recovery';
 import { getDefaultPlaybackSaveInterval } from '@/lib/playback-settings';
+import { resolveDoubanPoster } from '@/lib/poster.client';
 import { SearchResult } from '@/lib/types';
 import {
   getRequestTimeout,
   getVideoResolutionFromM3u8,
-  processImageUrl,
+  posterUrlForCss,
 } from '@/lib/utils';
 import {
   getSegmentProbe,
@@ -185,6 +186,26 @@ function isFullscreenEngaged(art: any): boolean {
     (document as any).webkitFullscreenElement ||
     (document as any).webkitFullScreenElement;
   return !!fullscreenElement;
+}
+
+/**
+ * 豆瓣海报优先：播放页的封面来自源站，豆瓣的同名海报更标准也更稳定，所以拿到
+ * 后替换 Artplayer 的 `poster`。`resolveDoubanPoster` 按标题缓存（内存 + localStorage），
+ * 切源或切集不会重复请求豆瓣；查不到时源海报照常显示。
+ */
+function preferDoubanPoster(
+  title: string,
+  year: string,
+  setCover: (cover: string) => void
+) {
+  if (!title) return;
+  resolveDoubanPoster(title, year || '')
+    .then((found) => {
+      if (found) setCover(found);
+    })
+    .catch(() => {
+      // 豆瓣不可达只是"没有豆瓣海报"，源海报照常显示。
+    });
 }
 
 /**
@@ -474,8 +495,8 @@ export function usePlayEngine() {
     'initing' | 'sourceChanging' | 'optimizing'
   >('initing');
 
-  // 播放进度保存相关
-  const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // 播放进度保存相关. There is no interval: progress is saved from the
+  // `video:timeupdate` handler below, which compares against this timestamp.
   const lastSaveTimeRef = useRef<number>(0);
 
   const artPlayerRef = useRef<any>(null);
@@ -1007,6 +1028,7 @@ export function usePlayEngine() {
       setVideoYear(detailData.year);
       setVideoTitle(detailData.title || videoTitleRef.current);
       setVideoCover(detailData.poster);
+      preferDoubanPoster(detailData.title || videoTitleRef.current, detailData.year || '', setVideoCover);
       setVideoDoubanId(detailData.douban_id || 0);
       setDetail(detailData);
 
@@ -1378,6 +1400,7 @@ export function usePlayEngine() {
       setVideoTitle(newDetail.title || newTitle);
       setVideoYear(newDetail.year);
       setVideoCover(newDetail.poster);
+      preferDoubanPoster(newDetail.title || newTitle, newDetail.year || '', setVideoCover);
       setVideoDoubanId(newDetail.douban_id || 0);
       setCurrentSource(newSource);
       setCurrentId(newId);
@@ -1698,15 +1721,6 @@ export function usePlayEngine() {
     };
   }, [currentEpisodeIndex, detail, artPlayerRef.current]);
 
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
-      }
-    };
-  }, []);
-
   // -----------------------------------------------------------------------------
   // 收藏与追更
   // -----------------------------------------------------------------------------
@@ -1826,7 +1840,7 @@ export function usePlayEngine() {
       artPlayerRef.current.title = `${videoTitle} - 第${
         currentEpisodeIndex + 1
       }集`;
-      artPlayerRef.current.poster = processImageUrl(videoCover);
+      artPlayerRef.current.poster = posterUrlForCss(videoCover);
       if (artPlayerRef.current?.video) {
         ensureVideoSource(
           artPlayerRef.current.video as HTMLVideoElement,
@@ -1843,7 +1857,7 @@ export function usePlayEngine() {
       artPlayerRef.current.title = `${videoTitle} - 第${
         currentEpisodeIndex + 1
       }集`;
-      artPlayerRef.current.poster = processImageUrl(videoCover);
+      artPlayerRef.current.poster = posterUrlForCss(videoCover);
       if (artPlayerRef.current?.video) {
         ensureVideoSource(
           artPlayerRef.current.video as HTMLVideoElement,
@@ -2027,7 +2041,7 @@ export function usePlayEngine() {
       artPlayerRef.current = new Artplayer({
         container: artRef.current,
         url: videoUrl,
-        poster: videoCover,
+        poster: posterUrlForCss(videoCover),
         volume: 0.7,
         isLive: false,
         muted: false,
@@ -2992,11 +3006,6 @@ export function usePlayEngine() {
       if (danmakuVisibleRestoreTimerRef.current) {
         clearTimeout(danmakuVisibleRestoreTimerRef.current);
         danmakuVisibleRestoreTimerRef.current = null;
-      }
-
-      // 清理定时器
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
       }
 
       // 释放 Wake Lock

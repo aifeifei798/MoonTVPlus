@@ -129,6 +129,7 @@ export default function ScrollableRow({
           >
             <button
               onClick={handleScrollLeftClick}
+              aria-label='向左滚动'
               className='w-12 h-12 bg-white/95 rounded-full shadow-lg flex items-center justify-center hover:bg-white border border-[#d2d2d7] transition-transform hover:scale-105 dark:bg-[#1d1d1f]/90 dark:hover:bg-[#3a3a3c] dark:border-[#48484a]'
             >
               <ChevronLeft className='w-6 h-6 text-gray-600 dark:text-gray-300' />
@@ -158,6 +159,7 @@ export default function ScrollableRow({
           >
             <button
               onClick={handleScrollRightClick}
+              aria-label='向右滚动'
               className='w-12 h-12 bg-white/95 rounded-full shadow-lg flex items-center justify-center hover:bg-white border border-[#d2d2d7] transition-transform hover:scale-105 dark:bg-[#1d1d1f]/90 dark:hover:bg-[#3a3a3c] dark:border-[#48484a]'
             >
               <ChevronRight className='w-6 h-6 text-gray-600 dark:text-gray-300' />
