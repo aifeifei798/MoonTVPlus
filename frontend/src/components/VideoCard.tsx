@@ -81,6 +81,15 @@ function VideoCard({
 
   const isAggregate = from === 'search' && !!items?.length;
 
+  // `?compact=1` (see `app/search/page.tsx`) replaces the episode array with
+  // `episodes_count`, so an aggregate card has to read the count from either
+  // shape. Reading only `episodes.length` would make every aggregate 0
+  // episodes and, worse, type every aggregate as `stype=tv`: the play page
+  // then filters a 1-episode movie out of its re-search and renders
+  // 未找到匹配结果.
+  const countEpisodes = (item: SearchResult): number =>
+    item.episodes?.length ?? item.episodes_count ?? 0;
+
   const aggregateData = useMemo(() => {
     if (!isAggregate || !items) return null;
     const countMap = new Map<number, number>();
@@ -89,7 +98,7 @@ function VideoCard({
       if (item.douban_id && item.douban_id !== 0) {
         countMap.set(item.douban_id, (countMap.get(item.douban_id) || 0) + 1);
       }
-      const len = item.episodes?.length || 0;
+      const len = countEpisodes(item);
       if (len > 0) {
         episodeCountMap.set(len, (episodeCountMap.get(len) || 0) + 1);
       }
@@ -128,7 +137,7 @@ function VideoCard({
       ? actualQuery.trim()
       : '';
   const actualSearchType = isAggregate
-    ? aggregateData?.first.episodes?.length === 1
+    ? countEpisodes(aggregateData!.first) === 1
       ? 'movie'
       : 'tv'
     : type;

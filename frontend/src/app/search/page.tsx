@@ -22,6 +22,15 @@ import SearchSuggestions from '@/components/SearchSuggestions';
 import SourceSelector from '@/components/SourceSelector';
 import VideoCard from '@/components/VideoCard';
 
+// This page requests `?compact=1`, where the server drops the episode URL list,
+// the episode titles and the raw description and replaces the list with
+// `episodes_count` (see `backend/moontv/routes/search.py`). Every use of
+// `episodes` on this page is a count, so the projection is lossless here; the
+// helper keeps the full-record path working for a request without the flag.
+function episodeCount(item: SearchResult): number {
+  if (typeof item.episodes_count === 'number') return item.episodes_count;
+  return Array.isArray(item.episodes) ? item.episodes.length : 0;
+}
 
 function SearchPageClient() {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -116,7 +125,7 @@ function SearchPageClient() {
     searchResults.forEach((item) => {
       // 使用标准化的标题（移除多余空格但保留单词间的单个空格）作为聚合键的一部分
       const normalizedTitle = item.title.trim().replace(/\s+/g, ' ');
-      const key = `${normalizedTitle}-${item.year || 'unknown'}-${item.episodes.length === 1 ? 'movie' : 'tv'}`;
+      const key = `${normalizedTitle}-${item.year || 'unknown'}-${episodeCount(item) === 1 ? 'movie' : 'tv'}`;
       const arr = map.get(key) || [];
       arr.push(item);
       map.set(key, arr);
@@ -187,7 +196,7 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
   const getEpisodesCount = (group: SearchResult[]) => {
     let maxEpisodes = 0;
     for (const item of group) {
-      const count = Array.isArray(item.episodes) ? item.episodes.length : 0;
+      const count = episodeCount(item);
       if (count > maxEpisodes) maxEpisodes = count;
     }
     return maxEpisodes;
@@ -257,6 +266,10 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
 
       const params = new URLSearchParams({ q: query.trim() });
       params.set('stream', streamEnabled ? '1' : '0');
+      // Server-side projection: this page only reads episode counts, so asking
+      // for `episodes_count` instead of 1000+ episode URLs cuts the payload by
+      // roughly 3x before gzip.
+      params.set('compact', '1');
       
       // 添加选中的搜索源到请求参数
       if (searchSources.length > 0) {
@@ -741,14 +754,14 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
                         id={item.id}
                         title={item.title || ''}
                         poster={item.poster}
-                        episodes={item.episodes ? item.episodes.length : 0} // 转为 number
+                        episodes={episodeCount(item)} // 转为 number
                         source={item.source}
                         source_name={item.source_name}
                         douban_id={item.douban_id}
                         query={searchQuery.trim() !== item.title ? searchQuery.trim() : ''}
                         year={item.year}
                         from="search"
-                        type={item.episodes && item.episodes.length > 1 ? 'tv' : 'movie'}
+                        type={episodeCount(item) > 1 ? 'tv' : 'movie'}
                       />
                     </div>
                   );
@@ -799,14 +812,14 @@ const sortedAggregatedResults: { exact: [string, SearchResult[]][], others: [str
                             id={item.id}
                             title={item.title || ''}
                             poster={item.poster}
-                            episodes={item.episodes ? item.episodes.length : 0} // 转为 number
+                            episodes={episodeCount(item)} // 转为 number
                             source={item.source}
                             source_name={item.source_name}
                             douban_id={item.douban_id}
                             query={searchQuery.trim() !== item.title ? searchQuery.trim() : ''}
                             year={item.year}
                             from="search"
-                            type={item.episodes && item.episodes.length > 1 ? 'tv' : 'movie'}
+                            type={episodeCount(item) > 1 ? 'tv' : 'movie'}
                           />
                         </div>
                       );

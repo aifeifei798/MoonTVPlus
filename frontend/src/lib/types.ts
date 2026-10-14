@@ -129,6 +129,9 @@ export interface SearchResult {
   desc?: string;
   type_name?: string;
   douban_id?: number;
+  // Only sent by `?compact=1`, which replaces `episodes`/`episodes_titles`/`desc`
+  // with the count. See `_compact_result` in backend/moontv/routes/search.py.
+  episodes_count?: number;
 }
 
 // 豆瓣数据结构

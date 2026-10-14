@@ -1,2 +1,6 @@
+# pnpm 12 refuses a dependency's install scripts unless they are approved here.
+# esbuild is the only one in this tree, and its build script is what makes the
+# native binary available; without this a fresh machine fails at `pnpm install`
+# (this box only works because `dangerouslyAllowAllBuilds=true` is set globally).
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
