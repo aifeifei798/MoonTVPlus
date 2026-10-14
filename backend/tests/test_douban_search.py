@@ -152,3 +152,35 @@ def test_cold_failure_is_the_old_500(client, cookie, monkeypatch):
     response = client.get("/api/douban/search", params={"q": "从未搜索过的标题"}, headers={"Cookie": cookie})
     assert response.status_code == 500
     assert response.json()["error"] == "获取豆瓣搜索数据失败"
+
+
+async def test_an_absurd_query_is_refused_before_douban_is_hit(client, cookie, monkeypatch):
+    """MoonTVPlus-only cap (PLAN.md change 39).
+
+    `q` goes straight into a douban URL and into a `douban_cache` key, so an
+    unbounded one is both a way to hammer a third party with a 4 KB query and
+    unbounded cache growth. The check runs before the fetch, so nothing is
+    attempted.
+    """
+    attempted = _stub_html(monkeypatch, FIXTURE)
+
+    response = client.get(
+        "/api/douban/search",
+        params={"q": "英雄人物" * 100},
+        headers={"Cookie": cookie},
+    )
+    assert response.status_code == 400
+    assert response.json() == {"error": "搜索关键词过长"}
+    assert attempted == []
+
+    # Exactly at the cap is still a title-length query, and it works.
+    response = client.get(
+        "/api/douban/search", params={"q": "x" * douban_route.MAX_SEARCH_QUERY}, headers={"Cookie": cookie}
+    )
+    assert response.status_code == 200
+    assert len(attempted) == 1
+
+    # An empty query is refused by the existing parameter check, not the cap.
+    response = client.get("/api/douban/search", params={"q": ""}, headers={"Cookie": cookie})
+    assert response.status_code == 400
+    assert response.json() == {"error": "缺少必要参数: q"}

@@ -46,6 +46,7 @@ from ..routes import json_response
 from ..utils import js_parse_int, json_dump, strip_none, url_search_params
 
 _RATE_FIXED = "{:.1f}"  # `toFixed(1)`; douban ratings are one decimal in practice
+MAX_SEARCH_QUERY = 200  # MoonTVPlus-only cap on `/api/douban/search?q=`
 
 # The `moviePattern` of `handleTop250`, verbatim minus the JS `\/` escapes.
 TOP250_PATTERN = re.compile(
@@ -374,6 +375,12 @@ async def douban_search(request: Request):
     query = (request.query_params.get("q") or "").strip()
     if not query:
         return json_response({"error": "缺少必要参数: q"}, 400)
+    # MoonTVPlus addition (PLAN.md change 39): the query goes straight into a
+    # douban URL and into a `douban_cache` key, so an unbounded one is both a
+    # hammering vector and unbounded cache growth. A title is never longer than
+    # this; anything past it is not a title.
+    if len(query) > MAX_SEARCH_QUERY:
+        return json_response({"error": "搜索关键词过长"}, 400)
 
     async def _fetch():
         return await search_douban(query)

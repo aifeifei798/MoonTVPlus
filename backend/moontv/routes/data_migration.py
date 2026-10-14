@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import os
 import time
 from datetime import datetime
 from typing import Any
@@ -42,6 +43,50 @@ from ..version import CURRENT_VERSION
 
 CHUNK_SIZE = 64 * 1024  # `64 * 1024` characters of the encrypted string
 BATCH_SIZE = 50  # the non-batch fallback's parallel width
+
+# MoonTVPlus addition (PLAN.md change 39): the import route used to read the whole
+# upload into memory before decrypting it, so a 500 MB "backup" was a memory
+# explosion on a box with a few hundred MB of RAM. `MOONTVPLUS_IMPORT_MAX_BYTES`
+# raises the ceiling; 0 or garbage keeps the default.
+IMPORT_MAX_BYTES = 50 * 1024 * 1024
+_READ_CHUNK = 1024 * 1024
+
+
+def _import_limit() -> int:
+    raw = os.environ.get("MOONTVPLUS_IMPORT_MAX_BYTES", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return IMPORT_MAX_BYTES
+    return value if value > 0 else IMPORT_MAX_BYTES
+
+
+def _size_label(limit: int) -> str:
+    return f"{limit // (1024 * 1024)} MB" if limit % (1024 * 1024) == 0 else f"{limit} 字节"
+
+
+async def _read_upload(upload):
+    """The uploaded `.dat` as bytes, or `None` when it exceeds the size cap.
+
+    Starlette spools a file part to a temp file, so reading it in 1 MB slices is
+    what keeps the process from holding the whole thing at once — the cap has to
+    be checked while reading, not after.
+    """
+    if not hasattr(upload, "read"):
+        return upload if isinstance(upload, bytes) else str(upload).encode("utf-8")
+
+    limit = _import_limit()
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(_READ_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 # `Math.round` rounds half away from zero; Python's `round` is banker's rounding,
 # and the progress bar the panel draws depends on which one the fraction lands in.
@@ -289,9 +334,11 @@ async def import_(request: Request):
     if not password:
         return json_response({"error": "请提供解密密码"}, 400)
 
-    raw = upload.read()
-    if hasattr(raw, "__await__"):  # starlette's `UploadedFile.read()` is async
-        raw = await raw
+    raw = await _read_upload(upload)
+    if raw is None:
+        return json_response(
+            {"error": f"备份文件过大，最大 {_size_label(_import_limit())}"}, 400
+        )
     encrypted_data = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
 
     try:
@@ -347,7 +394,7 @@ async def import_(request: Request):
             yield _sse({"type": "stage", "message": "正在导入管理员配置...", "percent": 2})
             payload["adminConfig"] = config_self_check(payload["adminConfig"])
             await Db.save_admin_config(payload["adminConfig"])
-            set_cached_config(payload["adminConfig"])
+            await set_cached_config(payload["adminConfig"])
 
             user_index = 0
             for username in usernames:
