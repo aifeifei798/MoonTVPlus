@@ -95,6 +95,25 @@ therefore falls back to Tailwind preflight's `max-width: 100%; height: auto`)
 renders **180x225** — the missing bottom chunk — while the CSS form renders
 **180x270**. Exit code is non-zero if any poster box is not covered.
 
+## Verify the 每日放送 poster chain
+
+```bash
+backend/.venv/bin/python scripts/bangumi_images_check.py        # weekday defaults to today
+backend/.venv/bin/python -m pytest tests/test_image_proxy.py    # offline, no network
+```
+
+The 每日放送 cards are the only posters this app does not own: the calendar is
+fetched by the browser from Bangumi and every poster is an
+`http://lain.bgm.tv/pic/cover/…` URL, which `processImageUrl` sends through
+`/api/image-proxy` (the mixed-content fallback). The probe reports which calendar
+endpoint answered, then loads every poster of the selected weekday through the
+app's own proxy and re-runs the candidate list to name the host that actually
+served the bytes — it fails if the proxy's bytes differ from the host it fell back
+to. Offline, `backend/tests/test_image_proxy.py` drives the same handler with a
+stub client, so the assertions are about **order and error shapes** (official
+first, fall through only on a connection error or a 5xx, a 404 from the official
+host is still the answer) without touching a network.
+
 ## Reproduce the desync
 
 The desync is not measurable in the CDP browser (the manifest XHR fails CORS).
