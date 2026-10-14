@@ -8,6 +8,8 @@ the value returned is the one already stored rather than a fabricated timestamp.
 
 from __future__ import annotations
 
+import time
+
 from moontv.routes import user_state
 from moontv.storage.db import Db
 
@@ -44,12 +46,15 @@ def test_debounce_can_be_turned_off(client, cookie, clean_db, monkeypatch):
     monkeypatch.setattr(user_state, "ONLINE_DEBOUNCE_S", 0)
     calls = _counting_saves(monkeypatch)
 
-    stamps = [
-        client.post("/api/user/online", headers={"Cookie": cookie}).json()["lastOnline"]
-        for _ in range(3)
-    ]
+    stamps = []
+    for _ in range(3):
+        stamps.append(
+            client.post("/api/user/online", headers={"Cookie": cookie}).json()["lastOnline"]
+        )
+        # 毫秒级时间戳：连发三次可能落在同一毫秒，所以只要求不递减。
+        time.sleep(0.002)
     assert len(calls) == 3
-    assert stamps[0] < stamps[1] <= stamps[2]
+    assert stamps[0] <= stamps[1] <= stamps[2]
 
 
 def test_the_window_elapses_and_the_write_happens(client, cookie, clean_db, monkeypatch):
