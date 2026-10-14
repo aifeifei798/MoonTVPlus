@@ -108,6 +108,15 @@ writing a new probe.
   reads `.status_code` and `.json()`, so a two-member `FakeResponse` exercises every
   branch (HTTP status, broken JSON, missing `list`, empty `list`) with no network,
   and the same stub records `timeout_ms` and in-flight concurrency.
+- **Send the params the route reads, not the params its name suggests.**
+  `/api/search/one` takes `q` + `resourceId` (the source key), not `source` + `id`;
+  a sweep that sends the latter measures only the `缺少必要参数: q 或 resourceId`
+  branch and reports the route as covered. `scripts/edge_sweep.py` derives the key,
+  api, id and title from `/api/admin/config` and the source's own `?ac=videolist`
+  response, percent-encoded, and asserts the 404 `未找到结果` shape for a live
+  title. The same rule is why the sweep's GET `/api/user/online` is a case: the
+  route is POST-only, so the answer must be the app document at **404**, and a
+  probe that reads 200 + HTML as "the route works" measures the catch-all.
 
 ## External oracles (the `.dat` backup)
 

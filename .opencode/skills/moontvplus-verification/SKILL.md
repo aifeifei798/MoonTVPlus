@@ -46,6 +46,26 @@ and `test_url_guard.py` must undo it per test. The suite is deterministic: no
 live source, no browser, no redis server (the redis leg uses
 `fakeredis.TcpFakeServer`).
 
+## Sweep the live edge cases (read-only, against the running server)
+
+```bash
+backend/.venv/bin/python .opencode/skills/moontvplus-verification/scripts/edge_sweep.py
+```
+
+Every case is a GET, so the sweep cannot reorder, re-enable or resurrect config.
+It derives the source key, api url, id and title from the app's own responses
+(`/api/admin/config` → `ConfigFile.api_site`, then the source's `?ac=videolist`)
+and sends them percent-encoded, because this machine's I/O path transcodes CJK
+typed into a command — a hand-typed `source=暴风` answers `无效的API来源` and the
+sweep reports a defect that is not there. Credentials come from `./.env` (or the
+shell the server was started from) through `_harness.load_env`. It fails
+(exit non-zero) on any 500, and on a 404 at a **non-API** path (the catch-all
+serves the app document at 200 there; an unmatched `/api/*` path serves the
+document at 404, which is what Next's not-found page did, so `GET
+/api/user/online` — a POST-only route — correctly reports 404 + HTML). A live
+source that is down answers its own reason string, so the shape census prints
+what each route answers and only the 500/404 census is a verdict.
+
 ## Verify the ad filter (offline only)
 
 ```bash
