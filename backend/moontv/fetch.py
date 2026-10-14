@@ -14,9 +14,19 @@ modules that use them and reuse only the shared client here.
 
 from __future__ import annotations
 
+import os
+
 import httpx
 
 DEFAULT_TIMEOUT_MS = 30000  # `timeout = 30000` default parameter
+
+# Upper bound on how many upstream requests may be in flight at once. A search
+# fans out over every configured site and, per site, over up to
+# `SearchDownstreamMaxPage` pages, so one search is already ~50 requests and ten
+# concurrent searches are 500 — enough to get the app rate-limited or blocked by
+# the media servers. The pool blocks when it is exhausted, so this is a real
+# gate rather than a hint.
+UPSTREAM_MAX_CONNECTIONS = int(os.environ.get("MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS", "64"))
 
 # The Chrome UA MoonTV sent in `API_CONFIG.search.headers`/`detail.headers` is
 # spelled out in `config.py`; nothing is added here, so the upstream sites see
@@ -61,7 +71,10 @@ def get_http_client() -> httpx.AsyncClient:
         _client = httpx.AsyncClient(
             follow_redirects=True,
             trust_env=False,
-            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+            limits=httpx.Limits(
+                max_connections=UPSTREAM_MAX_CONNECTIONS,
+                max_keepalive_connections=min(20, UPSTREAM_MAX_CONNECTIONS),
+            ),
             timeout=httpx.Timeout(10.0),
         )
     return _client

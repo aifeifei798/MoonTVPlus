@@ -17,14 +17,18 @@ trick all come across unchanged. Two consequences worth keeping:
 
 The sqlite3 calls are synchronous. Every public method is `async` so the
 redis/kvrocks backends (real network I/O) and the route handlers share one
-shape; the sqlite bodies never `await`, which also means a single call is
-atomic with respect to other requests on the event loop. If the DB ever
-becomes hot enough to matter, offload the bodies with `asyncio.to_thread` and
-add the `threading.Lock` the comment in `_connect` hints at.
+shape; the small bodies never `await`, which also means a single call is
+atomic with respect to other requests on the event loop. The two bodies that
+are not small — the 100-row-chunk batch import and `clear_all_data` — are
+offloaded with `asyncio.to_thread`, because a data-migration import of tens of
+thousands of rows otherwise blocks every other request for the whole import.
+WAL (set in `__init__`) is what makes that safe: a reader on the event loop
+does not wait for the writer in the worker thread.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -195,6 +199,15 @@ class SqliteStorage:
         # rolled back on restart. Only `_run_batch` manages its own
         # transaction (one per 100-row chunk, like D1's `batch()`).
         self._conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None)
+        # WAL: readers never block on a writer and vice versa, which is what
+        # makes the `asyncio.to_thread` offloads below safe to run while the
+        # event loop keeps answering reads. `journal_mode` is persistent (it
+        # is stored in the database file), `synchronous=NORMAL` is not, so both
+        # are set on every connect. NORMAL still fsyncs at commit; it only
+        # drops the intermediate fsyncs that DELETE mode paid per chunk.
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         # 两段都跑，且都在每次构造时跑（不判断库文件是否新建）：`SCHEMA_TABLES`
         # 对既有库是 no-op，`SCHEMA_INDEXES` 的 CREATE INDEX IF NOT EXISTS 才是
         # 升级路径——老库缺的这些索引必须在进程启动时就补上，而不是等某张表被
@@ -740,6 +753,12 @@ class SqliteStorage:
 
     # ---------- 数据清理 ----------
     async def clear_all_data(self) -> None:
+        # Same offload as `_run_batch_async`: this is the first thing the
+        # data-migration import does, and on a database with real data the
+        # eight DELETEs are the slowest single statement sequence in the route.
+        await asyncio.to_thread(self._clear_all_data)
+
+    def _clear_all_data(self) -> None:
         for table in (
             "play_records",
             "favorites",
@@ -780,6 +799,18 @@ class SqliteStorage:
             done += len(chunk)
             if on_progress:
                 on_progress(done, len(statements))
+
+    async def _run_batch_async(self, statements: list[tuple[str, tuple]], on_progress=None) -> None:
+        """`_run_batch` off the event loop.
+
+        A data-migration import is tens of thousands of INSERTs; keeping it on
+        the loop stalls every other request for the whole import. The body is
+        sqlite3 C calls that release the GIL, and the import route's
+        `on_progress` only appends to a plain list, so running it in a worker
+        thread is safe. WAL (see `__init__`) is what lets the loop keep serving
+        reads while this thread writes.
+        """
+        await asyncio.to_thread(self._run_batch, statements, on_progress)
 
     async def batch_import_play_records(
         self, user_name: str, entries: list[tuple[str, Any]], on_progress=None
@@ -829,7 +860,7 @@ class SqliteStorage:
                     ),
                 )
             )
-        self._run_batch(statements, on_progress)
+        await self._run_batch_async(statements, on_progress)
 
     async def batch_import_favorites(
         self, user_name: str, entries: list[tuple[str, Any]], on_progress=None
@@ -871,7 +902,7 @@ class SqliteStorage:
                     ),
                 )
             )
-        self._run_batch(statements, on_progress)
+        await self._run_batch_async(statements, on_progress)
 
     async def batch_import_followings(
         self, user_name: str, entries: list[tuple[str, Any]], on_progress=None
@@ -916,7 +947,7 @@ class SqliteStorage:
                     ),
                 )
             )
-        self._run_batch(statements, on_progress)
+        await self._run_batch_async(statements, on_progress)
 
     async def batch_import_skip_configs(
         self, user_name: str, entries: list[tuple[str, Any]], on_progress=None
@@ -950,7 +981,7 @@ class SqliteStorage:
                     ),
                 )
             )
-        self._run_batch(statements, on_progress)
+        await self._run_batch_async(statements, on_progress)
 
     async def batch_import_search_history(
         self, user_name: str, keywords: list[str], on_progress=None
@@ -980,7 +1011,7 @@ class SqliteStorage:
                     (user_id, keyword, created),
                 )
             )
-        self._run_batch(statements, on_progress)
+        await self._run_batch_async(statements, on_progress)
 
     async def batch_import_today_updated(self, user_name: str, record: Any) -> None:
         user_id = self._ensure_user(user_name)

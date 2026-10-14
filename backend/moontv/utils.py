@@ -128,20 +128,24 @@ def js_number(value):
     """`Number(x)` for the values that reach `Math.min`/comparisons.
 
     Returns `None` for NaN — `Math.min(NaN, 5)` is NaN and `NaN > 1` is false,
-    which is how a garbage `pagecount` ends up fetching no extra pages.
+    which is how a garbage `pagecount` ends up fetching no extra pages. `None`
+    is also what makes the callers' `js_number(x) or 0` behave like JS's
+    `Number(x) || 0`, which is `0` for NaN; a Python `float('nan')` is truthy,
+    so returning it would keep the NaN through the `or`.
     """
     if isinstance(value, bool):
         return int(value)
     if isinstance(value, (int, float)):
-        return value
+        return None if value != value else value
     if isinstance(value, str):
         text = value.strip()
         if not text:
             return 0
         try:
-            return float(text)
+            number = float(text)
         except ValueError:
             return None
+        return None if number != number else number
     return None
 
 

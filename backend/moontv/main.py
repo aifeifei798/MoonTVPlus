@@ -18,6 +18,7 @@ behavior and the matcher exclusion list translate directly.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from starlette.middleware.gzip import GZipMiddleware
 
 from .auth import auth_gate_response
 from .routes import auth as auth_routes, server_config as server_config_routes
@@ -65,6 +66,16 @@ def create_app() -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+
+    # Compression. Starlette's GZipMiddleware skips `text/event-stream`, images,
+    # fonts, video and audio by default, so the SSE routes (followings refresh,
+    # source test, data-migration export) keep their exact framing and the
+    # `/api/search` NDJSON stream is compressed as it is produced rather than
+    # buffered. Static assets are gzipped by `static.py` itself, with the
+    # compressed bytes cached, so this only does the work for JSON and HTML.
+    # Clients that do not send `Accept-Encoding: gzip` (curl, most harnesses)
+    # get the uncompressed body exactly as before.
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
     @app.middleware("http")
     async def auth_gate(request, call_next):
