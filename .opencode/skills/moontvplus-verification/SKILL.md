@@ -61,6 +61,25 @@ exception. `cdp_eval.cjs` installs the error listeners with
 and reads `window.__errs`; an empty `__errs` with a blank body is a render-value
 bug, not a thrown one.
 
+## Verify the control-bar auto-hide
+
+```bash
+bash scripts/chrome_start.sh 9334
+AUTH=$(backend/.venv/bin/python scripts/login_cookie.py)
+node scripts/artplayer_hide_probe.cjs --port=8899      # synthetic oracle, no server needed
+node scripts/cdp_control_hide.cjs "$AUTH" "$(cut -c1- /tmp/opencode/playurl.txt)"
+```
+
+Artplayer 5.3.0 hides the bottom bar inside `video:timeupdate`, gated on
+`controls.isHover`, which only a `document` mousemove landing on `$bottom` can
+refresh — a pointer that exits the window straight from the bar leaves it stuck at
+`true` and the bar never collapses. The synthetic probe runs the same gesture
+against the pinned `node_modules/artplayer` with the listener toggled off by
+`?nofix=1`: **fix → 3000 ms, no-fix → never**. The live probe drives the real
+`/play` page (see `references/harness-rules.md`, "Player-state probes", for the two
+things that make the local-clip swap stick) and measured **2794 ms** on the shipped
+bundle.
+
 ## Reproduce the desync
 
 The desync is not measurable in the CDP browser (the manifest XHR fails CORS).

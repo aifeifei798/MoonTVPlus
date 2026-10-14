@@ -2512,6 +2512,22 @@ export function usePlayEngine() {
       artPlayerRef.current.on('fullscreen', onManualFullscreenExit);
       artPlayerRef.current.on('fullscreenWeb', onManualFullscreenExit);
 
+      // 鼠标离开播放器后控制栏不收起（网页全屏时最明显）。Artplayer 的
+      // controls.isHover 只在 document mousemove 里刷新：指针从控制栏直接
+      // 移出窗口时页面收不到 mousemove，isHover 卡在 true，而收起条件是
+      // (!isHover && 距上次控制操作 >= CONTROL_HIDE_TIME)，于是控制栏永远
+      // 留在屏幕上。播放器铺满视口时"离开播放器"就是"离开页面"，所以只有
+      // 网页全屏能复现 —— 普通模式鼠标通常先划过播放器外的页面，isHover
+      // 归零，控制栏正常收起。Artplayer 的 hover 事件在播放器 mouseleave
+      // 时触发，借它把 isHover 归零，收起节奏仍由 Artplayer 自己的
+      // CONTROL_HIDE_TIME (3s) 决定，不会瞬间消失。
+      artPlayerRef.current.on('hover', (value: boolean) => {
+        if (!value) {
+          const controls = artPlayerRef.current?.controls;
+          if (controls) controls.isHover = false;
+        }
+      });
+
       // 页面加载时手机己真是横屏：播放器只有 300px 高，直接进全屏
       if (isTouchDevice() && isLandscapeOrientation()) {
         enterOrientationFullscreen(artPlayerRef.current);
