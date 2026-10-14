@@ -147,7 +147,9 @@ papered over:
    short cache window rather than the immutable one.
 7. **`manifest.json` is generated at build time from `NEXT_PUBLIC_SITE_NAME`**,
    exactly as MoonTV's `scripts/generate-manifest.js` did; a site renamed at
-   runtime keeps the build-time name in the PWA manifest.
+   runtime keeps the build-time name in the PWA manifest. Change 40 closes that:
+   the generator writes the `__SITE_NAME__` marker and `static.py` substitutes the
+   runtime name when the file is served.
 8. **`start.js`'s poll-then-hourly-cron loop** becomes a Python boot loop or a
    supervisor cron; `/api/cron` itself is unchanged on the wire.
 9. **Deployment matrix collapses** to Docker/self-hosted: Vercel, Netlify, CF
@@ -656,6 +658,107 @@ papered over:
     cards skip it because their posters already come from douban or from the search
     aggregation. `backend/tests/test_douban_search.py` covers the parse, the shape,
     the 400/401 paths and the stale cache without a network.
+
+  36. **The SSRF guard covers the image proxy too, and every redirect hop.**
+    `src/lib/url-guard.ts` was ported for `/api/m3u8` only, and it checked the URL
+    the caller named. Two holes followed from that:
+
+    - `/api/image-proxy` is also a pass-through for a user-supplied URL, and
+      upstream validated nothing there, so `?url=http://169.254.169.254/…` was an
+      open read of the cloud metadata endpoint and of whatever sat on the app's own
+      port. It now runs the same private-host blacklist (`url_guard.validate_public_url`,
+      i.e. the media validator without the `M3U8_PROXY_ALLOW_HOSTS` whitelist — no
+      poster host a real card can point at is private, so the whitelist would only
+      break working posters).
+    - `fetch` follows redirects, so entry-only checking is bypassable by a public
+      site that 302s into the loopback. Verified live against httpbin:
+      `?url=https://httpbin.org/redirect-to?url=http%3A%2F%2F127.0.0.1%3A3000%2Flogo.svg`
+      returned the app's own logo before the fix. `url_guard.open_guarded` now walks
+      the chain itself (`follow_redirects=False`, `MAX_REDIRECTS = 5`), re-checks
+      each `Location` against the blacklist, and refuses a hop with no `Location`
+      or a chain longer than five. The manifest fetches in `moontv/m3u8.py` — the
+      master playlist, the segment bytes, the streamed TS proxy, and the AES key
+      URL a manifest names — go through it as well.
+
+    A blocked URL answers `403 {"error": "地址不被允许", "message": <reason>}`, the
+    same shape `/api/m3u8` already used for a bad media URL. `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1`
+    restores upstream's "fetch whatever the caller named" for deployments whose
+    posters or manifests really are on a LAN address (the offline test suite needs
+    it: its fake media server is `127.0.0.1`). `backend/tests/test_url_guard.py` is
+    39 checks: the host table, the reason strings, the whitelist-vs-public split,
+    the escape hatch, stub-client hop cases (relative `Location`, missing
+    `Location`, the five-hop limit), and the wire 403s on both verbs of `/api/m3u8`
+    and on `/api/image-proxy`, including a private *hop* answering 403 rather than
+    500.
+
+  37. **Streaming routes stop working when the client goes away.** `/api/search`
+    (stream mode), `/api/search/ws`, `/api/followings/refresh` and the data-migration
+    export all fetch several upstream sites while the response is open. Upstream's
+    `ReadableStream` writer throws on a closed pipe and the generator dies with it;
+    the port's generator kept draining its queue to completion after the browser
+    navigated away, so a search page left mid-search kept hammering every source it
+    had not finished. `routes/search.py: generate()` now has a `try/finally` that
+    cancels the outstanding per-site tasks, and the other three already cancelled
+    (their worker pools exit when the generator is closed).
+
+    The probe that proves it counts *completed* fetches, not started ones: the
+    parallel pages 2..N are issued before the hang-up is noticed, so "requests
+    started" is identical before and after. Against a local fake media server, HEAD
+    answers 3 started / 3 completed / 0 aborted and the working tree 3 started /
+    1 completed / 2 aborted, with the server logging a `BrokenPipeError` on the
+    abandoned stream. Starlette's own `StreamingResponse` already races the body
+    against `http.disconnect` (uvicorn here reports ASGI spec 2.3), so no custom
+    response class is needed — only the `finally`.
+
+  38. **The auth cookie's `Expires` is a date, not a number of seconds.** Starlette
+    passes an int `expires` straight to `Morsel`, which reads it as *seconds from
+    now*, so upstream's `expires: 60 * 60 * 24 * 7` produced `Expires=Tue, 03 Aug
+    2083` — a cookie that outlives every browser's cap and can never be cleared by
+    age. `auth.py` now sets a real `datetime` seven days out on login, and the epoch
+    on logout: logout previously wrote `expires=0`, which means "expires now", so a
+    client that logged out and reopened the tab within the same second still had a
+    usable cookie. `test_auth_gate.py` asserts both.
+
+  39. **Two unbounded inputs are capped.** The data-migration import read the whole
+    upload before decrypting it, so a 500 MB "backup" was spooled into memory and
+    then failed at the AES layer. `_read_upload` now reads in 1 MB slices and aborts
+    as soon as the total passes `MOONTVPLUS_IMPORT_MAX_BYTES` (default 50 MB),
+    answering `400 备份文件过大，最大 <size>`; the limit is exclusive, so a file
+    exactly at it still reaches the decrypt. Starlette 1.8's `max_part_size` only
+    applies to non-file parts, so this cap is not already there. `/api/douban/search`
+    puts `q` into a douban URL and into a `douban_cache` key, so it is capped at
+    `MAX_SEARCH_QUERY = 200` characters before any fetch (`400 搜索关键词过长`) —
+    a title is never longer than that, and without the cap a caller could grow the
+    cache with 4 KB keys. Both are checked offline in `test_data_migration.py` and
+    `test_douban_search.py`.
+
+  40. **Play-page posters, and the small things the audit found.** The play page's
+    cover came from the source's own `detail.cover`, which is the same art the
+    record cards stopped trusting; `usePlayEngine.ts` now resolves 豆瓣 → 源 through
+    the shared `poster.client.ts` cache (the panel's lookup and the player's are the
+    same request, so the second is free) and `VideoDetailPanel.tsx` walks the same
+    chain with `posterIndex` advancing on every `onError`. Two things had to be
+    measured before that chain could win. `img*.doubanio.com` answers a browser
+    request with no usable Referer — no Referer at all is 418, the app's own origin
+    is 403 — so a `DoubanImageProxyType: direct` poster never paints, and the chain
+    silently slid to the source poster. `retryImageThroughProxy` is now attempted
+    **before** the index advances (the `next/image` shim already did this, the play
+    page's plain `<img>` did not), and Artplayer's poster is a CSS
+    `background-image` on `.art-poster` with no `onError` to hook, so
+    `utils.ts: posterUrlForCss` routes a direct doubanio poster through the server
+    proxy up front. `scripts/play_poster_probe.js` reports which poster each play
+    page actually paints: panel `<img>` and player background both resolve to the
+    豆瓣 poster through `/api/image-proxy`. `ScrollableRow.tsx`'s two chevron
+    buttons had no `aria-label`, so a screen reader heard two anonymous buttons on
+    every row, and the same audit found the 源设置 button in `SourceSelector.tsx`
+    and the filter collapse button in `FilterOptions.tsx` unlabeled too; the dead
+    `saveIntervalRef` in `usePlayEngine.ts` is gone — progress is saved from
+    `video:timeupdate`, and the two `clearInterval` calls referenced a ref that was
+    never assigned. `frontend/public/manifest.json` carries
+    the `__SITE_NAME__` markers `static.py` substitutes at serve time, so the PWA
+    name follows `NEXT_PUBLIC_SITE_NAME` instead of the string baked into the file at
+    build time; substituted assets get an etag computed from the served bytes so a
+    site-name change does not answer 304.
 
 ## Milestones
 
