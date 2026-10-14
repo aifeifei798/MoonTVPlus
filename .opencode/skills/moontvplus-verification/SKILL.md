@@ -28,6 +28,24 @@ cannot see).
    assert `allow_redirects=False`.
 3. `TestClient` proves the wire only. It never executes the bundle.
 
+## Verify the route wire surface (offline, no network)
+
+```bash
+cd backend && backend/.venv/bin/python -m pytest -q      # 232 green, from backend/
+```
+
+The committed modules in `backend/tests/` cover the B5/B6 routes that earlier
+sessions only curl-checked: `test_search_sub.py` (14), `test_detail.py` (7),
+`test_tvbox.py` (14), `test_user_history.py` (18), `test_cron.py` (6),
+`test_server_config.py` (5), `test_source_test.py` (14), plus the guard, image
+proxy, search stream, auth gate, static, version, storage and backup modules. The
+fake media server (`FAKE_PAGE_1`/`FAKE_PAGE_2`, `fake_upstream`, `fake_source`,
+`fake_only_source`) lives in `tests/conftest.py` and answers `?ac=videolist` on a
+loopback port, which is why `conftest.py` sets `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE=1`
+and `test_url_guard.py` must undo it per test. The suite is deterministic: no
+live source, no browser, no redis server (the redis leg uses
+`fakeredis.TcpFakeServer`).
+
 ## Verify the ad filter (offline only)
 
 ```bash
@@ -220,7 +238,13 @@ reason strings are imported from the code (`moontv.routes.source_test.FORMAT_ERR
 `str(moontv.fetch.FetchTimeout())`) — typing them into the harness compares
 transcoded codepoints against transcoded codepoints and silently tests nothing.
 Seeded keys are ASCII (`zzok`/`zzbad`/`zzmalformed`/`zzslow`), deleted at the end,
-and the original source order is replayed.
+and the original source order is replayed. `backend/tests/test_source_test.py` (14
+wire tests, no network) pins the same route offline: the SSE framing and content
+type, the zero-result warning (`count: 0` counts as ok, PLAN.md change 18), the
+format/HTTP/no-api reasons, the `CONCURRENCY = 5` pool (max in-flight is 5 with six
+sources), the disconnect cancel (five starts, zero completions), the seconds-clamped
+`timeout`, and the read-only promise (the SourceConfig projection is identical
+before and after a run).
 
 ## Verify the `.dat` backup migration (B7)
 
