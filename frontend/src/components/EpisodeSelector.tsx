@@ -624,8 +624,8 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
                     const bIsCurrent =
                       b.source?.toString() === currentSource?.toString() &&
                       b.id?.toString() === currentId?.toString();
-                    if (aIsCurrent && !bIsCurrent) return -1;
-                    if (!aIsCurrent && bIsCurrent) return 1;
+                    if (aIsCurrent && !bIsCurrent) return 1;
+                    if (!aIsCurrent && bIsCurrent) return -1;
                     return 0;
                   })
                   .map((source, index) => {
