@@ -21,6 +21,7 @@ import hmac
 import json
 import time
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 
 from .env import PASSWORD, USERNAME, STORAGE_TYPE, env, env_raw
 from .utils import url_search_value
@@ -93,7 +94,11 @@ def set_auth_cookie(response, username=None, password=None, role=None, include_p
         COOKIE_NAME,
         generate_auth_cookie(username, password, role, include_password),
         max_age=COOKIE_MAX_AGE,
-        expires=int(time.time()) + COOKIE_MAX_AGE,
+        # Starlette treats an int `expires` as "seconds from now", so the previous
+        # `int(time.time()) + COOKIE_MAX_AGE` stamped an expiry ~57 years out
+        # (measured: `expires=Tue, 03 Aug 2083`). Upstream's `setDate(getDate() + 7)`
+        # is an absolute date, which is what a `datetime` gives.
+        expires=datetime.now(timezone.utc) + timedelta(seconds=COOKIE_MAX_AGE),
         path="/",
         httponly=False,  # the client libs read document.cookie
         secure=False,
@@ -108,7 +113,10 @@ def clear_auth_cookie(response):
         COOKIE_NAME,
         "",
         max_age=0,
-        expires=0,
+        # `new Date(0)` is the epoch, not "zero seconds from now": Starlette's
+        # int branch is relative, so `expires=0` would read as "expires now"
+        # rather than "already expired".
+        expires=datetime(1970, 1, 1, tzinfo=timezone.utc),
         path="/",
         httponly=False,
         secure=False,
