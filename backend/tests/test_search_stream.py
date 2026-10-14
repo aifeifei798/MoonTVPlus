@@ -79,26 +79,9 @@ def _serve(handler_class):
     return server, thread
 
 
-@pytest.fixture()
-def fake_upstream():
-    server, thread = _serve(_Handler)
-    try:
-        yield f"http://127.0.0.1:{server.server_port}/api.php/provide/vod"
-    finally:
-        server.shutdown()
-        thread.join(timeout=2)
-
-
-@pytest.fixture()
-def fake_source(clean_db, client, cookie, fake_upstream):
-    """Start from an empty config so only the fake site is searched."""
-    response = client.post(
-        "/api/admin/source",
-        headers={"Cookie": cookie},
-        json={"action": "add", "key": "FAKE", "name": "FAKE", "api": fake_upstream},
-    )
-    assert response.status_code == 200, response.text
-    return "FAKE"
+# `fake_upstream` and `fake_source` live in conftest.py now: the routes in
+# `detail.py`, `search_sub.py`, `tvbox.py`, `user_history.py` and
+# `source_test.py` need the same local media server, and the fixtures are shared.
 
 
 def _search(client, cookie, query="fake", **params):
