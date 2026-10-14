@@ -346,6 +346,40 @@ papered over:
      seeded keys are ASCII and deleted afterwards, so the harness restores the
      state it started from.
 
+19. **The mobile player enters fullscreen when the phone turns sideways, and
+     锁定 hides the progress bar.** Upstream's `autoOrientation` is only a control
+     button that calls `screen.orientation.lock()` — nothing in MoonTV enters
+     fullscreen because the device rotated. `usePlayEngine.ts` registers a
+     `screen.orientation` `change` listener (with the `orientationchange` fallback
+     for old iOS) on touch devices only: landscape enters fullscreen, portrait
+     restores it, and the entry prefers native fullscreen with Artplayer's CSS
+     `fullscreenWeb` after 600 ms — the same fallback the fullscreen button already
+     uses, because HLS on iOS plays through MSE where `webkitEnterFullscreen` is a
+     no-op. Two guards keep it from fighting the user: only fullscreen the
+     orientation itself entered is exited by rotating back, and a manual exit while
+     landscape suppresses re-entry until the next portrait→landscape cycle. Whether
+     anything is *actually* fullscreen is read from the DOM
+     (`art-fullscreen` / `art-fullscreen-web` / `document.fullscreenElement`), not
+     from `art.fullscreen`: Artplayer defines that property as a getter only after
+     `video:loadedmetadata`, so assigning to it earlier leaves a plain `true`
+     behind and the fallback then believes the player is already fullscreen — which
+     is exactly the case when the phone is rotated before the video has loaded. The
+     listeners are registered right after the player is constructed rather than in
+     `ready` for the same reason. Separately, tapping the player's 锁定 on mobile
+     left a stray progress bar: Artplayer pushes the controls and the progress bar
+     down by `--art-control-height + --art-bottom-gap + --art-progress-height/4`,
+     the controls are clipped by `.art-bottom`'s `overflow: hidden`, and the
+     progress bar leaks a sliver inside the player's bottom edge. `globals.css`
+     hides `.art-progress` under `.art-lock`, with `!important` because Artplayer
+     injects its stylesheet into `head` at runtime, after the Tailwind one. Verified
+     by `scripts/cdp_orientation.cjs` (10/10, plus 4/4 with
+     `--landscape-at-load`) at 390x844 with an iPhone UA: landscape → 390x844,
+     portrait → 390x300, manual exit in landscape then another rotation → stays
+     out, next portrait→landscape → in again, and with `art-lock` the progress rect
+     is 0x0. Native fullscreen cannot be exercised in headless Chrome
+     (`requestFullscreen()` answers "Permissions check failed"), so the harness
+     asserts the `fullscreenWeb` fallback — the path iPhone needs anyway.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

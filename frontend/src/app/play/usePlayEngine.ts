@@ -146,6 +146,48 @@ function buildCacheTooltip(
 }
 
 /**
+ * 触屏/移动设备判定：与 HLS 缓冲配置里用的是同一套判据。
+ * 桌面端没有"横屏/竖屏"概念，方向变化监听只在触屏设备上生效。
+ */
+function isTouchDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia?.('(pointer: coarse)').matches ||
+    /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
+  );
+}
+
+/**
+ * 当前是横屏吗。`screen.orientation` 在旧 iOS 上不存在，退回宽高比。
+ */
+function isLandscapeOrientation(): boolean {
+  const type =
+    typeof screen !== 'undefined' ? screen.orientation?.type : undefined;
+  if (type) return type.startsWith('landscape');
+  return window.innerWidth > window.innerHeight;
+}
+
+/**
+ * 全屏是否**真的**生效。
+ *
+ * Artplayer 的 `fullscreen` 属性只有在 `video:loadedmetadata` 之后才被定义成
+ * getter（见 artplayer 的 fullscreen 模块）。在那之前 `art.fullscreen = true`
+ * 只是写了一个普通属性，之后 `art.fullscreen` 会一直读到 `true`，兜底逻辑就
+ * 误以为已经全屏 —— 视频还没加载完时旋转手机正是这个情况。所以判断以 DOM 为准。
+ */
+function isFullscreenEngaged(art: any): boolean {
+  const player = art?.template?.$player;
+  if (!player) return false;
+  if (player.classList.contains('art-fullscreen')) return true;
+  if (player.classList.contains('art-fullscreen-web')) return true;
+  const fullscreenElement =
+    document.fullscreenElement ||
+    (document as any).webkitFullscreenElement ||
+    (document as any).webkitFullScreenElement;
+  return !!fullscreenElement;
+}
+
+/**
  * 播放页引擎。
  *
  * 负责播放页的全部核心逻辑：源加载/优选、剧集切换、ArtPlayer 生命周期、
@@ -390,6 +432,13 @@ export function usePlayEngine() {
   const lastPlaybackRateRef = useRef<number>(1.0);
   const lastFullscreenRef = useRef<boolean>(false);
   const lastFullscreenWebRef = useRef<boolean>(false);
+  // 横屏自动全屏 / 竖屏还原：只有"由方向变化进入的全屏"才由方向变化退出，
+  // 用户自己退出的全屏这一轮不强行拉回（见 handleOrientationChange）。
+  const autoFullscreenByOrientationRef = useRef<boolean>(false);
+  const suppressOrientationFullscreenRef = useRef<boolean>(false);
+  // 程序退出全屏的时间戳：Artplayer 的 fullscreen 事件对程序退出和手动退出
+  // 都触发，用时间戳区分，避免把自己退出的当成用户退出。
+  const programmaticFullscreenExitRef = useRef<number>(0);
   // 弹幕插件配置：默认配置叠加本地持久化的用户设置，保证刷新后自动恢复
   const danmakuConfigRef = useRef<any>(createDanmakuInitialConfig());
 
@@ -2447,6 +2496,27 @@ export function usePlayEngine() {
         setPlayerHost(playerEl);
       }
 
+      // 横屏自动全屏 / 竖屏还原的"手动退出"识别：Artplayer 的 fullscreen /
+      // fullscreenWeb 事件对程序退出和用户退出都触发，用时间戳区分
+      // （见下面两个 helper）。注册在构造之后而非 ready 里，因为 ready 需要
+      // 视频真正 canplay，用户可能在视频还没加载完时就旋转手机。
+      const onManualFullscreenExit = (value: boolean) => {
+        if (value) return;
+        if (Date.now() - programmaticFullscreenExitRef.current < 1000) return;
+        autoFullscreenByOrientationRef.current = false;
+        // 横屏时手动退出 = 用户此刻不想全屏，这一轮不再自动拉回
+        if (isLandscapeOrientation()) {
+          suppressOrientationFullscreenRef.current = true;
+        }
+      };
+      artPlayerRef.current.on('fullscreen', onManualFullscreenExit);
+      artPlayerRef.current.on('fullscreenWeb', onManualFullscreenExit);
+
+      // 页面加载时手机己真是横屏：播放器只有 300px 高，直接进全屏
+      if (isTouchDevice() && isLandscapeOrientation()) {
+        enterOrientationFullscreen(artPlayerRef.current);
+      }
+
       // 监听播放器事件
       artPlayerRef.current.on('ready', () => {
         setError(null);
@@ -2479,7 +2549,7 @@ export function usePlayEngine() {
               pending = null;
               const a = artPlayerRef.current;
               try {
-                if (a && !a.fullscreen && !a.fullscreenWeb) {
+                if (a && !isFullscreenEngaged(a)) {
                   a.fullscreenWeb = true;
                 }
               } catch {
@@ -2799,6 +2869,93 @@ export function usePlayEngine() {
     currentEpisodeIndex,
     detail,
   ]);
+
+  // -----------------------------------------------------------------------------
+  // 移动端：横屏自动全屏，竖屏自动还原
+  // -----------------------------------------------------------------------------
+
+  /**
+   * 进入全屏。原生全屏优先；iOS 上 HLS 走 MSE，原生全屏是空响，600ms 没进
+   * 任何全屏就兜到 CSS 网页全屏（与全屏按钮的兜底同一逻辑）。
+   */
+  const enterOrientationFullscreen = (art: any) => {
+    if (!art || isFullscreenEngaged(art)) return;
+    autoFullscreenByOrientationRef.current = true;
+    try {
+      art.fullscreen = true;
+    } catch (_) {
+      // 原生全屏不可用，下面兜底
+    }
+    setTimeout(() => {
+      const a = artPlayerRef.current;
+      if (a && !a.isDestroy && !isFullscreenEngaged(a)) {
+        // 原生全屏没生效时 `art.fullscreen` 可能只是一个普通属性，清掉它，
+        // 否则 Artplayer 的 state 会一直报 "fullscreen"。
+        try {
+          a.fullscreen = false;
+        } catch (_) {
+          // ignore
+        }
+        try {
+          a.fullscreenWeb = true;
+        } catch (_) {
+          // ignore
+        }
+      }
+    }, 600);
+  };
+
+  /** 退出全屏（原生 + 网页），并标记这是程序退出，不是用户手动退出。 */
+  const exitOrientationFullscreen = (art: any) => {
+    if (!art || !isFullscreenEngaged(art)) return;
+    programmaticFullscreenExitRef.current = Date.now();
+    try {
+      if (art.fullscreen) art.fullscreen = false;
+      if (art.fullscreenWeb) art.fullscreenWeb = false;
+    } catch (_) {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (!isTouchDevice()) return;
+
+    const handleOrientationChange = () => {
+      const art = artPlayerRef.current;
+      if (!art || art.isDestroy) return;
+
+      if (isLandscapeOrientation()) {
+        // 用户刚刚手动退出过全屏：这一轮不强行拉回，直到下一次竖屏
+        if (suppressOrientationFullscreenRef.current) return;
+        // 不检查 paused：横屏就是"我要看片"的信号，视频还没加载/正在缓冲
+        // 时同样应该全屏；用户不想全屏的信号是"手动退出"，已经由上面处理。
+        enterOrientationFullscreen(art);
+      } else {
+        suppressOrientationFullscreenRef.current = false;
+        if (autoFullscreenByOrientationRef.current) {
+          autoFullscreenByOrientationRef.current = false;
+          exitOrientationFullscreen(art);
+        }
+      }
+    };
+
+    const hasScreenOrientation =
+      typeof screen !== 'undefined' && screen.orientation?.addEventListener;
+
+    if (hasScreenOrientation) {
+      screen.orientation.addEventListener('change', handleOrientationChange);
+    } else {
+      window.addEventListener('orientationchange', handleOrientationChange);
+    }
+
+    return () => {
+      if (hasScreenOrientation) {
+        screen.orientation.removeEventListener('change', handleOrientationChange);
+      } else {
+        window.removeEventListener('orientationchange', handleOrientationChange);
+      }
+    };
+  }, []);
 
   // 当组件卸载时清理定时器、Wake Lock 和播放器资源
   useEffect(() => {

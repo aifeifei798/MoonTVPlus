@@ -172,6 +172,15 @@ div[data-media-provider] video {
   pointer-events: none !important;
 }
 
+/* 移动端锁定（防误触）时 Artplayer 把控制栏和进度条一起下移，控制栏被
+   .art-bottom 的 overflow:hidden 裁掉，进度条却露出一小截贴在播放器底边，
+   横屏看片时就是一条碍眼的进度条。锁屏的含义是"别碰"，进度条一并藏起。
+   !important 是必要的：Artplayer 的样式是运行时追加到 head 的，同特异性下
+   它排在这份表之后。 */
+.art-video-player.art-lock .art-bottom .art-progress {
+  display: none !important;
+}
+
 /* 全屏时 fixed 会相对播放器（或被 transform 限制），改成铺满播放器本身 */
 .art-video-player:fullscreen .moontv-player-modal > div,
 .art-video-player:-webkit-full-screen .moontv-player-modal > div,
