@@ -1,7 +1,10 @@
 # AGENTS.md — MoonTVPlus
 
 This repo is a rewrite of MoonTV (Next.js 14, upstream `VERSION.txt` = `4.2.5`) as
-a FastAPI backend (`backend/`) plus a Vite + React frontend (`frontend/`). The
+a FastAPI backend (`backend/`) plus a Vite + React frontend (`frontend/`). Its own
+release line is `5.0.0`: the root `VERSION.txt` is the source of truth, mirrored by
+`backend/moontv/version.py` and `frontend/src/lib/version.ts` (asserted by
+`backend/tests/test_version.py`). The
 original tree lived at `/home/feifei/develop/MoonTV` and is a git repo; it is
 **gone from this machine**, so parity is reasoned from the ported code plus real
 source data. **This repo is a git repo** pushed to a public `MoonTVPlus` —
@@ -164,6 +167,17 @@ are committed, not left in `/tmp`.
 
 ## Gotchas
 
+- **The version is MoonTVPlus's own, not upstream's.** `VERSION.txt` at the repo
+  root is the source of truth (`5.0.0`); `backend/moontv/version.py` and
+  `frontend/src/lib/version.ts` must both match it, and `backend/tests/test_version.py`
+  asserts that plus the changelog entry. `frontend/src/lib/version.ts` checks
+  `raw.githubusercontent.com/aifeifei798/MoonTVPlus/{main,master}/VERSION.txt`, so a
+  root `VERSION.txt` that drifts from the constant makes the version panel claim an
+  update is available (or report `已是最新版本` when it is not). The panel's
+  前往仓库 links and the login page badge point at `aifeifei798/MoonTVPlus`, so
+  pushing `VERSION.txt` to `main` is part of a release bump. The `.dat` backup's
+  `serverVersion` comes from the backend constant, so a backup written by 5.0.0 says
+  `5.0.0` even though upstream is `4.2.5`.
 - Env names are upstream's, including the inconsistency: `PASSWORD` and
   `USERNAME` are **not** `NEXT_PUBLIC_`-prefixed; `NEXT_PUBLIC_SITE_NAME`,
   `NEXT_PUBLIC_STORAGE_TYPE`, … are. A wrong name silently turns the gate into
@@ -307,7 +321,8 @@ are committed, not left in `/tmp`.
   like a port gap. `encrypt`/`decrypt` are the AES layer alone. The export's `done`
   event has **no** `serverVersion` — upstream stamps `timestamp` and `serverVersion`
   in the backup **payload**, so the claim is `backup["serverVersion"] == CURRENT_VERSION`
-  (`moontv/version.py`, `4.2.5` = upstream's `VERSION.txt`). And `import_` calls
+  (`moontv/version.py`, `5.0.0` — MoonTVPlus's own release line, which must match the
+  root `VERSION.txt`; upstream MoonTV is still `4.2.5`). And `import_` calls
   `Db.clear_all_data()`, which deletes all eight data tables (`douban_cache` stays),
   so a round trip that eats something is invisible unless the harness seeds records
   through the panel's own routes first and asserts the census afterwards.
@@ -542,8 +557,9 @@ captured manifests in `fixtures/live-source-*.m3u8` and the trap list in
 scratch and are gone. When you write a new one:
 
 - Name them `.cjs`. A `.mjs` is treated as ESM, where `require` is undefined.
-- `NODE_PATH=/home/feifei/develop/MoonTVPlus/frontend/node_modules` is needed to
-  `require('he')` and the other installed packages.
+- `NODE_PATH=<repo root>/frontend/node_modules` is needed to
+  `require('he')` and the other installed packages (the committed Python
+  harnesses derive it from `_harness.ROOT`).
 - `node -e` sees its args at `argv[1]`; a script file at `argv[2]`.
 - Static/catch-all harnesses point the backend at the tree with
   `MOONTV_FRONTEND_DIR` (there are also `MOONTV_FRONTEND_DIST` and

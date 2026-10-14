@@ -320,7 +320,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     </div>
                   </div>
                   <a
-                    href='https://github.com/Stardm0/MoonTV'
+                    href='https://github.com/aifeifei798/MoonTVPlus'
                     target='_blank'
                     rel='noopener noreferrer'
                     className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-sm w-full'
@@ -350,7 +350,7 @@ export const VersionPanel: React.FC<VersionPanelProps> = ({
                     </div>
                   </div>
                   <a
-                    href='https://github.com/Stardm0/MoonTV'
+                    href='https://github.com/aifeifei798/MoonTVPlus'
                     target='_blank'
                     rel='noopener noreferrer'
                     className='inline-flex items-center justify-center gap-2 px-3 py-2 bg-apple-600 hover:bg-apple-700 text-white text-xs sm:text-sm rounded-lg transition-colors shadow-sm w-full'

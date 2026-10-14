@@ -38,7 +38,7 @@ import httpx
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from _harness import BASE, auth_cookie
+from _harness import BASE, ROOT, auth_cookie
 
 from moontv.crypto import DECRYPT_FAILED, decode_backup, decrypt, encode_backup, encrypt
 from moontv.crypto import _b64_parse, pako_deflate
@@ -46,7 +46,7 @@ from moontv.version import CURRENT_VERSION
 
 HERE = pathlib.Path(__file__).resolve().parent
 NODE_FIXTURE = HERE / "dat_backup_node.cjs"
-NODE_PATH = str(pathlib.Path(os.environ.get("MOONTVPLUS_ROOT", "/home/feifei/develop/MoonTVPlus")) / "frontend/node_modules")
+NODE_PATH = str(ROOT / "frontend/node_modules")
 
 SEED_USER = "zzbackup"
 SEED_PASSWORD = "zzseedpass123"

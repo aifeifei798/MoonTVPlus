@@ -3,7 +3,9 @@
 ![MoonTVPlus logo](frontend/public/logo.svg)
 
 A rewrite of MoonTV (Next.js 14, upstream version `4.2.5`,
-`https://github.com/Stardm0/MoonTV`) as two separate packages:
+`https://github.com/Stardm0/MoonTV`) as two separate packages. MoonTVPlus is its
+own release line: **`5.0.0`**, stamped from the root [`VERSION.txt`](VERSION.txt)
+and read by `backend/moontv/version.py` and `frontend/src/lib/version.ts`.
 
 ```
 backend/    FastAPI (Python) — the whole /api/* surface plus the auth gate

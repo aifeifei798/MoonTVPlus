@@ -1,5 +1,5 @@
-// 此文件由 scripts/convert-changelog.js 自动生成
-// 请勿手动编辑
+// 上游条目由 scripts/convert-changelog.js 转换而来；本仓库的版本条目手工维护，
+// 版本号必须与仓库根 VERSION.txt 一致。
 
 export interface ChangelogEntry {
   version: string;
@@ -10,6 +10,38 @@ export interface ChangelogEntry {
 }
 
 export const changelog: ChangelogEntry[] = [
+  {
+    version: "5.0.0",
+    date: "2026-10-14",
+    added: [
+      "FastAPI 后端重写: 全部 /api/* 路径、鉴权 gate、SSE/NDJSON 帧格式与上游一致，环境变量名称不变",
+      "Redis / Kvrocks 存储后端 (NEXT_PUBLIC_STORAGE_TYPE=redis|kvrocks)，与 sqlite 同一 wire 行为",
+      "数据迁移: 导出/导入 .dat 备份 (pako deflate -> base64 -> AES)，与上游格式兼容",
+      "源健康检查: 管理面板「测试源」逐个探测源站（只读，不改顺序或开关），健康/零结果/死亡三色徽章",
+      "品牌标识: 月牙 + 播放三角的扁平 logo，由 frontend/scripts/make-logo.py 生成 logo.svg/png、favicon.ico 与 192-512 图标",
+      "播放器音量: 默认 0.7，「声音增强」2x GainNode（默认开启），设置面板音量滑杆（移动端唯一可用的音量控制）",
+      "手机横屏自动进入全屏（旋转驱动），600ms 后回退到网页全屏",
+      "CI: 后端 wire 测试 (Python 3.11/3.12) + 前端 typecheck/build 并校验 dist 里的 tailwind.css、sweetalert2.min.css、mitm.html、sw.js"
+    ],
+    changed: [
+      "静态资源压缩与缓存: GZipMiddleware + 预压缩缓存 + ETag/304，首屏资源 1,532,061 B -> 452,869 B 传输",
+      "搜索流改为 asyncio.Queue + 每站 None 哨兵，不再 busy-poll（同一查询 11.35 s / 461 万次 sleep(0) 唤醒 -> 0.28 s / 468 次）",
+      "?compact=1 投影（去掉 desc/episodes_titles/episodes，加 episodes_count）；搜索页使用，播放页重新搜索仍取完整 episodes",
+      "在线心跳去抖 MOONTVPLUS_ONLINE_DEBOUNCE_S（默认 60 s，设 0 恢复上游每心跳写入）",
+      "上游请求共享 httpx 连接池，上限 MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS（默认 64）",
+      "sqlite 启用 WAL 与批量写入事务（每 100 行一个显式事务，失败回滚）",
+      "下载管理器懒加载，入口 chunk 692,825 B -> 456,579 B",
+      "版本号单一来源: 仓库根 VERSION.txt，检查更新指向 MoonTVPlus 自己的 VERSION.txt 而非上游"
+    ],
+    fixed: [
+      "修复网页全屏后鼠标离开播放器，底部控制栏不收起: Artplayer 的 controls.isHover 只在 document mousemove 里刷新，指针从控制栏直接移出窗口时卡在 true，收起条件永远不满足",
+      "修复 VideoCard 集数徽章与 stype 因 episodes 缺失得到 NaN 的问题（回退到 episodes_count）",
+      "修复 config 文件里的源/分类删不掉: 每次读取都会重新注入，现在同时剪掉 ConfigFile 里的键",
+      "修复未知 /api/... 路径返回 200 的 HTML 文档，管理面板把它当 JSON 解析报错（现在返回 404 的 not-found 文档）",
+      "修复 锁定 状态下进度条在播放器底边露出一小截",
+      "修复 React 19 元素级 ref 在 detach 时传 null 导致图片监听抛错、页面重新渲染后白屏的问题"
+    ]
+  },
   {
     version: "4.2.5",
     date: "2026-10-06",
