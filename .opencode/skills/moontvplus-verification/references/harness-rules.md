@@ -231,3 +231,10 @@ back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
   the max mtime of `frontend/src/**` against `frontend/dist/index.html` and then
   greps the served chunk, which is the only way to tell a stale `dist` from a
   real regression.
+- `naturalWidth === 0` is not a failed image. Every card poster is
+  `loading="lazy"`, so below the fold nothing has attempted a fetch yet and the
+  count of "broken" posters is just the count of unscrolled ones — a census that
+  reads it without scrolling or setting `img.loading = 'eager'` measures nothing
+  and can report a fix as working (or as absent) for the wrong reason.
+  `scripts/poster_census.js` does the eager pass and then counts only
+  `img.complete` images.

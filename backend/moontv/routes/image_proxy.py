@@ -12,18 +12,19 @@ client default so one dead upstream cannot pin a request forever. The response
 streams the image bytes in 64KB chunks with the upstream's `Content-Type` and the
 half-year cache headers, capped at 8MB, not a JSON envelope.
 
-Resilience (MoonTVPlus addition, not a port): a `*.bgm.tv` image URL — the 动漫
-「每日放送」 posters — is tried on the official host, its https form, then
-`lain.fxbgm.tv`, because `lain.bgm.tv` is Cloudflare-fronted and its TLS handshake
-is intermittently reset from mainland China, which is why those posters came back
-broken. Every other host is fetched exactly once, exactly as upstream did, and the
-error shapes (`{"error": ...}` at the upstream status, or 500 `Error fetching
-image`) are unchanged.
+Resilience (MoonTVPlus addition, not a port): two host families get a candidate
+chain — `*.bgm.tv` (the 动漫「每日放送」 covers, whose official host's TLS handshake
+is intermittently reset from mainland China) and `img<N>.doubanio.com` (every
+poster the douban rows render). Each is tried on the official host, its https form,
+then its mirrors. Every other host is fetched exactly once, exactly as upstream
+did, and the error shapes (`{"error": ...}` at the upstream status, or 500
+`Error fetching image`) are unchanged.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import Request
@@ -72,9 +73,42 @@ _BANGUMI_MIRROR_HOSTS = tuple(
     if host
 )
 
+# 豆瓣图片站对**没有 Referer** 的请求直接回 418（浏览器卡片是
+# `referrerPolicy='no-referrer'`，所以 `direct` 模式的海报全部显示不出来），代理
+# 带 `Referer: https://movie.douban.com/` 则正常。官源若连代理也拒绝，退到前端
+# `cmliussss-cdn-*` 模式已经使用的同一对镜像。
+# `MOONTVPLUS_DOUBAN_IMAGE_MIRRORS` 覆盖列表（逗号分隔，空值 = 只用官源）。
+_DOUBAN_MIRROR_HOSTS = tuple(
+    host
+    for host in (
+        item.strip()
+        for item in os.environ.get(
+            "MOONTVPLUS_DOUBAN_IMAGE_MIRRORS",
+            "img.doubanio.cmliussss.net,img.doubanio.cmliussss.com",
+        ).split(",")
+    )
+    if host
+)
+
+_DOUBAN_IMAGE = re.compile(r"img\d+\.doubanio\.com\Z")
+
+
+def _mirrors_for(host: str) -> tuple[str, ...] | None:
+    """Mirror hosts for a poster family.
+
+    `None` means the chain does not apply to this host at all; an empty tuple
+    means the family is recognised but its mirrors were turned off, which still
+    leaves the http -> https upgrade in the chain.
+    """
+    if host.endswith("bgm.tv"):
+        return _BANGUMI_MIRROR_HOSTS
+    if _DOUBAN_IMAGE.match(host):
+        return _DOUBAN_MIRROR_HOSTS
+    return None
+
 
 def _image_candidates(url: str) -> list[str]:
-    """`[original, https 版本, *镜像]` — only for `*.bgm.tv` image hosts.
+    """`[original, https 版本, *镜像]` — only for the two poster families.
 
     Anything else gets the single URL back, so the proxy behaves exactly as
     upstream for every other host.
@@ -83,8 +117,9 @@ def _image_candidates(url: str) -> list[str]:
         parts = urlsplit(url)
     except Exception:  # noqa: BLE001 — unparseable means no mirrors
         return [url]
-    host = parts.hostname or ""
-    if not host.endswith("bgm.tv"):
+
+    mirrors = _mirrors_for(parts.hostname or "")
+    if mirrors is None:
         return [url]
 
     candidates = [url]
@@ -92,9 +127,9 @@ def _image_candidates(url: str) -> list[str]:
         # 上游日历里的封面是 http，先升到 https 再换镜像：省一次 301，也让镜像
         # 与官源在同一 scheme 上可比。
         candidates.append(
-            urlunsplit(("https", host, parts.path, parts.query, parts.fragment))
+            urlunsplit(("https", parts.hostname, parts.path, parts.query, parts.fragment))
         )
-    for mirror in _BANGUMI_MIRROR_HOSTS:
+    for mirror in mirrors:
         candidates.append(
             urlunsplit(("https", mirror, parts.path, parts.query, parts.fragment))
         )

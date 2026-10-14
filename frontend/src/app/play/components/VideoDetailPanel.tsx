@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Download, Heart } from 'lucide-react';
 
 import { SearchResult } from '@/lib/types';
-import { processImageUrl } from '@/lib/utils';
+import { processImageUrl, retryImageThroughProxy } from '@/lib/utils';
 
 import { FollowingIconButton } from '@/components/FollowingIcon';
 
@@ -59,7 +59,7 @@ export function VideoDetailPanel(props: VideoDetailPanelProps) {
               className='w-full h-full object-cover'
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
+                if (!retryImageThroughProxy(target)) target.style.display = 'none';
               }}
             />
           </div>

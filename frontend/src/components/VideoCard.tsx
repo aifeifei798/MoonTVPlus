@@ -73,6 +73,7 @@ function VideoCard({
   const [favorited, setFavorited] = useState(false);
   const [following, setFollowing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
   const [showSources, setShowSources] = useState(false);
   const [favoriteChecked, setFavoriteChecked] = useState(false); // 是否已经检查过收藏状态
   const [followingChecked, setFollowingChecked] = useState(false); // 是否已经检查过追更状态
@@ -554,7 +555,9 @@ function VideoCard({
     >
       {/* 图片和播放按钮 */}
       <div className='relative aspect-[2/3] overflow-hidden rounded-lg'>
-        {!isLoading && <ImagePlaceholder aspectRatio='aspect-[2/3]' />}
+        {!isLoading && (
+          <ImagePlaceholder aspectRatio='aspect-[2/3]' failed={posterFailed} />
+        )}
         <Image
           src={processImageUrl(actualPoster)}
           alt={actualTitle}
@@ -563,15 +566,7 @@ function VideoCard({
           referrerPolicy='no-referrer'
           loading='lazy'
           onLoad={() => setIsLoading(true)}
-          onError={(e: Event) => {
-            const img = e.target as HTMLImageElement;
-            if (!img.dataset.retried) {
-              img.dataset.retried = 'true';
-              setTimeout(() => {
-                img.src = processImageUrl(actualPoster);
-              }, 2000);
-            }
-          }}
+          onError={() => setPosterFailed(true)}
         />
 
         <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black-20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100 touch-visible' />
