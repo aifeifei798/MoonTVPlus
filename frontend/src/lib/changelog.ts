@@ -21,6 +21,7 @@ export const changelog: ChangelogEntry[] = [
       "品牌标识: 月牙 + 播放三角的扁平 logo，由 frontend/scripts/make-logo.py 生成 logo.svg/png、favicon.ico 与 192-512 图标",
       "播放器音量: 默认 0.7，「声音增强」2x GainNode（默认开启），设置面板音量滑杆（移动端唯一可用的音量控制）",
       "手机横屏自动进入全屏（旋转驱动），600ms 后回退到网页全屏",
+      "豆瓣标题搜索 `/api/douban/search?q=`（上游没有的功能）：抓取 `search.douban.com/movie/subject_search` 的 `window.__DATA__`，缓存与其它豆瓣接口一致",
       "CI: 后端 wire 测试 (Python 3.11/3.12) + 前端 typecheck/build 并校验 dist 里的 tailwind.css、sweetalert2.min.css、mitm.html、sw.js"
     ],
     changed: [
@@ -30,6 +31,7 @@ export const changelog: ChangelogEntry[] = [
       "在线心跳去抖 MOONTVPLUS_ONLINE_DEBOUNCE_S（默认 60 s，设 0 恢复上游每心跳写入）",
       "上游请求共享 httpx 连接池，上限 MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS（默认 64）",
       "sqlite 启用 WAL 与批量写入事务（每 100 行一个显式事务，失败回滚）",
+      "继续观看 / 追更 / 收藏 卡片的海报改为三级链 豆瓣 → 源 → 站点图标：豆瓣同名海报优先，取不到退回源海报，两者都取不到显示站点图标（public/poster-fallback.svg），而不是空白灰框",
       "下载管理器懒加载，入口 chunk 692,825 B -> 456,579 B",
       "版本号单一来源: 仓库根 VERSION.txt，检查更新指向 MoonTVPlus 自己的 VERSION.txt 而非上游"
     ],

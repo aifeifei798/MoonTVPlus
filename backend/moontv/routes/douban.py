@@ -1,4 +1,6 @@
-"""Port of `src/app/api/douban/**/route.ts` — the three douban data routes.
+"""Port of `src/app/api/douban/**/route.ts` — the three douban data routes,
+plus MoonTVPlus's own `/api/douban/search` (title search, which upstream never
+had) that the record cards use to prefer a douban poster over the source's.
 
 `/api/douban` (the `search_subjects` scrape plus `top250`), `/api/douban/categories`
 (`recent_hot`) and `/api/douban/recommends`. All three answer `{code, message, list}`
@@ -32,7 +34,12 @@ from fastapi import Request
 
 from ..auth import get_auth_info_from_cookie
 from ..config import get_cache_time, get_config
-from ..douban import fetch_douban_data, fetch_douban_html, fetch_subject_collection
+from ..douban import (
+    fetch_douban_data,
+    fetch_douban_html,
+    fetch_subject_collection,
+    search_douban,
+)
 from ..douban_cache import get_douban_cache, set_douban_cache
 from ..env import STORAGE_TYPE, env, env_raw
 from ..routes import json_response
@@ -355,8 +362,30 @@ async def douban_recommends(request: Request):
     return await _fresh_or_stale(f"douban:{target}", _fetch, "获取豆瓣数据失败")
 
 
+async def douban_search(request: Request):
+    """`/api/douban/search?q=<title>` — MoonTVPlus-only title search.
+
+    Upstream has no title search, so this is additive surface rather than a
+    parity question. It exists because a play record's `cover` is whatever the
+    source's own poster is, and the record cards want a douban poster first.
+    Same `{code, message, list}` shape and cache headers as the other three
+    douban routes, and the same stale-while-revalidate behaviour.
+    """
+    query = (request.query_params.get("q") or "").strip()
+    if not query:
+        return json_response({"error": "缺少必要参数: q"}, 400)
+
+    async def _fetch():
+        return await search_douban(query)
+
+    return await _fresh_or_stale(
+        f"douban:search:{query}", _fetch, "获取豆瓣搜索数据失败"
+    )
+
+
 ROUTES = [
     ("/api/douban", douban, ["GET"]),
     ("/api/douban/categories", douban_categories, ["GET"]),
     ("/api/douban/recommends", douban_recommends, ["GET"]),
+    ("/api/douban/search", douban_search, ["GET"]),
 ]

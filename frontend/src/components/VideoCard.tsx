@@ -3,7 +3,7 @@
 import { ExternalLink, Heart, Link, PlayCircleIcon, Trash2 } from 'lucide-react';
 import Image from '@/shims/image';
 import { useRouter } from '@/shims/navigation';
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   deleteFavorite,
@@ -18,6 +18,7 @@ import {
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
 import { processImageUrl } from '@/lib/utils';
+import { FALLBACK_POSTER, resolveDoubanPoster } from '@/lib/poster.client';
 
 import FollowingIcon from '@/components/FollowingIcon';
 import { ImagePlaceholder } from '@/components/ImagePlaceholder';
@@ -73,7 +74,8 @@ function VideoCard({
   const [favorited, setFavorited] = useState(false);
   const [following, setFollowing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [posterFailed, setPosterFailed] = useState(false);
+  const [posterIndex, setPosterIndex] = useState(0);
+  const [doubanPoster, setDoubanPoster] = useState('');
   const [showSources, setShowSources] = useState(false);
   const [favoriteChecked, setFavoriteChecked] = useState(false); // 是否已经检查过收藏状态
   const [followingChecked, setFollowingChecked] = useState(false); // 是否已经检查过追更状态
@@ -142,6 +144,40 @@ function VideoCard({
       ? 'movie'
       : 'tv'
     : type;
+
+  // 记录卡片（继续观看 / 追更 / 收藏）的海报是源站自己的海报，豆瓣的同名海报
+  // 更标准也更稳定，所以优先用豆瓣的；查不到（或豆瓣不可达）就退回源海报。
+  // 结果按标题缓存，同一标题只搜索一次（见 `lib/poster.client.ts`）。
+  useEffect(() => {
+    if (from === 'douban' || from === 'search' || !actualTitle) return;
+    let cancelled = false;
+    resolveDoubanPoster(actualTitle, sanitizedYear)
+      .then((found) => {
+        if (cancelled || !found) return;
+        setDoubanPoster(found);
+        // 豆瓣海报到手后重新从链首尝试，之前失败的源海报不再占着兜底位。
+        setPosterIndex(0);
+      })
+      .catch(() => {
+        // 搜索失败只是"没有豆瓣海报"，源海报照常显示。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [from, actualTitle, sanitizedYear]);
+
+  // 海报链：豆瓣 → 源 → 站点图标。`posterIndex` 是当前尝试到的位置，加载失败
+  // 时前进一格，所以豆瓣海报取不到会退回源海报，两者都取不到才显示兜底图标。
+  const posterChain = useMemo(() => {
+    const chain: string[] = [];
+    if (doubanPoster) chain.push(processImageUrl(doubanPoster));
+    if (actualPoster) chain.push(processImageUrl(actualPoster));
+    chain.push(FALLBACK_POSTER);
+    return chain;
+  }, [doubanPoster, actualPoster]);
+  const posterSrc = posterChain[posterIndex] ?? FALLBACK_POSTER;
+  // 链走到最后一格（站点图标）说明豆瓣和源都没有可用海报。
+  const posterFailed = posterIndex >= posterChain.length - 1;
 
   // 检查收藏状态函数
   const checkFavoriteStatus = useCallback(async () => {
@@ -555,18 +591,22 @@ function VideoCard({
     >
       {/* 图片和播放按钮 */}
       <div className='relative aspect-[2/3] overflow-hidden rounded-lg'>
-        {!isLoading && (
+        {!isLoading || posterFailed ? (
           <ImagePlaceholder aspectRatio='aspect-[2/3]' failed={posterFailed} />
-        )}
+        ) : null}
         <Image
-          src={processImageUrl(actualPoster)}
-          alt={actualTitle}
+          src={posterSrc}
+          alt={posterFailed ? `${actualTitle} 海报不可用` : actualTitle}
           fill
-          className='object-cover'
+          className={posterFailed ? 'object-contain' : 'object-cover'}
           referrerPolicy='no-referrer'
           loading='lazy'
           onLoad={() => setIsLoading(true)}
-          onError={() => setPosterFailed(true)}
+          onError={() =>
+            setPosterIndex((index) =>
+              index < posterChain.length - 1 ? index + 1 : index
+            )
+          }
         />
 
         <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black-20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100 touch-visible' />
@@ -769,7 +809,7 @@ function VideoCard({
         isOpen={isActionOpen}
         onClose={() => setIsActionOpen(false)}
         title={actualTitle}
-        poster={processImageUrl(actualPoster)}
+        poster={posterSrc}
         sourceName={source_name}
         isAggregate={isAggregate}
         sources={sources}

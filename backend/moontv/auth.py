@@ -133,6 +133,9 @@ SKIP_PATHS = (
     "/icons/",
     "/logo.png",
     "/logo.svg",
+    # The "no poster" glyph is the same brand mark, so it is served like the
+    # logo rather than through the gate.
+    "/poster-fallback.svg",
     "/screenshot.png",
     "/api/m3u8",
     "/api/image-proxy",

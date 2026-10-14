@@ -330,6 +330,22 @@ export async function fetchDoubanList(
   }
 }
 
+/**
+ * 豆瓣标题搜索。
+ *
+ * 只有服务端能匿名访问 `search.douban.com`（浏览器直连要么 403 要么需要登录），
+ * 所以这里走 `/api/douban/search`，返回与其它豆瓣接口相同的 `{code, message, list}`。
+ */
+export async function searchDouban(query: string): Promise<DoubanResult> {
+  const response = await fetch(
+    `/api/douban/search?q=${encodeURIComponent(query)}`,
+    { headers: { Accept: 'application/json, text/plain, */*' } }
+  );
+  const data = await response.json();
+  if (response.ok && data && data.code === 200) return data;
+  throw new Error(`获取豆瓣搜索数据失败: HTTP ${response.status}`);
+}
+
 interface DoubanRecommendsParams {
   kind: 'tv' | 'movie';
   pageLimit?: number;
