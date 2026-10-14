@@ -16,6 +16,7 @@
 #   ./server.sh help
 #
 # Options may appear before or after the command:
+#   -h, --help    print this help and exit
 #   --env FILE    dotenv file to load       (default: ./.env, skipped if absent)
 #   --host HOST   bind host                 (default: exported HOSTNAME, else 0.0.0.0)
 #   --port PORT   bind port                 (default: PORT, else 3000)
@@ -98,6 +99,10 @@ parse_args() {
       --log)
         LOG_FILE="${2:?--log needs a file}"
         shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
         ;;
       --)
         shift

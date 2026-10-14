@@ -70,8 +70,8 @@ backend/.venv/bin/python -m uvicorn moontv.main:app --app-dir backend --host 0.0
 | `cron` | the old `start.js` poll-then-hourly `/api/cron` loop, in the foreground |
 | `test` | `pytest` under `backend/` |
 
-Options (before or after the command): `--env FILE`, `--host HOST`, `--port PORT`,
-`--log FILE`, and `--` to forward extra uvicorn arguments.
+Options (before or after the command): `-h` / `--help`, `--env FILE`, `--host HOST`,
+`--port PORT`, `--log FILE`, and `--` to forward extra uvicorn arguments.
 
 Precedence is `--host/--port` > env file > exported `HOSTNAME`/`PORT` > `0.0.0.0:3000`.
 `HOSTNAME` and `PORT` are the names the old MoonTV Docker image exported, so
