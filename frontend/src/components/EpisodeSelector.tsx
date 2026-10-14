@@ -10,11 +10,7 @@ import React, {
 } from 'react';
 
 import { SearchResult } from '@/lib/types';
-import {
-  getVideoResolutionFromM3u8,
-  processImageUrl,
-  retryImageThroughProxy,
-} from '@/lib/utils';
+import { getVideoResolutionFromM3u8 } from '@/lib/utils';
 
 // 定义视频信息类型
 interface VideoInfo {
@@ -256,33 +252,36 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
     return true;
   });
 
-  // 当切换到换源tab并且有源数据时，异步获取视频信息 - 移除 attemptedSources 依赖避免循环触发
-  // 节流：只探测当前选中/可见的源，不再全量批量探测所有 tab 源。
+  // 换源 tab 打开时探测列表里的源：网格一格一个源，没有测速就只能显示 "..."，
+  // 所以一屏的源都要有速度。并发 3（每个探测 4s 超时，模块级缓存按剧集 URL 去重，
+  // 10min TTL），当前生效源先探测，其余按列表顺序。
   useEffect(() => {
-    const fetchVideoInfosInBatches = async () => {
-      if (
-        !optimizationEnabled || // 若关闭测速则直接退出
-        activeTab !== 'sources' ||
-        availableSources.length === 0
-      )
-        return;
+    if (
+      !optimizationEnabled ||
+      activeTab !== 'sources' ||
+      availableSources.length === 0
+    )
+      return;
 
-      // 只探测当前选中的源（visible/selected tab），避免全量探测所有源
-      const current =
-        availableSources.find(
-          (s) =>
-            s.source?.toString() === currentSource?.toString() &&
-            s.id?.toString() === currentId?.toString()
-        ) ?? availableSources[0];
-      if (!current) return;
+    const current =
+      availableSources.find(
+        (s) =>
+          s.source?.toString() === currentSource?.toString() &&
+          s.id?.toString() === currentId?.toString()
+      ) ?? availableSources[0];
+    const queue = [current, ...availableSources.filter((s) => s !== current)];
 
-      const sourceKey = `${current.source}-${current.id}`;
-      if (attemptedSourcesRef.current.has(sourceKey)) return;
-
-      await getVideoInfo(current);
+    const PROBE_CONCURRENCY = 3;
+    let next = 0;
+    const worker = async () => {
+      while (next < queue.length) {
+        const source = queue[next++];
+        if (source) await getVideoInfo(source);
+      }
     };
-
-    fetchVideoInfosInBatches();
+    Promise.all(
+      Array.from({ length: Math.min(PROBE_CONCURRENCY, queue.length) }, worker)
+    );
     // 依赖项保持与之前一致
   }, [activeTab, availableSources, getVideoInfo, optimizationEnabled, currentSource, currentId]);
 
@@ -655,157 +654,56 @@ const EpisodeSelector: React.FC<EpisodeSelectorProps> = ({
           {!sourceSearchLoading &&
             !sourceSearchError &&
             availableSources.length > 0 && (
-              <div className='flex-1 overflow-y-auto space-y-2 pb-20 scrollbar-hide'>
-                {orderedSources.map((source, index) => {
-                  const isCurrentSource =
-                    source.source?.toString() === currentSource?.toString() &&
-                    source.id?.toString() === currentId?.toString();
-                  return (
-                    <div
-                      key={`${source.source}-${source.id}`}
-                      data-source-key={`${source.source}-${source.id}`}
-                      data-active={isCurrentSource ? '1' : '0'}
-                      onClick={() =>
-                        !isCurrentSource && handleSourceClick(source)
-                      }
-                      className={`flex items-start gap-3 px-2 py-3 rounded-lg transition-all select-none duration-200 relative
-                      ${
-                        isCurrentSource
-                          ? 'bg-apple-500/10 dark:bg-apple-500/20 border-apple-500/30 border'
-                          : 'hover:bg-[#e8e8ed]/50 dark:hover:bg-white/10 hover:scale-[1.02] cursor-pointer'
-                      }`.trim()}
-                    >
-                      {/* 封面 */}
-                      <div className='flex-shrink-0 w-12 h-20 bg-[#d2d2d7] dark:bg-[#3a3a3c] rounded overflow-hidden'>
-                        {source.episodes && source.episodes.length > 0 && (
-                          <img
-                            src={processImageUrl(source.poster)}
-                            alt={source.title}
-                            className='w-full h-full object-cover'
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              if (!retryImageThroughProxy(target)) target.style.display = 'none';
-                            }}
-                          />
-                        )}
-                      </div>
-
-                      {/* 信息区域 */}
-                      <div className='flex-1 min-w-0 flex flex-col justify-between h-20'>
-                        {/* 标题和分辨率 - 顶部 */}
-                        <div className='flex items-start justify-between gap-3 h-6'>
-                          <div className='flex-1 min-w-0 relative group/title'>
-                            <h3 className='font-medium text-base truncate text-gray-900 dark:text-gray-100 leading-none'>
-                              {source.title}
-                            </h3>
-                            {/* 标题级别的 tooltip - 第一个元素不显示 */}
-                            {index !== 0 && (
-                              <div className='absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-800 text-white text-xs rounded-md shadow-lg opacity-0 invisible group-hover/title:opacity-100 group-hover/title:visible transition-all duration-200 ease-out delay-100 whitespace-nowrap z-[500] pointer-events-none'>
-                                {source.title}
-                                <div className='absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800'></div>
-                              </div>
-                            )}
-                          </div>
-                          {(() => {
-                            const sourceKey = `${source.source}-${source.id}`;
-                            const videoInfo = videoInfoMap.get(sourceKey);
-
-                            if (videoInfo && videoInfo.quality !== '未知') {
-                              if (videoInfo.hasError) {
-                                return (
-                                  <div className='bg-[#f5f5f7]0/10 dark:bg-gray-400/20 text-red-600 dark:text-red-400 px-1.5 py-0 rounded text-xs flex-shrink-0 min-w-[50px] text-center'>
-                                    检测失败
-                                  </div>
-                                );
-                              } else {
-                                // 根据分辨率设置不同颜色：2K、4K为紫色，1080p、720p为绿色，其他为黄色
-                                const isUltraHigh = ['4K', '2K'].includes(
-                                  videoInfo.quality
-                                );
-                                const isHigh = ['1080p', '720p'].includes(
-                                  videoInfo.quality
-                                );
-                                const textColorClasses = isUltraHigh
-                                  ? 'text-purple-600 dark:text-purple-400'
-                                  : isHigh
-                                  ? 'text-apple-600 dark:text-apple-400'
-                                  : 'text-yellow-600 dark:text-yellow-400';
-
-                                return (
-                                  <div
-                                    className={`bg-[#f5f5f7]0/10 dark:bg-gray-400/20 ${textColorClasses} px-1.5 py-0 rounded text-xs flex-shrink-0 min-w-[50px] text-center`}
-                                  >
-                                    {videoInfo.quality}
-                                  </div>
-                                );
-                              }
-                            }
-
-                            // 未探测/探测中：占位符，保持布局稳定
-                            return (
-                              <div className='bg-[#f5f5f7]0/10 dark:bg-gray-400/20 text-gray-400 px-1.5 py-0 rounded text-xs flex-shrink-0 min-w-[50px] text-center'>
-                                ...
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* 源名称和集数信息 - 垂直居中 */}
-                        <div className='flex items-center justify-between gap-2'>
-                          <div className='flex items-center gap-2 min-w-0'>
-                            <span className='text-xs px-2 py-1 border border-gray-500/60 rounded text-gray-700 dark:text-gray-300'>
-                              {source.source_name}
-                            </span>
-                            {isCurrentSource && (
-                              <span className='text-xs px-2 py-1 rounded bg-apple-500 text-white font-medium whitespace-nowrap'>
-                                生效源
-                              </span>
-                            )}
-                          </div>
-                          {source.episodes.length > 1 && (
-                            <span className='text-xs text-gray-500 dark:text-gray-400 font-medium'>
-                              {source.episodes.length} 集
-                            </span>
-                          )}
-                        </div>
-
-                        {/* 网络信息 - 底部 */}
-                        <div className='flex items-end h-6'>
-                          {(() => {
-                            const sourceKey = `${source.source}-${source.id}`;
-                            const videoInfo = videoInfoMap.get(sourceKey);
-                            if (videoInfo) {
-                              if (!videoInfo.hasError) {
-                                return (
-                                  <div className='flex items-end gap-3 text-xs'>
-                                    <div className='text-apple-600 dark:text-apple-400 font-medium text-xs'>
-                                      {videoInfo.loadSpeed}
-                                    </div>
-                                    <div className='text-orange-600 dark:text-orange-400 font-medium text-xs'>
-                                      {videoInfo.pingTime}ms
-                                    </div>
-                                  </div>
-                                );
-                              } else {
-                                return (
-                                  <div className='text-red-500/90 dark:text-red-400 font-medium text-xs'>
-                                    无测速数据
-                                  </div>
-                                ); // 占位div
-                              }
-                            }
-                            return (
-                              <div className='text-gray-400 font-medium text-xs'>
-                                ...
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  );
+              <div className='flex-1 overflow-y-auto pb-2 scrollbar-hide'>
+                {/* 换源排成和选集一样的网格：一格一个源，只留源名和测速。上游的整行
+                    卡片带封面，一屏只能放三四个，换源时要滚很长。 */}
+                <div className='grid grid-cols-3 sm:grid-cols-4 gap-2'>
+                  {orderedSources.map((source) => {
+                    const key = sourceKeyOf(source);
+                    const isCurrentSource =
+                      source.source?.toString() === currentSource?.toString() &&
+                      source.id?.toString() === currentId?.toString();
+                    const info = videoInfoMap.get(key);
+                    const speed = info
+                      ? info.hasError
+                        ? '测速失败'
+                        : info.loadSpeed
+                      : '...';
+                    return (
+                      <button
+                        key={key}
+                        data-source-key={key}
+                        data-active={isCurrentSource ? '1' : '0'}
+                        onClick={() =>
+                          !isCurrentSource && handleSourceClick(source)
+                        }
+                        title={`${source.source_name} · ${info?.quality || '未知'} · ${source.episodes.length} 集${isCurrentSource ? ' · 当前生效源' : ''}`}
+                        className={`h-12 px-2 py-1 rounded flex flex-col items-center justify-center gap-1 transition-all duration-200 select-none
+                          ${
+                            isCurrentSource
+                              ? 'bg-apple-500 text-white shadow-lg shadow-apple-500/25 dark:bg-apple-600'
+                              : 'bg-[#e8e8ed] text-gray-700 hover:bg-[#d2d2d7] hover:scale-105 cursor-pointer dark:bg-white/10 dark:text-gray-300 dark:hover:bg-white/20'
+                          }`.trim()}
+                      >
+                        <span className='text-xs font-medium truncate max-w-full'>
+                          {source.source_name}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono leading-none truncate max-w-full ${
+                            info
+                              ? info.hasError
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-gray-500 dark:text-gray-400'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          {speed}
+                        </span>
+                      </button>
+                    );
                   })}
-                <div className='flex-shrink-0 mt-auto pt-2 border-t border-gray-400 dark:border-[#424245]'>
+                </div>
+                <div className='mt-3 pt-2 border-t border-gray-400 dark:border-[#424245]'>
                   <button
                     onClick={() => {
                       if (videoTitle) {

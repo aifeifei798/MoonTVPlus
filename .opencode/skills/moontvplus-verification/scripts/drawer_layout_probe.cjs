@@ -104,7 +104,9 @@ const VIEW_EXPR = `(async () => {
     };
   }
   // 换源 tab: re-query the drawer, the portal div is recreated on every toggle.
-  const live = document.querySelector('.mntv-episode-drawer') || drawer;
+  // On mobile there is no drawer, so fall back to the document (the panel below the
+  // player) and the same grid assertions apply there too.
+  const live = document.querySelector('.mntv-episode-drawer') || document;
   const srcTab = live ? Array.from(live.querySelectorAll('div.flex-1')).find((el) => el.textContent.trim() === '\u6362\u6e90') : null;
   if (srcTab) {
     srcTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -113,6 +115,14 @@ const VIEW_EXPR = `(async () => {
     out.sourceRows = rows.length;
     out.sourceOrder = Array.from(rows).slice(0, 6).map((r) => r.getAttribute('data-source-key') + ' active=' + r.getAttribute('data-active'));
     out.firstSourceRow = box(rows[0]);
+    // compact grid: how many tiles share the first row, and how wide/tall one is.
+    const tops = Array.from(rows).slice(0, 8).map((r) => Math.round(r.getBoundingClientRect().top));
+    out.sourcePerRow = tops.filter((t) => t === tops[0]).length;
+    // VIEW_EXPR is a template literal, so the regex must be double-escaped here:
+    // a single \s inside backticks evaluates to the letter s and silently eats the
+    // 's' of every "MB/s" in the printed tile text.
+    out.sourceTileText = Array.from(rows).slice(0, 4).map((r) => r.textContent.trim().replace(/\\s+/g, ' '));
+    out.sourceSpeedLines = Array.from(rows).map((r) => (r.children[1] ? r.children[1].textContent.trim() : ''));
     srcTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 400));
   }
@@ -225,6 +235,9 @@ async function main() {
       check(w + 'x' + h + ' toggle closes the drawer', d.afterClose && d.afterClose.drawer === null && d.afterClose.openClass === false && d.afterClose.video.w === d.player.w);
       check(w + 'x' + h + ' toggle reopens the drawer', d.afterReopen && !!d.afterReopen.drawer && d.afterReopen.openClass);
       check(w + 'x' + h + ' 换源 tab renders source rows', d.sourceRows > 0, (d.sourceOrder || []).join(', '));
+      check(w + 'x' + h + ' 换源 tiles sit several per row', d.sourcePerRow >= 2, 'per row ' + d.sourcePerRow + ' — ' + (d.sourceTileText || []).join(' | '));
+      check(w + 'x' + h + ' 换源 tile is compact', d.firstSourceRow && d.firstSourceRow.h <= 60 && d.firstSourceRow.w < ((d.drawer || d.mobilePanel || {}).w || 0) / 2, d.firstSourceRow && d.firstSourceRow.w + 'x' + d.firstSourceRow.h + ' in a ' + (d.drawer || d.mobilePanel || {}).w + 'px panel');
+      check(w + 'x' + h + ' every 换源 tile carries a speed line', (d.sourceSpeedLines || []).length === d.sourceRows && (d.sourceSpeedLines || []).every((s) => s.length > 0), (d.sourceSpeedLines || []).join(', '));
       check(w + 'x' + h + ' tab row fits the panel', d.tabClip && d.tabClip.overflowRight <= 0 && d.tabClip.overflowLeft <= 0, d.tabClip && 'overflow ' + d.tabClip.overflowLeft + '/' + d.tabClip.overflowRight);
       check(w + 'x' + h + ' no page errors', (d.errs || []).length === 0, (d.errs || []).join('; '));
       const shot = await page.call('Page.captureScreenshot', { format: 'png' });
@@ -234,6 +247,9 @@ async function main() {
       check(w + 'x' + h + ' toggle hidden on mobile', d.toggleVisible === false);
       check(w + 'x' + h + ' panel below the player', !!d.mobilePanel && !d.mobilePanel.inPlayer, d.mobilePanel && d.mobilePanel.w + 'x' + d.mobilePanel.h);
       check(w + 'x' + h + ' episode buttons render', d.episodeButtons > 0, d.firstButton && d.firstButton.w + 'x' + d.firstButton.h);
+      check(w + 'x' + h + ' 换源 tiles sit several per row', d.sourcePerRow >= 2, 'per row ' + d.sourcePerRow + ' — ' + (d.sourceTileText || []).join(' | '));
+      check(w + 'x' + h + ' 换源 tile is compact', d.firstSourceRow && d.firstSourceRow.h <= 60 && d.firstSourceRow.w < ((d.mobilePanel || {}).w || 0) / 2, d.firstSourceRow && d.firstSourceRow.w + 'x' + d.firstSourceRow.h + ' in a ' + (d.mobilePanel || {}).w + 'px panel');
+      check(w + 'x' + h + ' every 换源 tile carries a speed line', (d.sourceSpeedLines || []).length === d.sourceRows && (d.sourceSpeedLines || []).every((s) => s.length > 0), (d.sourceSpeedLines || []).join(', '));
       check(w + 'x' + h + ' tab row fits the panel', d.tabClip && d.tabClip.overflowRight <= 0 && d.tabClip.overflowLeft <= 0, d.tabClip && 'overflow ' + d.tabClip.overflowLeft + '/' + d.tabClip.overflowRight);
       const shot = await page.call('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(SHOTS + '/mobile-' + w + 'x' + h + '.png', Buffer.from(shot.data, 'base64'));
