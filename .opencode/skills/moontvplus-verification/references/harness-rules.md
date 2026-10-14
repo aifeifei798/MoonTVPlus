@@ -238,3 +238,12 @@ back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
   and can report a fix as working (or as absent) for the wrong reason.
   `scripts/poster_census.js` does the eager pass and then counts only
   `img.complete` images.
+- "The poster loads" is not the same claim as "the poster is the one the card
+  chose". `VideoCard` walks an ordered chain (豆瓣 → 源 → 站点图标) and advances
+  `posterIndex` on every `onError`, so a card can render a perfectly healthy source
+  cover while the douban lookup behind it is broken. `scripts/record_poster_census.js`
+  classifies each record poster by its URL and reports the counts of each link; to
+  see the third link you must seed a record whose cover 404s and whose title douban
+  does not know, through `POST /api/playrecords` — writing the db file from a second
+  `sqlite3` connection leaves the running server serving the blob it already has
+  open, so the probe silently tests nothing.

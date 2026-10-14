@@ -134,6 +134,28 @@ actually tried; it reports per-section `broken` and `viaProxy`, so a rescue that
 silently did nothing is visible. Green means `brokenCount: 0` with the douban rows
 showing `viaProxy` equal to the number of posters in the row.
 
+## Verify the record poster chain (豆瓣 → 源 → 站点图标)
+
+```bash
+node scripts/cdp_eval.cjs "$AUTH" "/" @scripts/record_poster_census.js 14000
+```
+
+`poster_census.js` only knows whether an image painted; it cannot say **which link**
+of the chain the card chose. `record_poster_census.js` scopes to the record rows
+(继续观看 / 追更 / 收藏 — the only cards that do the douban lookup) and classifies each
+poster as `douban`, `source` or `fallback-logo`, so a card that fell back to the
+source cover because the lookup silently 500'd is distinguishable from one that fell
+back because douban had no match. Seed the third link through the panel's own route
+(the script's header has the curl) — never by writing `backend/moontv.db` from a
+second connection, since the running server keeps serving the blob it already has
+open. Green is `unpainted: 0` with the seeded trio reporting one of each link.
+
+The route behind it is additive surface, not a port: `/api/douban/search?q=…` scrapes
+`search.douban.com/movie/subject_search` and parses `window.__DATA__ = {...}`. Offline
+coverage is `backend/tests/test_douban_search.py` (fixture page, the 400/401 paths,
+the stale-cache branch); live coverage is this census plus a curl of the route with
+the auth cookie.
+
 ## Reproduce the desync
 
 The desync is not measurable in the CDP browser (the manifest XHR fails CORS).

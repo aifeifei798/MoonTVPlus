@@ -23,11 +23,15 @@ not the response body.
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlsplit, urlunsplit
+import json
+import re
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from .fetch import FetchFailed, FetchNetworkError, FetchTimeout, fetch_with_timeout
+from .utils import strip_none
 
 TIMEOUT_MS = 4000
+_RATE_FIXED = "{:.1f}"  # `toFixed(1)`, same as the douban routes
 
 # The exact header set `fetchDoubanData` passed to `fetch`.
 DOUBAN_HEADERS = {
@@ -166,3 +170,49 @@ async def fetch_subject_collection(collection_id: str, start: int, count: int):
         f"?start={start}&count={count}"
     )
     return await fetch_douban_data(official)
+
+
+# `subject_search` renders its results client-side and hands the browser a
+# `window.__DATA__ = {...}` literal; that literal is the parseable payload.
+SEARCH_DATA_PATTERN = re.compile(r"window\.__DATA__ = (\{.*?\});", re.S)
+YEAR_PATTERN = re.compile(r"(\d{4})")
+
+
+def _search_item(item: dict) -> dict:
+    """A `subject_search` item → the same `DoubanItem` shape the other routes send."""
+    rating = item.get("rating") or {}
+    value = rating.get("value")
+    title = item.get("title") or ""
+    year_match = YEAR_PATTERN.search(title)
+    return strip_none(
+        {
+            "id": item.get("id"),
+            "title": title,
+            "poster": item.get("cover_url") or "",
+            "rate": _RATE_FIXED.format(value) if value else "",
+            "year": year_match.group(1) if year_match else "",
+        }
+    )
+
+
+async def search_douban(query: str) -> list[dict]:
+    """Title search on `search.douban.com/movie/subject_search`.
+
+    Not a port: upstream has no title search anywhere, so this is the additive
+    route the record cards use to prefer a douban poster over the source's own.
+    The rexxar `v2/search` JSON needs a login cookie and `movie.douban.com/j/search`
+    is gone (404), so the HTML page's `window.__DATA__` is the only anonymous
+    surface left.
+    """
+    html = await fetch_douban_html(
+        "https://search.douban.com/movie/subject_search"
+        f"?search_text={quote(query)}&cat=movie"
+    )
+    match = SEARCH_DATA_PATTERN.search(html)
+    if match is None:
+        raise DoubanHttpError(0)
+    try:
+        data = json.loads(match.group(1))
+    except Exception as error:  # noqa: BLE001 — a page we cannot parse is a miss
+        raise DoubanHttpError(0) from error
+    return [_search_item(item) for item in data.get("items") or []]
