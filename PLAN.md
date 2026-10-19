@@ -808,6 +808,48 @@ papered over:
     `requestPictureInPicture`; Artplayer's pip module falls back to
     `webkitSupportsPresentationMode` / `webkitSetPresentationMode`, which this Chrome
     cannot exercise.
+  42. **The ad filter sees the ads that come from the content's own directory.**
+     Change 16 taught the filter to drop an ad run by its host+directory
+     signature, and that works for the sources that splice the ad in from
+     another path (the one that puts it under `/video/adjump/time/…` next to
+     `0000000.ts`). It cannot see the ad the other sources insert: measured
+     with ffprobe on a live episode, the ad is 1920x1080 while the content is
+     1280x720 and both live under the same `…/hls/` directory, so the
+     signature is identical on both sides of the ad. Such an ad plays, and it
+     plays with its own timeline: its PTS restarts at 1.48s while the content
+     around it carries on at 361.4s. That is the reported "the sound lags
+     behind the picture after the ad": at the packager's
+     `#EXT-X-DISCONTINUITY` hls.js re-anchors the two tracks differently —
+     `remuxAudio` anchors the audio to the fragment's own PTS
+     (`nextAudioTs = inputSamples[0].pts - initTime`), `remuxVideo` to the
+     playlist position (`frag.start`) — so after the ad the audio sits on the
+     ad's clock and the picture on the playlist's. Dropping the ad removes the
+     discontinuity, and with it the re-anchor: the content's timeline is
+     continuous across the seam (361.36 → 361.4), so both tracks stay on one
+     clock.
+     The filter therefore grew a second rule, and it is a shape, not a
+     signature: a SHORT run wedged between LONG content runs. Measured on the
+     live sources this box has configured (10 sources, 37 episode manifests):
+     the ads are 26.0s, 25.8s, 17.6s, 19.6s and 17.4s, and the content runs
+     next to them are 153s-1392s long. The rule fires only when a neighbour
+     run is at least 120s long, which is what keeps it away from the sources
+     that chop an episode into many short runs (2-40s, 36-43s, 16-99s — those
+     are content, and none of them has a run long enough to be a neighbour).
+     It also requires the run to be at most 90s and at most 15% of the
+     timeline.
+     `scripts/adfilter_live_check.cjs` runs the shipped filter over a
+     directory of real manifests and asserts that no run longer than 90s is
+     ever dropped: over the 37 live manifests it drops the 31 real ads and
+     nothing else, and every manifest it touches comes out with 0 markers,
+     i.e. one continuous timeline. `scripts/adfilter_cases.cjs` grew the same
+     cases as a table (24 green), including the real capture of the same-
+     directory ad (`fixtures/live-source-c.m3u8`: 358.7s of content, a 19.6s
+     ad, 949.9s of content, all in one directory).
+     What this still cannot see: a playlist without any
+     `#EXT-X-DISCONTINUITY` (12 of the 37 live manifests) — a packager that
+     inserts an ad without marking it leaves nothing to split on — and an ad
+     spliced into a source that chops the episode into short runs, where the
+     ad is as long as the content around it.
 
 ## Milestones
 

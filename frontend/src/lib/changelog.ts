@@ -61,7 +61,8 @@ export const changelog: ChangelogEntry[] = [
       "修复动漫「每日放送」海报一直加载不出来、很不稳定: lain.bgm.tv 的 TLS 握手被中间设备间歇性重置，/api/image-proxy 现在对 *.bgm.tv 图片按官源 -> https 版本 -> 镜像（默认 lain.fxbgm.tv，MOONTVPLUS_BANGUMI_IMAGE_MIRRORS 可覆盖）依次尝试；日历请求也加 10s 超时与 fxbgm.tv 兜底",
       "修复海报（含「继续观看」）显示不出来: 浏览器直连 img*.doubanio.com 无 Referer 会被回 418，而卡片都是 referrerPolicy='no-referrer'；图片加载失败时现在自动改走 /api/image-proxy 重试一次（代理带上游 Referer，并对豆瓣图片按官源 -> img.doubanio.cmliussss.net/img.doubanio.cmliussss.com 镜像尝试，MOONTVPLUS_DOUBAN_IMAGE_MIRRORS 可覆盖）。海报彻底取不到时占位符不再持续闪烁，以免看起来像「还在加载」",
       "换源列表的顺序: 上游把当前生效源排在最底部，点击一个源后它反而沉底；现在生效源置顶并标注「生效源」，上一个生效的源沉到列表最下面（未生效的源保持优选评分顺序，切回上一个源时两者互换，历史去重不堆积）",
-      "修复选集/换源 tab 行被裁: tab 行是 -mx-6（-24px）而容器只有 px-4（16px），行比容器宽出 16px，右侧的换源 tab 高亮背景被 overflow:hidden 裁掉 8px（实测 1440x900 浮层裁 8px，左侧裁 7px）；改为 -mx-4 后 tab 行与面板边缘齐平"
+      "修复选集/换源 tab 行被裁: tab 行是 -mx-6（-24px）而容器只有 px-4（16px），行比容器宽出 16px，右侧的换源 tab 高亮背景被 overflow:hidden 裁掉 8px（实测 1440x900 浮层裁 8px，左侧裁 7px）；改为 -mx-4 后 tab 行与面板边缘齐平",
+      "修复去广告漏掉「和正片同目录」的广告（看剧看到一半弹出广告，播完后正片声音滞后）: 实测这类广告是 1920x1080 而正片是 1280x720，两边都在同一个目录下，按 host+目录 区分分片的老规则根本看不见它；广告自带时间轴（PTS 从 1.48s 重新开始，而正片继续在 361.4s），hls.js 在广告处的 discontinuity 上会把音视频分别重新锚定（音频按分片自己的 PTS，画面按播放列表位置），声音就落到了广告的时钟上，于是正片的声音越走越滞后。现在过滤多一条规则：一段短的（≤90s）夹在两段长的正片（≥120s）之间、且不超过邻段 1/4 的分片段就是广告，整段丢掉；丢掉广告的同时那个位置的 discontinuity 也没了，音视频回到同一条时间轴。实测本机 10 个源 37 集真实 m3u8：31 个真广告全部被去掉，没有任何超过 90s 的正片被误伤"
     ]
   },
   {

@@ -76,8 +76,51 @@ export function formatTime(seconds: number): string {
  * whose host+directory differs from the playlist's dominant one and
  * whose duration share is small; when nothing matches the manifest is
  * returned untouched (markers intact).
+ *
+ * A second rule catches the ads the signature cannot see: the sources that
+ * splice the ad in from the *same* directory (measured with ffprobe on
+ * source E: the ad is 1920x1080 while the content is 1280x720, both under
+ * `.../hls/`, so the host+directory signature is identical on both sides of
+ * the ad and the run is invisible to the signature rule). What those ads
+ * always have is a shape: a SHORT run wedged between LONG content runs —
+ * source E 19.6s and 17.4s between 359.9s and 1319.3s, source C 25.8s between
+ * 300.6s and 1123.5s, source D 17.6s between 153.9s and 1392.9s, source B 26.0s
+ * between 300.2s and 1120.0s.
+ *
+ * That rule has to be conservative, because some sources chop the episode
+ * into many short runs (source F 2-40s, source C 36-43s, source E 16-99s) and those runs
+ * are content, not ads. It therefore only fires when a neighbour run is at
+ * least {@link CONTENT_MIN_DURATION_S} long — a source that chops the
+ * episode never has such a run, so it is never touched. Over the 37 live
+ * episode manifests of the sources this box has configured it flags the 31
+ * real ads and none of the content runs.
+ *
+ * Dropping the ad is what fixes the sound, not just the picture: the ad
+ * carries its own timeline (its PTS restarts at 1.48s while the content
+ * around it continues at 361.4s), so at the packager's discontinuity
+ * hls.js re-anchors the two tracks differently — `remuxAudio` anchors the
+ * audio to the fragment's own PTS, `remuxVideo` to the playlist position —
+ * and the sound ends up behind the picture. With the ad gone there is no
+ * discontinuity at that seam, so both tracks stay on one timeline.
  */
 export function filterAdsFromM3U8(m3u8Content: string): string {
+  /**
+   * Duration thresholds for the "short run wedged between long runs" ad rule.
+   *
+   * Measured on the live sources this box has configured (10 sources, 37 real
+   * episode manifests):
+   *   - ad runs: 26.0s, 25.8s, 17.6s, 19.6s and 17.4s
+   *   - the content runs next to them: 300s/1120s, 300s/1123s, 153s/1392s,
+   *     359s/1319s
+   *   - the sources that chop an episode into many short runs (2-40s, 36-43s,
+   *     16-99s) never produce a run this long, so the rule cannot misfire
+   *     there.
+   */
+  const AD_MAX_DURATION_S = 90; // an ad break is never longer than this
+  const CONTENT_MIN_DURATION_S = 120; // a content chunk is at least this long
+  const AD_MAX_NEIGHBOR_RATIO = 0.25; // the ad is at most a quarter of it
+  const AD_MAX_TIMELINE_SHARE = 0.15; // and at most this share of the timeline
+
   if (!m3u8Content) return '';
 
   const lines = m3u8Content.split('\n');
@@ -182,9 +225,11 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
     }
   }
 
-  // No clear majority (load-balanced mirrors, stitched files…) → do not
-  // guess which run is the ad; leave the manifest completely alone.
-  if (dominantCount / totalSegs < 0.6) return m3u8Content;
+  // No clear majority (load-balanced mirrors, stitched files…) → the
+  // signature cannot tell the ad from the content, so that rule stays off.
+  // The duration rule below does not need a majority: it only asks how a run
+  // sits between its neighbours.
+  const hasDominantSignature = dominantCount / totalSegs >= 0.6;
 
   /**
    * Majority signature of a group, so the seam logic can ask "same
@@ -212,12 +257,48 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
     group.segs.reduce((sum, seg) => sum + seg.dur, 0),
   );
 
+  /**
+   * "A short run wedged between long content runs" — the shape an ad
+   * break has when the packager splices it in from the same directory
+   * (so the signature is identical on both sides and cannot see it).
+   *
+   * The guards keep it away from the sources that chop an episode into
+   * many short runs: those never have a neighbour this long, so the rule
+   * cannot fire there, and the run's own share of the timeline has to stay
+   * small as well.
+   */
+  const isAdShapedRun = (index: number): boolean => {
+    if (groups[index].segs.length === 0) return false;
+    const dur = groupDur[index];
+    if (!(dur > 0) || dur > AD_MAX_DURATION_S) return false;
+    if (totalDur > 0 && dur > AD_MAX_TIMELINE_SHARE * totalDur) return false;
+    for (const neighbour of [index - 1, index + 1]) {
+      if (neighbour < 0 || neighbour >= groups.length) continue;
+      if (groups[neighbour].segs.length === 0) continue;
+      const neighbourDur = groupDur[neighbour];
+      if (
+        neighbourDur >= CONTENT_MIN_DURATION_S &&
+        dur <= AD_MAX_NEIGHBOR_RATIO * neighbourDur
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const dropGroup: boolean[] = groups.map((group, i) => {
     if (group.segs.length === 0) return false;
-    if (groupSig[i] === dominantSig) return false;
-    // A run that owns a big slice of the timeline is content, not an ad.
-    const share = totalDur > 0 ? groupDur[i] / totalDur : group.segs.length / totalSegs;
-    return share <= 0.35;
+    // Rule 1: another encoder (a different host+directory) and only a small
+    // slice of the timeline.
+    if (hasDominantSignature && groupSig[i] !== dominantSig) {
+      // A run that owns a big slice of the timeline is content, not an ad.
+      const share =
+        totalDur > 0 ? groupDur[i] / totalDur : group.segs.length / totalSegs;
+      if (share <= 0.35) return true;
+    }
+    // Rule 2: a short run wedged between long content runs — the ad the
+    // signature cannot see because it comes from the same directory.
+    return isAdShapedRun(i);
   });
 
   // Nothing looked like an ad → return the original bytes, markers included.

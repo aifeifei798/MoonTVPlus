@@ -1,6 +1,12 @@
 // Fixture table for filterAdsFromM3U8 (seam rule: a marker survives only
 // where the codec actually changes, i.e. never at a splice seam whose two
 // sides share a host+directory signature).
+//
+// Two ad rules are covered here:
+//   1. the signature rule — the ad run comes from another host+directory
+//   2. the shape rule — a SHORT run wedged between LONG content runs, which
+//      is the only thing left when the ad is spliced in from the SAME
+//      directory (the ffzy / quantum / modu sources do exactly that).
 const fs = require('fs');
 const path = require('path');
 
@@ -173,6 +179,131 @@ cases.push({
   wantSegs: segs(real).filter((s) => !/adjump/.test(s)),
   wantMarkers: 0,
 });
+
+// ---------------------------------------------------------------------------
+// The shape rule: a short run wedged between long content runs is an ad even
+// when it comes from the same directory (measured on the ffzy source: the ad
+// is 1920x1080 while the content is 1280x720, both under the same .../hls/).
+// ---------------------------------------------------------------------------
+
+function runOf(segList, count, extinf) {
+  // `count` segments of `extinf` seconds each, as one run
+  return Array.from({ length: count }, (_, i) => `#EXTINF:${extinf},\n${segList[i]}`).join('\n');
+}
+
+// 358.7s of content, a 19.6s ad from the SAME directory, then 949.9s more.
+cases.push({
+  name: 'same-directory ad wedged between long runs -> dropped, 0 markers',
+  in: '#EXTM3U\n' +
+    runOf(Array.from({ length: 20 }, (_, i) => '/hls/c' + i + '.ts'), 20, 17.935) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(Array.from({ length: 5 }, (_, i) => '/hls/a' + i + '.ts'), 5, 3.92) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(Array.from({ length: 20 }, (_, i) => '/hls/d' + i + '.ts'), 20, 47.495) +
+    '\n#EXT-X-ENDLIST\n',
+  expect: 'drop',
+  wantSegs: Array.from({ length: 20 }, (_, i) => '/hls/c' + i + '.ts')
+    .concat(Array.from({ length: 20 }, (_, i) => '/hls/d' + i + '.ts')),
+  wantMarkers: 0,
+});
+
+// a source that chops the episode into many short runs (the source C/source F shape):
+// every run is short, so no run is wedged between two long ones -> untouched.
+cases.push({
+  name: 'episode chopped into many short runs -> identical',
+  in: '#EXTM3U\n' +
+    Array.from({ length: 20 }, (_, g) =>
+      Array.from({ length: 10 }, (_, i) => `#EXTINF:39.4,\n/hls/x${g}_${i}.ts`).join('\n') +
+      '\n#EXT-X-DISCONTINUITY\n'
+    ).join('\n') +
+    '#EXT-X-ENDLIST\n',
+  expect: 'same',
+});
+
+// a short run between two short runs is content, not an ad
+cases.push({
+  name: 'short run between two short runs -> identical',
+  in: '#EXTM3U\n' +
+    runOf(['/hls/a.ts'], 1, 40) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/b.ts'], 1, 25) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/c.ts'], 1, 40) +
+    '\n#EXT-X-ENDLIST\n',
+  expect: 'same',
+});
+
+// a pre-roll: the ad is the first run, the content behind it is long
+cases.push({
+  name: 'same-directory pre-roll ad -> dropped, 0 markers',
+  in: '#EXTM3U\n' +
+    runOf(['/hls/ad.ts'], 1, 19.6) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/c0.ts', '/hls/c1.ts'], 2, 200) +
+    '\n#EXT-X-ENDLIST\n',
+  expect: 'drop',
+  wantSegs: ['/hls/c0.ts', '/hls/c1.ts'],
+  wantMarkers: 0,
+});
+
+// a post-roll: the ad is the last run, the content in front of it is long
+cases.push({
+  name: 'same-directory post-roll ad -> dropped, 0 markers',
+  in: '#EXTM3U\n' +
+    runOf(['/hls/c0.ts', '/hls/c1.ts'], 2, 200) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/ad.ts'], 1, 19.6) +
+    '\n#EXT-X-ENDLIST\n',
+  expect: 'drop',
+  wantSegs: ['/hls/c0.ts', '/hls/c1.ts'],
+  wantMarkers: 0,
+});
+
+// the ad is too long to be an ad break -> kept
+cases.push({
+  name: 'run of 200s between long runs -> identical',
+  in: '#EXTM3U\n' +
+    runOf(['/hls/a.ts'], 1, 300) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/b.ts'], 1, 200) +
+    '\n#EXT-X-DISCONTINUITY\n' +
+    runOf(['/hls/c.ts'], 1, 300) +
+    '\n#EXT-X-ENDLIST\n',
+  expect: 'same',
+});
+
+// the real ffzy capture: the ad run is the only one in the same directory
+// with a short duration, and it must be the one that disappears
+{
+  const cPath = path.join(ROOT, '.opencode/skills/moontvplus-verification/fixtures/live-source-c.m3u8');
+  const cText = fs.readFileSync(cPath, 'utf8');
+  // split into runs at the markers
+  const runs = [];
+  let cur = [];
+  for (const line of cText.split('\n')) {
+    if (/#EXT-X-DISCONTINUITY(?!-)/.test(line)) {
+      if (cur.length) runs.push(cur);
+      cur = [];
+      continue;
+    }
+    if (line.trim() && !line.trim().startsWith('#')) cur.push(line.trim());
+  }
+  if (cur.length) runs.push(cur);
+  // the ad run: 5 segments of 19.6s between 358.7s and 949.9s of content,
+  // all under the same directory (so the signature rule cannot see it)
+  const adRuns = runs.filter((r) => r.length <= 6);
+  const kept = runs.filter((r) => r.length > 6).flat();
+  if (adRuns.length !== 1 || kept.length !== 327) {
+    throw new Error('fixture C changed shape: ' + runs.map((r) => r.length).join(','));
+  }
+  cases.push({
+    name: 'real live manifest C (same-directory ad) -> ad run gone, 0 markers',
+    in: cText,
+    expect: 'drop',
+    wantSegs: kept,
+    wantMarkers: 0,
+  });
+}
 
 let fails = 0;
 for (const c of cases) {
