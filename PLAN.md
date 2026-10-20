@@ -850,6 +850,41 @@ papered over:
      inserts an ad without marking it leaves nothing to split on — and an ad
      spliced into a source that chops the episode into short runs, where the
      ad is as long as the content around it.
+  43. **The ad filter sees the ads of the sources that cut the episode into
+     short chunks, and the second rule no longer eats their content.** The
+     report that came with change 42 named source A (`source-a.example.com`),
+     and the real manifests of the whole catalogue (19 sources, 39 episode
+     manifests) showed two things.
+     First, source A cuts the whole episode into 5-segment chunks and splices
+     the ad in as a *part* of a chunk: the ad's runs carry 1, 2 or 3 segments
+     while the content carries 5, 10, 15, 20, 30 or 35, and the remainder of
+     the chunk the ad was cut out of carries exactly one segment less than a
+     full chunk (4). That is a third rule: a run with fewer segments than
+     (the modal chunk size − 1) is an ad. It only runs when one chunk size
+     covers at least 60% of the runs, so a source whose segment sizes are
+     random (source F: 1-20 segments, no size dominates) is never touched — half
+     an episode would be thrown away otherwise. The measured ads are 14.2s/3
+     segments, 4.9s/2, 8.5s/2, 10.6s/3, 6.7s/1 and 9.1s/3, and the ad is
+     always split over two runs (it has an internal discontinuity of its own).
+     Second, change 42's second rule was too eager on that source: it fired on
+     20s content chunks that happened to sit next to one long chunk (runs
+     112/114/117/119 of a real episode, 77s of content per episode). The ad
+     sits in the middle of the content, so the content on *both* sides of it
+     is a long run; a short run with only one long neighbour is content. The
+     rule now needs both neighbours to be long, and only a run at the very
+     start or the very end (a pre-roll or a post-roll ad) is judged by its
+     single neighbour.
+     Over the 39 live manifests the three rules drop the 41 real ads and no
+     content run at all (`scripts/adfilter_live_check.cjs` asserts that no
+     run longer than 90s is ever dropped), and `scripts/adfilter_cases.cjs`
+     grew the case for the new rule (25 green) with the real source A capture
+     as `fixtures/live-source-d.m3u8`: 967 segments in, 953 out, the six ad
+     runs gone, the 159 markers down to 149 so the content around the ad
+     stays on one continuous timeline.
+     What is still out of reach: an ad whose runs carry as many segments as a
+     full chunk, and an ad in a playlist without any `#EXT-X-DISCONTINUITY` at
+     all (nothing to split on). Both need the media itself — the ad's PTS
+     restarts, and only the bytes can show that.
 
 ## Milestones
 

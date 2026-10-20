@@ -185,7 +185,6 @@ cases.push({
 // when it comes from the same directory (measured on the ffzy source: the ad
 // is 1920x1080 while the content is 1280x720, both under the same .../hls/).
 // ---------------------------------------------------------------------------
-
 function runOf(segList, count, extinf) {
   // `count` segments of `extinf` seconds each, as one run
   return Array.from({ length: count }, (_, i) => `#EXTINF:${extinf},\n${segList[i]}`).join('\n');
@@ -302,6 +301,41 @@ cases.push({
     expect: 'drop',
     wantSegs: kept,
     wantMarkers: 0,
+  });
+}
+
+// the real source A capture: the whole episode is cut into 5-segment chunks
+// and the ad is a *part* of a chunk (1-3 segments), so only the segment
+// count gives it away.
+{
+  const dPath = path.join(ROOT, '.opencode/skills/moontvplus-verification/fixtures/live-source-d.m3u8');
+  const dText = fs.readFileSync(dPath, 'utf8');
+  const dRuns = [];
+  let dCur = [];
+  for (const line of dText.split('\n')) {
+    if (/#EXT-X-DISCONTINUITY(?!-)/.test(line)) {
+      if (dCur.length) dRuns.push(dCur);
+      dCur = [];
+      continue;
+    }
+    if (line.trim() && !line.trim().startsWith('#')) dCur.push(line.trim());
+  }
+  if (dCur.length) dRuns.push(dCur);
+  // the ad runs are the only ones with fewer than 4 segments
+  const dAd = dRuns.filter((r) => r.length <= 3);
+  const dKept = dRuns.filter((r) => r.length > 3).flat();
+  if (dAd.length !== 6) {
+    throw new Error('fixture D changed shape: ' + dRuns.map((r) => r.length).join(','));
+  }
+  cases.push({
+    name: 'real live manifest D (chunked source) -> 6 ad runs gone, no content lost',
+    in: dText,
+    expect: 'drop',
+    wantSegs: dKept,
+    // 159 markers in, 149 out: the ad's own markers and the four markers
+    // that framed the ad go away, so the content around it stays on one
+    // continuous timeline (a marker there is what re-anchors the audio).
+    wantMarkers: 149,
   });
 }
 

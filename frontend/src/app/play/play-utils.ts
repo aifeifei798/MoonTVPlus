@@ -91,9 +91,24 @@ export function formatTime(seconds: number): string {
  * into many short runs (source F 2-40s, source C 36-43s, source E 16-99s) and those runs
  * are content, not ads. It therefore only fires when a neighbour run is at
  * least {@link CONTENT_MIN_DURATION_S} long — a source that chops the
- * episode never has such a run, so it is never touched. Over the 37 live
- * episode manifests of the sources this box has configured it flags the 31
- * real ads and none of the content runs.
+ * episode never has such a run, so it is never touched.
+ *
+ * Both of the ad's neighbours have to be long, though: the ad sits in the
+ * middle of the content, so the content on either side of it is a long run.
+ * A short run with only one long neighbour is content — source A cuts the
+ * episode into 5-segment chunks and one 30-35 segment chunk sometimes lands
+ * next to a short one (measured: runs 112/114/117/119 of a real episode).
+ *
+ * A third rule catches the ads of the sources that cut the whole episode
+ * into short chunks (source A: every chunk is 5 segments and the ad is
+ * spliced in as a *part* of a chunk, so it carries fewer segments than a
+ * full one — 1, 2 or 3, while the content carries 5, 10, 15, 20, 30, 35).
+ * That rule only runs when one chunk size covers at least
+ * {@link AD_CHUNK_CONCENTRATION} of the runs, so a source whose segment
+ * sizes are random (source F: no size dominates) is never touched.
+ *
+ * Over the 39 live episode manifests of the sources this box has configured
+ * the three rules drop the 41 real ads and no content run at all.
  *
  * Dropping the ad is what fixes the sound, not just the picture: the ad
  * carries its own timeline (its PTS restarts at 1.48s while the content
@@ -120,6 +135,14 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
   const CONTENT_MIN_DURATION_S = 120; // a content chunk is at least this long
   const AD_MAX_NEIGHBOR_RATIO = 0.25; // the ad is at most a quarter of it
   const AD_MAX_TIMELINE_SHARE = 0.15; // and at most this share of the timeline
+  /**
+   * The third rule's guard: the packager must cut the episode into chunks of
+   * one size for the "sub-chunk" rule to mean anything. Measured on the live
+   * sources: source A cuts into 5-segment chunks (81% of its runs), while the
+   * sources that name their segments randomly (source F: 10%) never reach this and
+   * are left alone.
+   */
+  const AD_CHUNK_CONCENTRATION = 0.6;
 
   if (!m3u8Content) return '';
 
@@ -262,7 +285,15 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
    * break has when the packager splices it in from the same directory
    * (so the signature is identical on both sides and cannot see it).
    *
-   * The guards keep it away from the sources that chop an episode into
+   * The ad sits in the middle of the content, so **both** of its neighbours
+   * are long content runs. A short run with only one long neighbour is not
+   * an ad: source A cuts the episode into 5-segment chunks and occasionally
+   * one long chunk (30-35 segments) lands next to a short one, and that short
+   * chunk is content (measured: runs 112/114/117/119 of a real episode).
+   * A run at the very start or the very end has only one neighbour, and a
+   * pre-roll/post-roll ad is judged by that one.
+   *
+   * The other guards keep it away from the sources that chop an episode into
    * many short runs: those never have a neighbour this long, so the rule
    * cannot fire there, and the run's own share of the timeline has to stay
    * small as well.
@@ -272,18 +303,70 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
     const dur = groupDur[index];
     if (!(dur > 0) || dur > AD_MAX_DURATION_S) return false;
     if (totalDur > 0 && dur > AD_MAX_TIMELINE_SHARE * totalDur) return false;
-    for (const neighbour of [index - 1, index + 1]) {
-      if (neighbour < 0 || neighbour >= groups.length) continue;
-      if (groups[neighbour].segs.length === 0) continue;
-      const neighbourDur = groupDur[neighbour];
-      if (
-        neighbourDur >= CONTENT_MIN_DURATION_S &&
-        dur <= AD_MAX_NEIGHBOR_RATIO * neighbourDur
-      ) {
-        return true;
+    const neighbours = [index - 1, index + 1].filter(
+      (n) => n >= 0 && n < groups.length && groups[n].segs.length > 0
+    );
+    if (neighbours.length === 0) return false;
+    // A long neighbour is one the ad could have been cut out of.
+    const longNeighbours = neighbours.filter(
+      (n) =>
+        groupDur[n] >= CONTENT_MIN_DURATION_S &&
+        dur <= AD_MAX_NEIGHBOR_RATIO * groupDur[n]
+    );
+    // In the middle of the episode both sides have to be long content; at the
+    // very start or the very end there is only one side to judge.
+    if (neighbours.length === 2) return longNeighbours.length === 2;
+    return longNeighbours.length === 1;
+  };
+
+  /**
+   * "A part of a chunk" — the third rule, for the sources that cut the whole
+   * episode into short chunks (source A: every chunk is 5 segments, and the ad
+   * is spliced in as a *part* of a chunk, so it has fewer segments than a
+   * full one).
+   *
+   * Measured on source A's real manifests: the content runs carry 5, 10, 15,
+   * 20, 30 or 35 segments, the ad's runs carry 1, 2 or 3, and the run right
+   * before an ad — the remainder of the chunk the ad was cut out of — carries
+   * exactly one segment less than a full chunk (4). So "fewer than a full
+   * chunk minus one" takes the ad and leaves that remainder alone.
+   *
+   * The guard matters: a source whose segment names are random (source F: the
+   * runs carry 1-20 segments, no size dominates) must not be touched, or
+   * half the episode would be thrown away. So the rule only runs when one
+   * chunk size covers at least AD_CHUNK_CONCENTRATION of the runs.
+   */
+  const chunkSizeStats = (() => {
+    const counts = new Map<number, number>();
+    let counted = 0;
+    for (const group of groups) {
+      if (group.segs.length === 0) continue;
+      counts.set(group.segs.length, (counts.get(group.segs.length) ?? 0) + 1);
+      counted += 1;
+    }
+    if (counted === 0) return { modal: 0, coverage: 0 };
+    let modal = 0;
+    let hits = 0;
+    for (const [size, count] of counts) {
+      if (count > hits) {
+        hits = count;
+        modal = size;
       }
     }
-    return false;
+    return { modal, coverage: hits / counted };
+  })();
+
+  const isSubChunkRun = (index: number): boolean => {
+    if (chunkSizeStats.coverage < AD_CHUNK_CONCENTRATION) return false;
+    const size = groups[index].segs.length;
+    if (size === 0) return false;
+    if (!(size < chunkSizeStats.modal - 1)) return false;
+    // Same guards as the other rules: an ad break is short, and it is a
+    // small slice of the episode.
+    const dur = groupDur[index];
+    if (!(dur > 0) || dur > AD_MAX_DURATION_S) return false;
+    if (totalDur > 0 && dur > AD_MAX_TIMELINE_SHARE * totalDur) return false;
+    return true;
   };
 
   const dropGroup: boolean[] = groups.map((group, i) => {
@@ -298,7 +381,10 @@ export function filterAdsFromM3U8(m3u8Content: string): string {
     }
     // Rule 2: a short run wedged between long content runs — the ad the
     // signature cannot see because it comes from the same directory.
-    return isAdShapedRun(i);
+    if (isAdShapedRun(i)) return true;
+    // Rule 3: a part of a chunk — the ad of the sources that cut the whole
+    // episode into short chunks.
+    return isSubChunkRun(i);
   });
 
   // Nothing looked like an ad → return the original bytes, markers included.

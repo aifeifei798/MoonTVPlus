@@ -803,19 +803,28 @@ scratch and are gone. When you write a new one:
   (the committed `fixtures/live-source-*.m3u8` are the durable cases; a live
   fetch may fail because these CDNs rotate hosts and expire episode URLs),
   and `scripts/adfilter_cases.cjs` is the fixture table.
-- **The ad filter has two rules, and the second one is the one that matters.**
+- **The ad filter has three rules, and the second one needs BOTH neighbours.**
   `filterAdsFromM3U8` (in `frontend/src/app/play/play-utils.ts`) drops an ad
-  run when it comes from **another host+directory** (rule 1) **or** when it is
-  a **short run wedged between long content runs** (rule 2: ≤90s, a neighbour
-  ≥120s, ≤1/4 of that neighbour, ≤15% of the timeline). Rule 1 alone cannot
-  see the ads the mainstream sources insert: measured with ffprobe on a live
-  episode, the ad is 1920x1080 while the content is 1280x720 and **both live
-  under the same directory**, so the signature is identical on both sides of
-  the ad. The measured ads are 26.0s, 25.8s, 17.6s, 19.6s and 17.4s, with
-  content runs of 153s-1392s next to them.
-  Rule 2's long-neighbour requirement is what keeps it away from the sources
-  that chop an episode into many short runs (2-40s, 36-43s, 16-99s — those are
-  content, and they have no run long enough to be a neighbour).
+  run when it comes from **another host+directory** (rule 1), when it is a
+  **short run wedged between two long content runs** (rule 2: ≤90s, both
+  neighbours ≥120s, ≤1/4 of them, ≤15% of the timeline), or when it is a
+  **part of a chunk** (rule 3: fewer segments than the modal chunk size − 1,
+  and only when one chunk size covers ≥60% of the runs).
+  Rule 1 alone cannot see the ads the mainstream sources insert: measured
+  with ffprobe on a live episode, the ad is 1920x1080 while the content is
+  1280x720 and **both live under the same directory**, so the signature is
+  identical on both sides of the ad. The measured ads are 26.0s, 25.8s,
+  17.6s, 19.6s and 17.4s, with content runs of 153s-1392s next to them.
+  Rule 2 needs **both** neighbours to be long: the ad sits in the middle of
+  the content, so a short run with only one long neighbour is content
+  (source A cuts the episode into 5-segment chunks and one 30-35 segment
+  chunk sometimes lands next to a short one — rule 2 ate 77s of content per
+  episode before this was tightened).
+  Rule 3 covers the sources that cut the whole episode into short chunks
+  (source A: every chunk is 5 segments; the ad carries 1-3). Its 60%
+  concentration guard is what keeps it away from the sources whose segment
+  sizes are random (source F: 1-20 segments, no size dominates) — without it
+  half an episode would be thrown away.
   The reason dropping the ad fixes the **sound** (not just the picture): the
   ad carries its own timeline (its PTS restarts at 1.48s while the content
   continues at 361.4s), and at the packager's discontinuity hls.js re-anchors
@@ -824,11 +833,12 @@ scratch and are gone. When you write a new one:
   sits on the ad's clock. With the ad gone there is no marker at that seam
   (the content's two sides share a signature) and both tracks stay on one
   clock. Do not "fix" the seam by emitting a marker: that is the drift.
-  `scripts/adfilter_live_check.cjs <dir>` is the check — over the 37 live
-  manifests it drops the 31 real ads, drops no run longer than 90s, and leaves
-  every manifest it touches with 0 markers. The blind spots it documents: a
-  playlist with no `#EXT-X-DISCONTINUITY` at all (nothing to split on) and an
-  ad inside a source that chops the episode into short runs.
+  `scripts/adfilter_live_check.cjs <dir>` is the check — over the 39 live
+  manifests of the 19 configured sources it drops the 41 real ads, drops no
+  run longer than 90s, and leaves every manifest it touches with one
+  continuous timeline. The blind spots it documents: a playlist with no
+  `#EXT-X-DISCONTINUITY` at all (nothing to split on) and an ad whose runs
+  carry as many segments as a full chunk.
 
 `TestClient` checks the wire, not the runtime: it never executes the bundle, so
 mount-time JS errors (see the `createRoot` note above) are invisible to every
