@@ -29,12 +29,21 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from _harness import BASE, load_env
 
-API_MATCH = sys.argv[1] if len(sys.argv) > 1 else "source-c.example.com"
-IDS = sys.argv[2] if len(sys.argv) > 2 else "42484"
+# The source to use comes from the caller's own configuration: this script
+# must not name a real source, so there is no default. Pass a substring of
+# the API URL, e.g. `mkplayurl.py <substring-of-your-source-api>`.
+API_MATCH = sys.argv[1] if len(sys.argv) > 1 else ""
+IDS = sys.argv[2] if len(sys.argv) > 2 else ""
 OUT = pathlib.Path("/tmp/opencode")
 
 
 async def main():
+    if not API_MATCH:
+        raise SystemExit(
+            "usage: mkplayurl.py <substring-of-your-source-api> [vod_id]\n"
+            "the source list is the one in your own configuration; this script "
+            "deliberately names no source."
+        )
     from moontv.storage.db import Db
     from moontv.config import get_config
 

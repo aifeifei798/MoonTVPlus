@@ -780,7 +780,7 @@ scratch and are gone. When you write a new one:
   `MOONTV_FRONTEND_DIR` (there are also `MOONTV_FRONTEND_DIST` and
   `MOONTV_INDEX_HTML` overrides in `static.py`).
 - Never type non-ASCII into a harness command or file: this machine's I/O path
-  silently transcodes CJK in **both** directions, so a `source=source B` typed into a
+  silently transcodes CJK in **both** directions, so a `source=<the source key>` typed into a
   `curl`/`python3 -c` string arrives as two other codepoints and the server
   answers `无效的API来源` while an ASCII `source=IK` passes — the same reason a
   CDP play page reported `未找到匹配结果` for a source that was configured and

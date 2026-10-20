@@ -173,10 +173,10 @@ cases.push({
 const realPath = path.join(ROOT, '.opencode/skills/moontvplus-verification/fixtures/live-source-a.m3u8');
 const real = fs.readFileSync(realPath, 'utf8');
 cases.push({
-  name: 'real live manifest A -> 354 content segs, 0 markers, no content lost',
+  name: 'sanitized live manifest A -> 354 content segs, 0 markers, no content lost',
   in: real,
   expect: 'drop',
-  wantSegs: segs(real).filter((s) => !/adjump/.test(s)),
+  wantSegs: segs(real).filter((s) => !/adbreak/.test(s)),
   wantMarkers: 0,
 });
 
@@ -296,7 +296,7 @@ cases.push({
     throw new Error('fixture C changed shape: ' + runs.map((r) => r.length).join(','));
   }
   cases.push({
-    name: 'real live manifest C (same-directory ad) -> ad run gone, 0 markers',
+    name: 'sanitized live manifest C (same-directory ad) -> ad run gone, 0 markers',
     in: cText,
     expect: 'drop',
     wantSegs: kept,
@@ -304,7 +304,7 @@ cases.push({
   });
 }
 
-// the real source A capture: the whole episode is cut into 5-segment chunks
+// the sanitized source A capture: the whole episode is cut into 5-segment chunks
 // and the ad is a *part* of a chunk (1-3 segments), so only the segment
 // count gives it away.
 {
@@ -328,7 +328,7 @@ cases.push({
     throw new Error('fixture D changed shape: ' + dRuns.map((r) => r.length).join(','));
   }
   cases.push({
-    name: 'real live manifest D (chunked source) -> 6 ad runs gone, no content lost',
+    name: 'sanitized live manifest D (chunked source) -> 6 ad runs gone, no content lost',
     in: dText,
     expect: 'drop',
     wantSegs: dKept,

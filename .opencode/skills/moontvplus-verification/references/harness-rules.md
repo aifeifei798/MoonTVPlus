@@ -32,7 +32,7 @@ writing a new probe.
 - **Inside a CDP expression written as a template literal, every regex escape needs
   doubling.** `` const EXPR = `...replace(/\s+/g, ' ')...` `` evaluates as `/s+/g`,
   because a template literal turns the unknown escape `\s` into the letter `s`.
-  `drawer_layout_probe.cjs` printed 换源 tile text as `source E144.7 MB/` for exactly
+  `drawer_layout_probe.cjs` printed 换源 tile text as `source E 144.7 MB/` for exactly
   this reason — the regex ate the `s` of every `MB/s`. The geometry assertions were
   still correct, which is what makes the trap dangerous: only the human-readable
   echo lies, so the harness reports ALL PASS while its own evidence is garbled.
@@ -210,7 +210,7 @@ checked against the libraries that define it. Three traps in that leg:
 ## Non-ASCII
 
 Never type CJK into a harness command or file. This machine's I/O path
-transcodes CJK in **both** directions, so a typed `source=<source B key>` arrives as
+transcodes CJK in **both** directions, so a typed `source=<the source key>` arrives as
 two other codepoints and the backend answers `无效的API来源` while an ASCII
 `source=IK` passes — and the same reason made a CDP play page report
 `未找到匹配结果` for a source that was configured and working.

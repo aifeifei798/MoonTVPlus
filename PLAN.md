@@ -852,7 +852,7 @@ papered over:
      ad is as long as the content around it.
   43. **The ad filter sees the ads of the sources that cut the episode into
      short chunks, and the second rule no longer eats their content.** The
-     report that came with change 42 named source A (`source-a.example.com`),
+     report that came with change 42 named source A,
      and the real manifests of the whole catalogue (19 sources, 39 episode
      manifests) showed two things.
      First, source A cuts the whole episode into 5-segment chunks and splices
@@ -877,7 +877,7 @@ papered over:
      Over the 39 live manifests the three rules drop the 41 real ads and no
      content run at all (`scripts/adfilter_live_check.cjs` asserts that no
      run longer than 90s is ever dropped), and `scripts/adfilter_cases.cjs`
-     grew the case for the new rule (25 green) with the real source A capture
+     grew the case for the new rule (25 green) with the sanitized source A capture
      as `fixtures/live-source-d.m3u8`: 967 segments in, 953 out, the six ad
      runs gone, the 159 markers down to 149 so the content around the ad
      stays on one continuous timeline.

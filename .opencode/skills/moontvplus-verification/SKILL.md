@@ -56,7 +56,7 @@ Every case is a GET, so the sweep cannot reorder, re-enable or resurrect config.
 It derives the source key, api url, id and title from the app's own responses
 (`/api/admin/config` → `ConfigFile.api_site`, then the source's `?ac=videolist`)
 and sends them percent-encoded, because this machine's I/O path transcodes CJK
-typed into a command — a hand-typed `source=source B` answers `无效的API来源` and the
+typed into a command — a hand-typed `source=<the source key>` answers `无效的API来源` and the
 sweep reports a defect that is not there. Credentials come from `./.env` (or the
 shell the server was started from) through `_harness.load_env`. It fails
 (exit non-zero) on any 500, and on a 404 at a **non-API** path (the catch-all
