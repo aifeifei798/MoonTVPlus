@@ -19,8 +19,12 @@ What the refresh does, in the shape the panel reads back:
     cannot be seeded: `set_play_record` raises `Invalid key format` for it, so
     the store never holds one.
 
-The route is in the auth matcher's negative lookahead, so `/api/cron` answers
-200 with no cookie.
+The route sits in the auth matcher's negative lookahead (the gate never checks a
+cookie), but PLAN.md change 44 added a key: `/api/cron` answers 200 only when the
+`X-Cron-Key` header equals the env PASSWORD, and 401 with
+`cron_module.CRON_KEY_ERROR` otherwise — including when PASSWORD is unset
+(fail closed). A `?key=` query param is deliberately rejected: uvicorn's access
+log records the query string, so a query credential would land in the log file.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from moontv.storage.db import Db
 ISO = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z")
 
 USER = "test-owner"
+CRON_KEY = "test-password"  # the PASSWORD conftest sets at import time
 
 
 def _record(title="Fake Show", episodes=1, cover="https://old.invalid/c.jpg"):
@@ -62,9 +67,33 @@ def _favorite(episodes=1, cover="https://old.invalid/f.jpg"):
     }
 
 
-def test_cron_answers_without_a_cookie(client, clean_db):
+def test_cron_without_a_key_is_rejected(client, clean_db):
+    # The change-44 gate: no cookie is no longer enough, the key is required.
     client.cookies.pop("auth", None)
     response = client.get("/api/cron")
+    assert response.status_code == 401
+    assert response.json() == {"error": cron_module.CRON_KEY_ERROR}
+
+
+def test_cron_wrong_key_is_rejected(client, clean_db):
+    client.cookies.pop("auth", None)
+    response = client.get("/api/cron", headers={"X-Cron-Key": "not-the-password"})
+    assert response.status_code == 401
+    assert response.json() == {"error": cron_module.CRON_KEY_ERROR}
+
+
+def test_cron_query_key_is_rejected(client, clean_db):
+    # A credential in the query string would be written into uvicorn's access
+    # log verbatim, so the route accepts the header only (PLAN.md change 44).
+    client.cookies.pop("auth", None)
+    response = client.get("/api/cron", params={"key": CRON_KEY})
+    assert response.status_code == 401
+    assert response.json() == {"error": cron_module.CRON_KEY_ERROR}
+
+
+def test_cron_header_key_answers_without_a_cookie(client, clean_db):
+    client.cookies.pop("auth", None)
+    response = client.get("/api/cron", headers={"X-Cron-Key": CRON_KEY})
     assert response.status_code == 200
     body = response.json()
     assert list(body) == ["success", "message", "timestamp"]
@@ -72,6 +101,15 @@ def test_cron_answers_without_a_cookie(client, clean_db):
     assert body["message"] == "Cron job executed successfully"
     # `new Date().toISOString()` — UTC, milliseconds, trailing Z.
     assert ISO.fullmatch(body["timestamp"])
+
+
+def test_cron_fails_closed_when_password_unset(client, clean_db, monkeypatch):
+    # env_raw reads os.environ per call, so removing PASSWORD mid-test is seen.
+    monkeypatch.delenv("PASSWORD", raising=False)
+    client.cookies.pop("auth", None)
+    response = client.get("/api/cron", headers={"X-Cron-Key": CRON_KEY})
+    assert response.status_code == 401
+    assert response.json() == {"error": cron_module.CRON_KEY_ERROR}
 
 
 async def test_cron_rewrites_a_play_record_whose_count_changed(client, cookie, fake_source, clean_db):

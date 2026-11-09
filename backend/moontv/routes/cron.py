@@ -6,6 +6,14 @@ with `asyncio.create_task`. The 500 branch is unreachable for the same reason
 it was upstream (nothing between the logs and the response can throw), and is
 kept for parity.
 
+MoonTVPlus addition (PLAN.md, change 44): upstream had `/api/cron` outside the
+auth matcher and checked nothing, so anyone could trigger the full refresh. The
+route now requires the env `PASSWORD` as its key — an `X-Cron-Key` header,
+compared with `hmac.compare_digest` — and fails closed when `PASSWORD` is unset.
+The header is the only accepted carrier: uvicorn's access log records the full
+URL including the query string, so a `?key=` request would write the password
+into the log (measured). The app's own line prints the path, not the full url.
+
 The refresh itself is sequential — one user after another, one record after
 another — so the `detailCache` is a plain dict rather than a task map. Only
 successes stay cached, like upstream's `successPromise` replace: a key whose
@@ -17,10 +25,11 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hmac
 
 from fastapi import Request
 
-from ..env import STORAGE_TYPE, USERNAME, env
+from ..env import PASSWORD, STORAGE_TYPE, USERNAME, env, env_raw
 from ..fetch_video_detail import fetch_video_detail
 from ..routes import json_response
 from ..storage.db import Db
@@ -49,8 +58,26 @@ def _iso_now() -> str:
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
 
 
+# 定时任务的密钥：env PASSWORD，只认 `X-Cron-Key` 头——查询参数会被 uvicorn
+# 访问日志原样记进日志文件，所以不接受。PASSWORD 未设置时一律拒绝（fail closed）。
+CRON_KEY_ERROR = "cron 密钥错误"
+
+
+def _cron_key_ok(request: Request) -> bool:
+    secret = env_raw(PASSWORD)
+    if not secret:
+        return False
+    key = request.headers.get("x-cron-key")
+    return bool(key) and hmac.compare_digest(key, secret)
+
+
 async def cron(request: Request):
-    print(str(request.url))  # upstream's `console.log(request.url)`
+    if not _cron_key_ok(request):
+        return json_response({"error": CRON_KEY_ERROR}, 401)
+
+    # upstream's `console.log(request.url)`; only the path is logged so the
+    # access log and this line never carry a credential.
+    print(str(request.url.path))
     try:
         print(f"Cron job triggered: {_iso_now()}")
 

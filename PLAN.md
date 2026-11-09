@@ -886,6 +886,47 @@ papered over:
      all (nothing to split on). Both need the media itself — the ad's PTS
      restarts, and only the bytes can show that.
 
+  44. **`/api/cron` requires a key, and a server without PASSWORD refuses to
+      start.** Upstream put `/api/cron` outside the middleware matcher and the
+      route checked nothing: anyone who could reach the port could trigger
+      `refreshRecordAndFavorites()` across the whole deployment at will — the
+      only action endpoint the gate never guards. And with PASSWORD unset the
+      server was half-open in the wrong direction: every page 307s to `/warning`
+      while `/api/login` still lets existing DB users in (`Db.verify_user` alone).
+      Three changes, all ours; the rest of the wire is untouched.
+      First, `routes/cron.py` compares the request against the env PASSWORD with
+      `hmac.compare_digest`, accepting an `X-Cron-Key` header **only** (a `?key=`
+      query param is rejected: uvicorn's access log records the full URL
+      including the query string, and a live `?key=` call was measured writing
+      the password into `.run/server.log`), and answers
+      `401 {"error": "cron 密钥错误"}` on a mismatch — or when PASSWORD is
+      unset, fail closed rather than open. Rejecting the query form is not
+      enough on its own: uvicorn still logged the rejected `?key=` request's
+      full URL, so access logging is turned off on both entry points
+      (`--no-access-log` in server.sh's `UVICORN_ARGS`, `access_log=False` in
+      `_run`). The app's own log line prints `request.url.path`, not the full
+      url, so nothing in the log carries a credential. `server.sh cron` sends
+      the header.
+      Second, `server.sh start|run|cron` refuse when PASSWORD is unset
+      (`require_password`), replacing the old "note: PASSWORD is unset ... /warning"
+      hint — a passwordless server is a half-open server; `status|log|test` stay
+      usable without one.
+      Third, `main.py:_run()` (the `python -m moontv.main` entry) raises
+      `SystemExit` under the same condition. The guard deliberately does **not**
+      go in `create_app()`: TestClient and
+      `test_auth_gate.py::test_missing_password_goes_to_warning` must still build
+      an app with PASSWORD unset, so the `/warning` branch stays testable — just
+      unreachable through the shipped entry points.
+      The docs surface needed nothing: `docs_url`/`redoc_url`/`openapi_url` are
+      `None` (upstream's Next.js served no OpenAPI either), and `/docs` falls to
+      the catch-all behind the gate.
+      Coverage: `test_cron.py` is now 10 (401 without a key, 401 with a wrong
+      key, 401 with the key in the query string, 200 via header with the
+      upstream body shape asserted, fail-closed with PASSWORD deleted);
+      `test_auth_gate.py` keeps `/api/cron` matcher-excluded and asserts the
+      anonymous 401 is the route's JSON envelope, not the gate's plain-text
+      `Unauthorized`. Suite: 236 green.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

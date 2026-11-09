@@ -10,6 +10,7 @@ import os
 from datetime import datetime, timezone
 
 from conftest import DIST
+from moontv.routes import cron
 
 
 def test_unauthenticated_page_redirects_to_login(client):
@@ -26,9 +27,18 @@ def test_unauthenticated_api_returns_401(client):
 
 
 def test_gate_excluded_paths_are_open(client):
-    for path in ("/api/server-config", "/api/cron", "/favicon.ico", "/manifest.json", "/assets"):
+    for path in ("/api/server-config", "/favicon.ico", "/manifest.json", "/assets"):
         response = client.get(path)
         assert response.status_code == 200, f"{path} should not be gated, got {response.status_code}"
+
+    # `/api/cron` stays matcher-excluded (change 44), but the route checks its
+    # own key now: the anonymous 401 is the route's JSON envelope, not the
+    # gate's plain-text "Unauthorized", and the PASSWORD key opens it.
+    response = client.get("/api/cron")
+    assert response.status_code == 401
+    assert response.text != "Unauthorized"
+    assert response.json() == {"error": cron.CRON_KEY_ERROR}
+    assert client.get("/api/cron", headers={"X-Cron-Key": "test-password"}).status_code == 200
 
 
 def test_bundle_loads_before_login(client, dist_available):

@@ -255,10 +255,13 @@ are committed, not left in `/tmp`.
   (60; `0` restores upstream's write-per-heartbeat) and
   `MOONTVPLUS_UPSTREAM_MAX_CONNECTIONS` (64, the shared httpx pool's
   `max_connections`; keepalive is `min(20, that)`).
-- A browser that lands on `/warning` after `./server.sh start` means `PASSWORD`
-  never reached the process — that is the gate working as designed, not a bug to
-  chase in the frontend. `server.sh start` prints the same note; the value comes
-  from the shell or from `./.env`, which `server.sh` parses dotenv-style (so
+- `server.sh start/run/cron` **refuse** to start when `PASSWORD` is unset
+  (`require_password`, PLAN change 44), and `main.py:_run()` raises `SystemExit`
+  for the same reason — a passwordless server is half-open: the gate 307s pages
+  to `/warning` while `/api/login` still admits existing DB users. So the
+  `/warning` page is only reachable on the wire when uvicorn is launched bare
+  (bypassing `server.sh`/`_run`), or in `TestClient`. The value comes from the
+  shell or from `./.env`, which `server.sh` parses dotenv-style (so
   `NEXT_PUBLIC_SITE_NAME=MoonTVPlus Demo` keeps its spaces, unlike `source`).
 - The `./.env` example at the repo root has four rules that fail silently, all
   verified by replaying the parser: no inline comments (`PASSWORD=abc  # x` sets
@@ -902,7 +905,14 @@ start one itself.
 B6 is **in** — `routes/detail.py` (`/api/detail`), `routes/search_sub.py`
 (`search/{one,resources,suggestions,ws}`), `routes/tvbox.py`
 (`tvbox/{config,categories}`) and `routes/cron.py` (`/api/cron`, fire-and-forget
-like upstream), 25 wire checks green plus the node byte-comparisons above.
+like upstream, but MoonTVPlus requires the env `PASSWORD` as an `X-Cron-Key`
+header — `401 {"error": "cron 密钥错误"}` otherwise, including a `?key=` query
+param, which is rejected because uvicorn's access log records the query string;
+access logging is off on both entry points (`--no-access-log` in server.sh,
+`access_log=False` in `main.py:_run`) so even a rejected query call leaves no
+credential in `.run/server.log`;
+fail-closed when PASSWORD is unset; PLAN change 44), 25 wire checks green plus
+the node byte-comparisons above.
 `/api/m3u8` is **in** — `moontv/m3u8.py` (`parse_m3u8`, `download_ts_segment`,
 node byte-compared on durations/URLs) plus `routes/m3u8.py` (`POST` parse +
 `GET` proxy, both at `/api/m3u8` as upstream served them), verified live
@@ -935,8 +945,8 @@ harness on `/admin` renders the full panel menu with an empty `window.__errs`.
 pass moved the fake media server into `tests/conftest.py` and added committed wire
 modules for the routes that had only been curl-checked: `test_search_sub.py` (14),
 `test_detail.py` (7), `test_tvbox.py` (14), `test_user_history.py` (18),
-`test_cron.py` (6), `test_server_config.py` (5), `test_source_test.py` (14). The
-suite is 232 green from `backend/` (the 154 baseline plus 78). What they pin that
+`test_cron.py` (10), `test_server_config.py` (5), `test_source_test.py` (14). The
+suite is 236 green from `backend/` (the 154 baseline plus 82). What they pin that
 curl did not: the gate's plain-text 401 versus the route's own 403 on the
 matcher-excluded tvbox paths, the panel form's required-field validation, the
 `ConfigFile.cache_time` re-injection over the panel's 接口缓存时间, the SSE framing

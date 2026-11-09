@@ -15,6 +15,11 @@
 #   ./server.sh test       # pytest under backend/
 #   ./server.sh help
 #
+# PASSWORD is REQUIRED for start/run/cron: without it the auth gate sends every
+# page to /warning and anonymous callers reach the matcher-excluded routes, so
+# the script refuses to start (PLAN.md, change 44). Set it in ./.env — see
+# .env.smp for the file rules. status/log/test need no password.
+#
 # Options may appear before or after the command:
 #   -h, --help    print this help and exit
 #   --env FILE    dotenv file to load       (default: ./.env, skipped if absent)
@@ -159,7 +164,10 @@ resolve_config() {
   # uvicorn's logging goes to a file; without this, `tail -f` lags behind.
   export PYTHONUNBUFFERED=1
 
-  UVICORN_ARGS=(--app-dir "$BACKEND_DIR" --host "$HOST" --port "$PORT" --log-level "$LOG_LEVEL")
+  # `--no-access-log`: uvicorn's access log records the full URL including the
+  # query string, so a credential passed as `?key=` (even a rejected one) would
+  # be written into the log file. PLAN.md change 44.
+  UVICORN_ARGS=(--app-dir "$BACKEND_DIR" --host "$HOST" --port "$PORT" --log-level "$LOG_LEVEL" --no-access-log)
   if [[ "${MOONTVPLUS_RELOAD:-0}" == "1" ]]; then
     UVICORN_ARGS+=(--reload --reload-dir "$BACKEND_DIR")
   fi
@@ -189,6 +197,16 @@ load_env_file() {
     printf -v "$__env_key" '%s' "$__env_value"
     export "$__env_key"
   done <"$ENV_FILE"
+}
+
+# Deliberate startup guard (PLAN.md, change 44): without PASSWORD the auth gate
+# 307s every page to /warning, /api/cron fails closed, and the app is unusable
+# — so refuse instead of starting it half-open. status/log/test stay available.
+require_password() {
+  if [[ -z "${PASSWORD:-}" ]]; then
+    printf 'PASSWORD is unset — refusing to %s. Set PASSWORD in %s (see .env.smp), or export it in the shell.\n' "${1:-start}" "$ENV_FILE"
+    return 1
+  fi
 }
 
 # --------------------------------------------------------------------------
@@ -269,6 +287,7 @@ running() {
 # Commands
 # --------------------------------------------------------------------------
 cmd_start() {
+  require_password || return 1
   if running; then
     printf 'already running (pid %s) — use restart\n' "$(get_pid)"
     return 0
@@ -297,9 +316,6 @@ cmd_start() {
   while ((waited < 10)); do
     if tail -c +"$((log_offset + 1))" "$LOG_FILE" 2>/dev/null | grep -q "Uvicorn running on"; then
       printf 'started (pid %s) — http://%s:%s/\nlog: %s\n' "$pid" "$HOST" "$PORT" "$LOG_FILE"
-      if [[ -z "${PASSWORD:-}" ]]; then
-        printf 'note: PASSWORD is unset, so the auth gate sends every page to /warning\n'
-      fi
       return 0
     fi
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -360,6 +376,7 @@ cmd_status() {
 }
 
 cmd_run() {
+  require_password run || return 1
   ensure_venv
   ensure_frontend_dist
   mkdir -p "$RUN_DIR"
@@ -378,13 +395,16 @@ cmd_log() {
 }
 
 cmd_cron() {
+  require_password cron || return 1
   if ! command -v curl >/dev/null; then
     printf 'curl not found — cannot run the cron loop\n'
     return 1
   fi
   # `src/start.js` in the old image polled /login until the server answered
   # 2xx, ran /api/cron once, then reran it hourly. The route is ported
-  # (`backend/moontv/routes/cron.py`, fire-and-forget like upstream).
+  # (`backend/moontv/routes/cron.py`, fire-and-forget like upstream). Since
+  # PLAN.md change 44 the route requires the env PASSWORD as its key; it goes
+  # in the X-Cron-Key header so the password never lands in a url or a log.
   local probe_host="$HOST"
   [[ "$probe_host" == "0.0.0.0" || "$probe_host" == "[::]" ]] && probe_host="localhost"
   local base="http://$probe_host:$PORT"
@@ -398,7 +418,7 @@ cmd_cron() {
   done
   while true; do
     printf 'GET %s/api/cron\n' "$base"
-    curl -sS --max-time 30 "$base/api/cron" || printf 'cron job failed\n'
+    curl -sS --max-time 30 -H "X-Cron-Key: ${PASSWORD}" "$base/api/cron" || printf 'cron job failed\n'
     printf 'sleeping %ss\n' "$CRON_INTERVAL"
     sleep "$CRON_INTERVAL"
   done

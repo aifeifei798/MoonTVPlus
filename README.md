@@ -67,7 +67,7 @@ backend/.venv/bin/python -m uvicorn moontv.main:app --app-dir backend --host 0.0
 | `run` | foreground with `exec` — for containers and for debugging |
 | `log` | `tail -f` the log |
 | `build` | rebuild `frontend/dist`, then start |
-| `cron` | the old `start.js` poll-then-hourly `/api/cron` loop, in the foreground |
+| `cron` | the old `start.js` poll-then-hourly `/api/cron` loop, in the foreground; each call is signed with an `X-Cron-Key` header carrying `PASSWORD` |
 | `test` | `pytest` under `backend/` |
 
 Options (before or after the command): `-h` / `--help`, `--env FILE`, `--host HOST`,
@@ -86,7 +86,7 @@ on purpose.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `PASSWORD` | — | required; unset means every page redirects to `/warning` |
+| `PASSWORD` | — | required; `server.sh start`/`run`/`cron` refuse to start without it |
 | `USERNAME` | — | the owner/admin user |
 | `NEXT_PUBLIC_STORAGE_TYPE` | `sqlite` | `sqlite` (also covers the old `localstorage`/`d1` values); `redis`/`kvrocks` pending |
 | `MOONTV_DB_PATH` | `backend/moontv.db` | SQLite file; `server.sh` sets it absolutely so it does not follow the caller's cwd |
@@ -108,6 +108,12 @@ on purpose.
 example at the repo root documents the parser's edge cases — no inline
 comments, no indented assignments, values not trimmed — so read it before
 editing.
+
+`PASSWORD` is enforced at startup: `server.sh start|run|cron` and
+`python -m moontv.main` refuse to boot when it is unset. A passwordless server
+is half-open — every page would redirect to `/warning`, yet `/api/login` still
+accepts existing database users — so the startup guard closes that half.
+`status`, `log` and `test` still work without a password.
 
 ## Layout
 
@@ -160,6 +166,13 @@ GET|POST /api/{favorites,followings,playrecords,searchhistory,skipconfigs,today-
 probes every configured API site with the same request a search makes and
 streams the verdicts back as SSE, so the admin panel can show which sources
 went dead.
+
+`/api/cron` stays outside the auth gate (upstream's matcher), but MoonTVPlus
+requires a key on it: carry the env `PASSWORD` as an `X-Cron-Key` header, or the
+route answers `401`. A `?key=` query param is rejected: uvicorn's access log
+records the full URL, so a query credential would land in the log file even when
+the route rejects it — access logging is therefore off (`--no-access-log`).
+`server.sh cron` signs its own calls with the header.
 
 Everything upstream had is ported. Still missing: the browser side of the old
 `.dat` backup migration, and the Redis/Kvrocks storage backends (`create_storage`

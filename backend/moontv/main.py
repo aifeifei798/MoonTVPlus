@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
 from .auth import auth_gate_response
+from .env import PASSWORD, env_raw
 from .routes import auth as auth_routes, server_config as server_config_routes
 from .routes import search as search_routes
 from .routes import admin as admin_routes, config as config_routes
@@ -102,7 +103,21 @@ app = create_app()
 def _run() -> None:
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    # Deliberate startup guard (PLAN.md, change 44): a server without PASSWORD
+    # sends every page to /warning and lets anonymous callers drive the
+    # matcher-excluded routes, so this entry refuses instead of serving. The
+    # guard is NOT in create_app(): TestClient (and the /warning gate tests)
+    # must still be able to build an app with PASSWORD unset.
+    if not env_raw(PASSWORD):
+        raise SystemExit(
+            "PASSWORD is unset — refusing to start. Set PASSWORD in the "
+            "environment or ./.env (see .env.smp); server.sh enforces the "
+            "same rule."
+        )
+    # `access_log=False` matches server.sh's `--no-access-log`: the access log
+    # records the full URL, so a `?key=` query credential would reach the log
+    # file even when the route rejects it (PLAN.md, change 44).
+    uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)
 
 
 if __name__ == "__main__":  # pragma: no cover
