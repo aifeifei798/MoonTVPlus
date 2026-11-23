@@ -8,22 +8,34 @@ registered, sold off, and re-pointed), so the panel needs a health check that
 asks the same question the search route already answers.
 
 That is why the probe is *the search request itself* — `api +
-API_CONFIG["search"]["path"] + encode_uri_component('')`, the same URL, the
+API_CONFIG["search"]["path"] + encode_uri_component(query)`, the same URL, the
 same Chrome UA, the same `fetchWithTimeout` (so the same `trust_env=False`)
 `/api/search` makes. "Alive" here means "this source can answer a search",
 which is what the user is asking about; a probe that only checked the
 domain's DNS would call a source alive that answers 403 to every search.
 
-The empty `wd=` is deliberate: it asks the site for its first page rather
-than a title, so a live site answers without depending on what its library
-happens to contain. A site that returns JSON without a `list` array is not
-alive for MoonTV's purposes even when the browser can open it, so it is
-reported as `接口格式错误` the way `searchFromApiStream` bails out.
+There are two stages, because an empty-query probe cannot see a source that is
+alive but refuses keyword search. Stage 1 asks `wd=` — the site's first page —
+so a live site answers without depending on what its library happens to
+contain; a JSON body without a `list` array is not alive for MoonTV's purposes
+even when the browser can open it, so it is reported as `接口格式错误` the way
+`searchFromApiStream` bails out. Stage 2 re-requests the same endpoint with a
+title taken from stage 1's own first item, which is exactly the URL
+`downstream.py:170` builds for search page 1. Two failures only show up on
+stage 2: a site that answers a keyword with HTML (天涯影视 and 牛牛 answer
+`暂不支持搜索` at 200, which the search route turns into a JSON parse error) and
+a site behind a WAF that challenges keyword queries (极速 and 光速 answer 403
+`Just a moment...`). Both are reachable and play fine from the first page but
+are useless in the UI, so they are reported as `item_warning` — alive, not dead
+— and are never selected for 批量禁用/批量删除. The keyword comes from the
+source's own data rather than from a typed string, so no CJK crosses a command
+line (AGENTS.md: this machine's I/O path transcodes it).
 
 The framing is the SSE vocabulary `followings_refresh.py` already uses
-(`start` / `item_result` / `item_failed` / `complete`) and the same
-`CONCURRENCY = 5` worker pool, so ten sources finish in two rounds trips
-rather than ten, and the panel can paint each row as soon as it answers.
+(`start` / `item_result` / `item_failed` / `complete`) plus the new
+`item_warning`, and the same `CONCURRENCY = 5` worker pool, so ten sources
+finish in two rounds trips rather than ten, and the panel can paint each row as
+soon as it answers.
 """
 
 from __future__ import annotations
@@ -44,6 +56,7 @@ CONCURRENCY = 5  # same pool size as /api/followings/refresh
 DEFAULT_TIMEOUT_S = 10  # a search's 30s is too slow for a panel button
 MAX_TIMEOUT_S = 60
 FORMAT_ERROR = "接口格式错误"  # `searchFromApiStream`'s bail-out, as a reason
+KEYWORD_ERROR = "关键词搜索失败"  # stage 2 failed: alive, but search does not work
 PROBE_QUERY = ""  # `?ac=videolist&wd=` — the site's first page, not a title
 
 _SENTINEL = object()
@@ -57,14 +70,32 @@ def _first_truthy(*values):
     return values[-1]
 
 
-async def _probe(api: str, timeout_ms: int) -> tuple[dict | None, dict]:
-    """One source's search first page.
+def _first_title(first_page: list) -> str | None:
+    """Stage 2's keyword: the first item's own `vod_name`, or None.
+
+    `map_item_to_result` raises when `vod_name` is not a string, so a source
+    whose names are not strings is not searchable in MoonTV either — None here
+    means "nothing to search with", not "this source is dead".
+    """
+    for item in first_page:
+        if isinstance(item, dict):
+            name = item.get("vod_name")
+            if isinstance(name, str) and js_truthy(name):
+                return name
+    return None
+
+
+async def _probe(
+    api: str, timeout_ms: int, query: str = PROBE_QUERY
+) -> tuple[dict | None, dict]:
+    """One request to a source's search endpoint, with or without a keyword.
 
     Returns `(result, failure)`; exactly one of the two is set, and both carry
     the elapsed milliseconds so the panel can show a slow source as slow
-    instead of silently green.
+    instead of silently green. `title` is only filled on the empty-query stage,
+    so stage 2 can search for a title the site itself returned.
     """
-    url = api + API_CONFIG["search"]["path"] + encode_uri_component(PROBE_QUERY)
+    url = api + API_CONFIG["search"]["path"] + encode_uri_component(query)
     started = now_ms()
     try:
         response = await fetch_with_timeout(
@@ -99,6 +130,9 @@ async def _probe(api: str, timeout_ms: int) -> tuple[dict | None, dict]:
         "ms": now_ms() - started,
         "count": len(first_page),
         "pagecount": int(pagecount) if pagecount and pagecount > 0 else 0,
+        # Only the first-page stage hands a keyword forward; stage 2's own list
+        # is the answer to the question, not the source of another one.
+        "title": _first_title(first_page) if not query else None,
     }, None
 
 
@@ -168,6 +202,7 @@ async def _stream(targets: list[dict], timeout_ms: int):
     closed = False
     ok_count = 0
     failed_count = 0
+    warning_count = 0
     cursor = 0
 
     def emit(payload) -> bool:
@@ -179,7 +214,7 @@ async def _stream(targets: list[dict], timeout_ms: int):
         return True
 
     async def process_source(entry: dict):
-        nonlocal ok_count, failed_count, closed
+        nonlocal ok_count, failed_count, warning_count, closed
         if closed:
             return
 
@@ -200,11 +235,11 @@ async def _stream(targets: list[dict], timeout_ms: int):
                 closed = True
             return
 
-        result, failure = await _probe(api, timeout_ms)
+        first, failure = await _probe(api, timeout_ms)
         if closed:
             return
 
-        if result is None:
+        if first is None:
             failed_count += 1
             if not emit(
                 {
@@ -218,15 +253,60 @@ async def _stream(targets: list[dict], timeout_ms: int):
                 closed = True
             return
 
+        keyword = first.get("title")
+        if keyword is None:
+            # Nothing to search with: an empty first page is a zero-result
+            # warning (PLAN.md change 18), and inventing a keyword would probe
+            # the site's library instead of the site.
+            ok_count += 1
+            if not emit(
+                {
+                    "type": "item_result",
+                    "key": key,
+                    "name": name,
+                    "ms": first["ms"],
+                    "count": first["count"],
+                    "pagecount": first["pagecount"],
+                }
+            ):
+                closed = True
+            return
+
+        searched, keyword_failure = await _probe(api, timeout_ms, keyword)
+        if closed:
+            return
+
+        if keyword_failure is not None:
+            # Alive, but a real keyword does not work: HTML instead of JSON, a
+            # WAF challenge, or an error status. Not a death — the badge is
+            # yellow and the row is never auto-selected for 批量禁用.
+            warning_count += 1
+            if not emit(
+                {
+                    "type": "item_warning",
+                    "key": key,
+                    "name": name,
+                    "ms": first["ms"] + keyword_failure["ms"],
+                    "count": first["count"],
+                    "pagecount": first["pagecount"],
+                    "query": keyword,
+                    "reason": f"{KEYWORD_ERROR}: {keyword_failure['reason']}",
+                }
+            ):
+                closed = True
+            return
+
         ok_count += 1
         if not emit(
             {
                 "type": "item_result",
                 "key": key,
                 "name": name,
-                "ms": result["ms"],
-                "count": result["count"],
-                "pagecount": result["pagecount"],
+                "ms": first["ms"] + searched["ms"],
+                "count": searched["count"],
+                "pagecount": searched["pagecount"],
+                "first_page_count": first["count"],
+                "query": keyword,
             }
         ):
             closed = True
@@ -241,7 +321,7 @@ async def _stream(targets: list[dict], timeout_ms: int):
             await process_source(targets[idx])
 
     async def run_workers():
-        nonlocal ok_count, failed_count
+        nonlocal ok_count, failed_count, warning_count
         try:
             await asyncio.gather(
                 *(_worker() for _ in range(min(CONCURRENCY, len(targets))))
@@ -251,6 +331,7 @@ async def _stream(targets: list[dict], timeout_ms: int):
                     "type": "complete",
                     "okCount": ok_count,
                     "failedCount": failed_count,
+                    "warningCount": warning_count,
                     "total": len(targets),
                     "checkedAt": now_ms(),
                 }

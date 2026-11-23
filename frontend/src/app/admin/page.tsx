@@ -1079,6 +1079,11 @@ interface SourceHealth {
   ms?: number;
   count?: number;
   reason?: string;
+  // 关键词搜索失败: the first page answered, a real title did not. ok stays
+  // true so the row is never auto-selected for 批量禁用/批量删除 — the source is
+  // reachable, it just cannot be searched (an HTML answer, or a WAF challenge).
+  warning?: string;
+  query?: string;
 }
 
 // 视频源配置组件
@@ -1289,7 +1294,23 @@ const VideoSourceConfig = ({
 
           switch (data.type) {
             case 'item_result':
-              results[data.key] = { ok: true, ms: data.ms, count: data.count };
+              results[data.key] = {
+                ok: true,
+                ms: data.ms,
+                count: data.count,
+                query: data.query,
+              };
+              setSourceHealth((prev) => ({ ...prev, [data.key]: results[data.key] }));
+              break;
+            case 'item_warning':
+              // 首屏能读, 关键词不能用: alive but not searchable → yellow, not red
+              results[data.key] = {
+                ok: true,
+                ms: data.ms,
+                count: data.count,
+                query: data.query,
+                warning: data.reason,
+              };
               setSourceHealth((prev) => ({ ...prev, [data.key]: results[data.key] }));
               break;
             case 'item_failed':
@@ -1520,9 +1541,21 @@ const VideoSourceConfig = ({
                 </span>
               );
             }
+            if (health.warning) {
+              // 站点能读首屏, 关键词不能用 (HTML 回答 / Cloudflare 拦截): it can
+              // still play from a first-page hit, so it is not a 失效 row.
+              return (
+                <span
+                  title={`${health.warning}${health.query ? ` · ${health.query}` : ''} · 首屏 ${health.count} 结果`}
+                  className='px-2 py-1 text-xs rounded-full whitespace-nowrap bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300'
+                >
+                  关键词不可用
+                </span>
+              );
+            }
             return (
               <span
-                title={`${health.count} 结果 / ${health.ms}ms`}
+                title={`${health.query ? `「${health.query}」 ` : ''}${health.count} 结果 / ${health.ms}ms`}
                 className={`px-2 py-1 text-xs rounded-full whitespace-nowrap ${
                   health.count === 0
                     ? 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300'
@@ -1560,6 +1593,10 @@ const VideoSourceConfig = ({
   // 源健康检查的 summary counts, for the banner above the table
   const testedKeys = Object.keys(sourceHealth);
   const aliveCount = testedKeys.filter((k) => sourceHealth[k].ok).length;
+  // 关键词不可用 is alive-but-unsearchable: counted separately, never as 失效
+  const warnCount = testedKeys.filter(
+    (k) => sourceHealth[k].ok && !!sourceHealth[k].warning
+  ).length;
   const deadCount = testedKeys.length - aliveCount;
 
   if (!config) {
@@ -1601,6 +1638,7 @@ const VideoSourceConfig = ({
         <div className='px-3 py-2 bg-[#f5f5f7] dark:bg-black rounded-lg border border-[#d2d2d7] dark:border-[#424245] text-sm text-gray-700 dark:text-gray-300'>
           上次测试 {new Date(healthAt).toLocaleString()} · {aliveCount} 可用 /{' '}
           {deadCount} 失效
+          {warnCount > 0 && ` · ${warnCount} 关键词不可用（首屏可读，搜索不可用）`}
           {deadCount > 0 && ' · 失效源可批量禁用/批量删除'}
         </div>
       )}

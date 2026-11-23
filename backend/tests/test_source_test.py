@@ -1,18 +1,27 @@
 """`/api/admin/source/test` — the panel's source health check (MoonTVPlus addition).
 
-The probe is the search request itself (`api + API_CONFIG["search"]["path"] +
-encodeURIComponent('')`), so "alive" means "can answer a search". The empty `wd=`
-is deliberate: it asks for the site's first page, so a live site does not have to
-contain anything in particular. Offline, the fetch is stubbed at
+The probe runs the search request itself (`api + API_CONFIG["search"]["path"] +
+encodeURIComponent(query)`), in two stages. Stage 1 uses an empty `wd=`: it asks
+for the site's first page, so a live site does not have to contain anything in
+particular, and it hands back the first item's `vod_name`. Stage 2 re-requests the
+same endpoint with that title — the exact URL `downstream.py:170` builds for search
+page 1 — because a site can answer the empty query happily and refuse a real
+keyword (`天涯影视`/`牛牛` answer HTML `暂不支持搜索` at 200, `极速`/`光速` answer a
+Cloudflare `Just a moment...` 403). Offline, the fetch is stubbed at
 `source_test.fetch_with_timeout`, which lets every branch of `_probe` be measured
 without a network: HTTP status, non-JSON body, a JSON body with no `list`, and an
-empty `list`.
+empty `list`. The stub answers stage 1 and stage 2 separately
+(`payload` vs `keyword_payload` / `keyword_status` / `keyword_broken_json`).
 
 The rules the harness pins:
 
+  * a stage-1 failure is a death (`item_failed`); a stage-2-only failure is an
+    `item_warning` — the source is alive, it just cannot be searched, so it is
+    never auto-selected for 批量禁用/批量删除. `complete.warningCount` counts them
+    and `complete.okCount` counts only sources that answered a keyword search;
   * an **empty** `list` is a zero-result *warning* (`count: 0`, `okCount + 1`),
     not a death — plenty of live sites answer an empty query with no rows
-    (PLAN.md, change 18);
+    (PLAN.md, change 18) — and no keyword probe is invented for it;
   * a JSON body without a `list` array, a non-JSON body, and a non-2xx status are
     deaths, with reasons `接口格式错误` / `HTTP <code>`;
   * a source with no `api` fails with `缺少 API 地址` and `ms: 0`, and the probe
@@ -68,25 +77,51 @@ class FakeResponse:
 class Stub:
     """Records every probe, and can hold workers in flight for the pool probe."""
 
-    def __init__(self, payload=None, status=200, broken_json=False, delay=0.0):
+    def __init__(
+        self,
+        payload=None,
+        status=200,
+        broken_json=False,
+        delay=0.0,
+        keyword_payload=None,
+        keyword_status=200,
+        keyword_broken_json=False,
+    ):
         self.payload = payload if payload is not None else {"list": [{"a": 1}, {"b": 2}], "pagecount": 2}
         self.status = status
         self.broken_json = broken_json
         self.delay = delay
+        # Stage 2 (a keyword query) may answer differently — an HTML body or a WAF
+        # challenge — which is exactly why the second probe exists.
+        self.keyword_payload = keyword_payload
+        self.keyword_status = keyword_status
+        self.keyword_broken_json = keyword_broken_json
         self.calls: list[tuple[str, int]] = []
         self.inflight = 0
         self.max_inflight = 0
         self.completed = 0
 
+    def _is_keyword_probe(self, url: str) -> bool:
+        """Stage 1 is the empty `wd=`; anything else carries the title."""
+        return not url.endswith("?ac=videolist&wd=")
+
     async def fetch(self, url, headers, timeout_ms):
         self.calls.append((url, timeout_ms))
+        keyword = self._is_keyword_probe(url)
+        payload = (
+            self.keyword_payload
+            if keyword and self.keyword_payload is not None
+            else self.payload
+        )
+        status = self.keyword_status if keyword else self.status
+        broken_json = self.keyword_broken_json if keyword else self.broken_json
         self.inflight += 1
         self.max_inflight = max(self.max_inflight, self.inflight)
         if self.delay:
             await asyncio.sleep(self.delay)
         self.inflight -= 1
         self.completed += 1
-        return FakeResponse(self.payload, self.status, self.broken_json)
+        return FakeResponse(payload, status, broken_json)
 
 
 def _stub(monkeypatch, **kwargs) -> Stub:
@@ -238,6 +273,85 @@ def test_http_status_is_a_failure(client, cookie, fake_only_source, monkeypatch)
     events = _events(_post(client, cookie, {}))
     assert events[1]["type"] == "item_failed"
     assert events[1]["reason"] == "HTTP 403"
+
+
+def test_keyword_probe_uses_the_sources_own_title(client, cookie, fake_only_source, monkeypatch):
+    # Stage 2 asks the same endpoint for the title stage 1 handed back, so the
+    # keyword never comes from a typed string (this machine transcodes CJK).
+    stub = _stub(
+        monkeypatch,
+        payload={"list": [{"vod_name": "FAKE TITLE"}, {"vod_name": "OTHER"}], "pagecount": 2},
+        keyword_payload={"list": [{"vod_name": "FAKE TITLE"}], "pagecount": 1},
+    )
+    events = _events(_post(client, cookie, {}))
+    assert [e["type"] for e in events] == ["start", "item_result", "complete"]
+
+    assert len(stub.calls) == 2
+    assert stub.calls[0][0].endswith("?ac=videolist&wd=")
+    assert stub.calls[1][0].endswith("?ac=videolist&wd=FAKE%20TITLE")
+
+    result = events[1]
+    assert result["query"] == "FAKE TITLE"
+    assert result["count"] == 1  # the keyword result, not the first page
+    assert result["first_page_count"] == 2
+    assert result["pagecount"] == 1
+    assert events[2]["okCount"] == 1
+    assert events[2]["warningCount"] == 0
+
+
+def test_keyword_search_failure_is_a_warning_not_a_death(client, cookie, fake_only_source, monkeypatch):
+    # 天涯影视/牛牛 answer a keyword with HTML at status 200 (`暂不支持搜索`): the
+    # search route turns that into a JSON parse error, but the site is reachable.
+    stub = _stub(
+        monkeypatch,
+        payload={"list": [{"vod_name": "FAKE TITLE"}], "pagecount": 3},
+        keyword_broken_json=True,
+    )
+    events = _events(_post(client, cookie, {}))
+    assert [e["type"] for e in events] == ["start", "item_warning", "complete"]
+    assert len(stub.calls) == 2
+    assert events[1]["query"] == "FAKE TITLE"
+    assert events[1]["count"] == 1  # the first page it did answer
+    assert events[1]["reason"].startswith(source_test.KEYWORD_ERROR)
+    # Alive-but-unsearchable: counted as neither ok nor dead.
+    assert events[2]["okCount"] == 0
+    assert events[2]["failedCount"] == 0
+    assert events[2]["warningCount"] == 1
+
+
+def test_keyword_challenge_is_a_warning(client, cookie, fake_only_source, monkeypatch):
+    # 极速/光速 pass the empty query and answer a keyword with a Cloudflare 403.
+    stub = _stub(
+        monkeypatch,
+        payload={"list": [{"vod_name": "FAKE TITLE"}], "pagecount": 4},
+        keyword_status=403,
+    )
+    events = _events(_post(client, cookie, {}))
+    assert events[1]["type"] == "item_warning"
+    assert events[1]["reason"] == "关键词搜索失败: HTTP 403"
+    assert events[2]["warningCount"] == 1
+    assert len(stub.calls) == 2
+
+
+def test_an_empty_first_page_skips_the_keyword_probe(client, cookie, fake_only_source, monkeypatch):
+    # No title to ask with, so the keyword probe is not invented out of nothing.
+    stub = _stub(monkeypatch, payload={"list": [], "pagecount": 0})
+    events = _events(_post(client, cookie, {}))
+    assert events[1]["type"] == "item_result"
+    assert events[1]["count"] == 0
+    assert "query" not in events[1]
+    assert len(stub.calls) == 1
+    assert events[2]["okCount"] == 1
+    assert events[2]["warningCount"] == 0
+
+
+def test_a_source_without_a_vod_name_is_not_probed_by_keyword(client, cookie, fake_only_source, monkeypatch):
+    # `map_item_to_result` raises on a non-string vod_name, so such a source is
+    # not searchable and stage 2 would only add a second request for nothing.
+    stub = _stub(monkeypatch, payload={"list": [{"a": 1}], "pagecount": 1})
+    events = _events(_post(client, cookie, {}))
+    assert events[1]["type"] == "item_result"
+    assert len(stub.calls) == 1
 
 
 async def test_a_source_without_an_api_fails_without_a_fetch(client, cookie, fake_only_source, monkeypatch):

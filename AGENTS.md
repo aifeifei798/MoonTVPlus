@@ -126,14 +126,29 @@ are committed, not left in `/tmp`.
   `routes/source_test.py` (`POST /api/admin/source/test`, SSE, POST-only, and a
   `CONCURRENCY = 5` `asyncio.Queue` pool copied from
   `routes/followings_refresh.py`). It is a separate path rather than a new
-  `action` on `source()` so that switch stays faithful to upstream. The probe
-  is the *same request a search makes* (`api + API_CONFIG["search"]["path"] +
-  PROBE_QUERY`, and `PROBE_QUERY` is **empty** — it asks the site's first page,
-  because `wd=a` makes one live site answer non-JSON and be called dead), and
-  the route is **read-only**: it never calls `Db.save_admin_config`, so testing
-  cannot reorder, re-enable or resurrect anything. An **empty** `list` is a
-  zero-result warning with `count: 0`, not a death — plenty of live sites
-  answer an empty query with no rows (PLAN.md, change 18).
+  `action` on `source()` so that switch stays faithful to upstream. The probe is
+  **two-stage**, and both stages are the *same request a search makes*
+  (`api + API_CONFIG["search"]["path"] + encode_uri_component(query)`): stage 1
+  sends `PROBE_QUERY` = **empty** (the site's first page) to decide alive/dead
+  without inventing a keyword — `wd=a` makes one live site answer non-JSON and be
+  called dead — and `_first_title()` takes the first item's `vod_name` as the
+  keyword; stage 2 re-requests that endpoint with it, exactly the URL
+  `downstream.py:170` builds for search page 1. A stage-1 failure stays
+  `item_failed` (请求失败 / HTTP n / 接口格式错误); a stage-2 failure is
+  **`item_warning`** with `reason: "关键词搜索失败: …"` and keeps `ok: true`, because
+  two live sources answer a keyword with `text/html` `暂不支持搜索` (天涯影视) or a
+  Cloudflare `403 Just a moment...` (极速/光速) while their episode URLs still work —
+  calling those dead would make 批量禁用 delete working sources. `complete` sends
+  `okCount` (keyword-searchable) + `failedCount` + `warningCount`; the panel's badge
+  is yellow `关键词不可用` for a warning row, the summary banner adds
+  `N 关键词不可用（首屏可读，搜索不可用）`, and the auto-select guard uses
+  `results[key]?.ok === false` (`frontend/src/app/admin/page.tsx:1345`) so warnings
+  are never batch-disabled. When stage 1 returns no usable title (empty first page,
+  or an item without `vod_name`) there is no second request. The route is
+  **read-only**: it never calls `Db.save_admin_config`, so testing cannot reorder,
+  re-enable or resurrect anything. An **empty** `list` is a zero-result warning with
+  `count: 0`, not a death — plenty of live sites answer an empty query with no rows
+  (PLAN.md, change 18).
 - **Config-file sources/categories are re-injected on every read**: `refine_config`,
   `get_config` and `reset_config` all merge the blob's `ConfigFile.api_site` map
   (and `custom_category` list) into `SourceConfig`/`CustomCategories` and mark the
