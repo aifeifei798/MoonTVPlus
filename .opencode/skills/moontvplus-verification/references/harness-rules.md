@@ -277,6 +277,18 @@ back to `/login?redirect=%2F`. `login_cookie.py` prints exactly the value.
   build it just made must call `Network.setCacheDisabled` first — the Chrome profile
   otherwise serves the previous build's stylesheet and the probe silently measures
   stale rules.
+- **`chrome_start.sh` assumes `google-chrome`, which this box does not have.** The
+  binary is `/home/feifei/.local/share/chrome/chrome-linux-arm64/chrome`; `/usr/bin/chromium`
+  aborts with `FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:144] No usable
+  sandbox!`, so the launch needs `--no-sandbox` (and a fresh `--user-data-dir`).
+- **An expr file must be ONE expression.** `Runtime.evaluate` rejects a bare top-level
+  `return` with `SyntaxError: Illegal return statement`; wrap the body in
+  `(async () => { ... })()` — `cdp_eval.cjs` passes `awaitPromise: true`, so an async
+  body that polls the page (e.g. waits for `localStorage` after an SSE run) works.
+- **`/admin` renders its sections COLLAPSED.** `tbody` has 0 rows until the 视频源配置
+  button is clicked, so a probe that looks for 测试源 / the 上次测试 banner without
+  expanding the section reports them absent — a false negative about the UI, not a
+  wire problem. Click the section button, then wait for React to commit.
 
 ## What a harness cannot see
 
