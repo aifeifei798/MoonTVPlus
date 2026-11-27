@@ -81,6 +81,8 @@ function VideoCard({
   const [followingChecked, setFollowingChecked] = useState(false); // 是否已经检查过追更状态
   const [isActionOpen, setIsActionOpen] = useState(false);
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null);
+  // 触屏上 click 总在 touchend 之后补发：长按已打开操作面板时不能再触发播放。
+  const longPressFiredRef = React.useRef(false);
 
   const isAggregate = from === 'search' && !!items?.length;
 
@@ -362,7 +364,6 @@ function VideoCard({
       playrecord: {
         showSourceName: true,
         showProgress: true,
-        showPlayButton: true,
         showHeart: true,
         showFollowButton: true,
         showCheckCircle: true,
@@ -372,7 +373,6 @@ function VideoCard({
       favorite: {
         showSourceName: true,
         showProgress: false,
-        showPlayButton: true,
         showHeart: true,
         showFollowButton: true,
         showCheckCircle: false,
@@ -382,7 +382,6 @@ function VideoCard({
       search: {
         showSourceName: true,
         showProgress: false,
-        showPlayButton: true,
         showHeart: !isAggregate,
         showFollowButton: !isAggregate,
         showCheckCircle: false,
@@ -392,7 +391,6 @@ function VideoCard({
       douban: {
         showSourceName: false,
         showProgress: false,
-        showPlayButton: true,
         showHeart: false,
         showFollowButton: false,
         showCheckCircle: false,
@@ -541,6 +539,14 @@ function VideoCard({
     <div
       className="group relative w-full rounded-lg bg-transparent cursor-pointer transition-all duration-300 ease-in-out hover:scale-[1.05] hover:z-[500] [container-type:inline-size]"
       style={{ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+      onClick={() => {
+        // 长按（500ms 打开操作面板）后补发的 click 不能再触发播放
+        if (longPressFiredRef.current) {
+          longPressFiredRef.current = false;
+          return;
+        }
+        handleClick();
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -548,10 +554,12 @@ function VideoCard({
       }}
       onTouchStart={(e) => {
         e.stopPropagation();
+        longPressFiredRef.current = false;
         if (longPressTimer) {
           window.clearTimeout(longPressTimer);
         }
         const timerId = window.setTimeout(() => {
+          longPressFiredRef.current = true;
           setIsActionOpen(true);
         }, 500);
         setLongPressTimer(timerId);
@@ -589,7 +597,7 @@ function VideoCard({
         }
       }}
     >
-      {/* 图片和播放按钮 */}
+      {/* 图片；整卡可点/可tap播放（不再叠播放按钮，触屏浏览器曾常显该标志） */}
       <div className='relative aspect-[2/3] overflow-hidden rounded-lg'>
         {!isLoading || posterFailed ? (
           <ImagePlaceholder aspectRatio='aspect-[2/3]' failed={posterFailed} />
@@ -610,21 +618,6 @@ function VideoCard({
         />
 
         <div className='absolute inset-0 bg-gradient-to-t from-black/80 via-black-20 to-transparent opacity-0 transition-opacity duration-300 ease-in-out group-hover:opacity-100 touch-visible' />
-
-      {/* 播放按钮 */}
-      {config.showPlayButton && (
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 touch-visible transition">
-              <PlayCircleIcon
-                size={50}
-                strokeWidth={0.8}
-                className="text-white fill-transparent hover:fill-apple-500 hover:scale-[1.1] transition"
-                onClick={(e) => {
-                  e.stopPropagation(); // 阻止冒泡
-                  handleClick();       // 只在点击按钮时触发播放
-                }}
-              />
-            </div>
-          )}
 
         {(config.showHeart || config.showFollowButton || config.showCheckCircle) && (
           <div className='absolute bottom-3 inset-x-3 flex items-center justify-end opacity-0 translate-y-2 transition-all duration-300 ease-in-out group-hover:opacity-100 group-hover:translate-y-0 touch-visible touch-slide-up [gap:clamp(0px,4cqi,0.75rem)]'>

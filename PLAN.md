@@ -950,6 +950,22 @@ papered over:
       tie. The test asserts the exact newest-first list `[kw24 … kw5]` rather
       than a set.
 
+  46. **Video cards have no play-button overlay; the whole card plays.** The
+       `PlayCircleIcon` badge on every poster was gated by `group-hover:opacity-100`
+       plus `touch-visible` (`@media (hover: none) { .touch-visible { opacity: 1
+       !important } }` in `globals.css`), so any touch-capable browser showed a
+       permanent white play circle on **every** card — reported as "图片上面都有个
+       播放标志…看得眼睛晕". The overlay is removed and the card wrapper itself now
+       calls `handleClick` on click (desktop click, phone tap); the click a
+       long-press (500 ms → `MobileActionSheet`) re-fires after `touchend` is
+       swallowed via `longPressFiredRef` so long-press does not also navigate.
+       `showPlayButton` was dropped from all four presets in `VideoCard.tsx`;
+       the context menu's 播放 / 在新标签页播放 actions keep `PlayCircleIcon`
+       inside the sheet. Overlay buttons (heart/trash/追更/豆瓣/源徽章) already
+       `stopPropagation`, and `MobileActionSheet` stops propagation in its
+       portal root, so they do not trigger playback. `frontend/dist` is not
+       committed, so a deployed box must rebuild (`./server.sh build`) after pull.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search
