@@ -212,7 +212,10 @@ async def test_export_import_round_trip_eats_nothing(client, cookie, clean_db):
     assert after["followings"][KEY]["watched_episodes"] == 3
     assert after["skip"][SOURCE + "+57630"]["intro_time"] == 60
     assert after["today"]["date"] == "2026-10-14"
-    assert after["history"] == SEARCH_HISTORY
+    # History is served newest-first (PLAN.md change 45), the opposite of the
+    # order the seeded POSTs went in; the import replays the read order, so the
+    # round trip preserves it.
+    assert after["history"] == list(reversed(SEARCH_HISTORY))
 
 
 async def test_a_wrong_password_is_a_400_not_a_500(client, cookie, clean_db):

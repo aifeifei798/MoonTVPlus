@@ -3,7 +3,9 @@
 D1 was already a table-based SQLite implementation, so this is the most
 faithful translation of MoonTV's storage layer: the table names, column names,
 `ON CONFLICT(...) DO UPDATE SET` clauses and the `search_history` created_at
-trick all come across unchanged. Two consequences worth keeping:
+trick all come across unchanged — except that `add_search_history` now supplies
+an explicit microsecond timestamp instead of relying on the schema default
+(PLAN.md change 45). Two consequences worth keeping:
 
   * `d1-init.sql`'s schema is reused verbatim (SQLite accepts `UNIQUE(a, b, c)`
     group constraints and `false`/`true` literals), so a D1 dump can be loaded
@@ -621,8 +623,18 @@ class SqliteStorage:
         self._conn.execute(
             "DELETE FROM search_history WHERE user_id = ? AND keyword = ?", (user_id, keyword)
         )
+        # The schema default (`CURRENT_TIMESTAMP`) has second resolution, so a
+        # burst of inserts ties and the prune below keeps the **oldest** 20 on
+        # the tie while the read side orders them arbitrarily. The GitHub
+        # runner measured crossing a second boundary mid-burst, so "which 20
+        # survive" depended on runner speed (backend-tests failed 2026-11-23,
+        # run 45262004117). An explicit UTC timestamp with microseconds keeps
+        # every row strictly ordered: the newest 20 survive and are served
+        # newest-first, matching the redis backends (lpush + ltrim) — the
+        # schema default stays verbatim for rows a converted D1 dump carries.
         self._conn.execute(
-            "INSERT INTO search_history (user_id, keyword) VALUES (?, ?)", (user_id, keyword)
+            "INSERT INTO search_history (user_id, keyword, created_at) VALUES (?, ?, ?)",
+            (user_id, keyword, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")),
         )
         # 保持搜索历史不超过限制
         self._conn.execute(

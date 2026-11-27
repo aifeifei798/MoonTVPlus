@@ -927,6 +927,29 @@ papered over:
       anonymous 401 is the route's JSON envelope, not the gate's plain-text
       `Unauthorized`. Suite: 236 green.
 
+  45. **The search-history prune no longer depends on the wall clock.** The
+      sqlite schema default `CURRENT_TIMESTAMP` has second resolution, so a
+      burst of `/api/searchhistory` POSTs ties on `created_at` within a second:
+      the write-side prune (`id NOT IN (… ORDER BY created_at DESC LIMIT 20)`)
+      keeps the **oldest** 20 on the tie and the read
+      (`ORDER BY created_at DESC LIMIT 20`) serves them in arbitrary order.
+      Which 20 survive depended on whether the burst crossed a second boundary:
+      the whole test finishes inside one second locally (kw0..kw19 survive),
+      but the GitHub runner is slower and crossed it (kw5..kw24 survive), so
+      `test_user_history.py::test_searchhistory_caps_at_twenty` failed on push
+      `3bcae4c` — CI run 45262004117, backend-tests (3.11) failed, (3.12)
+      canceled; the frontend build was green. Reproduced locally with 25
+      inserts spaced 50 ms apart (1.26 s, kw5..kw24 kept). `add_search_history`
+      now passes an explicit microsecond `datetime.now(timezone.utc)` stamp at
+      INSERT time. The schema default stays verbatim, so a converted D1 dump
+      keeps its own rows' format, and the wire payload is unchanged —
+      `created_at` is never serialized, only ordered on. The newest 20 always
+      survive and are served newest-first, which is also what the redis/kvrocks
+      backends do (`lpush` + `ltrim` keeps the newest at the head), so the
+      three backends now agree instead of sqlite keeping stale entries on a
+      tie. The test asserts the exact newest-first list `[kw24 … kw5]` rather
+      than a set.
+
 ## Milestones
 
 Backend: B0 foundation, B1 storage, B2 auth + server-config and B3 search

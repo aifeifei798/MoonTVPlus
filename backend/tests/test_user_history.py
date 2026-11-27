@@ -92,22 +92,25 @@ def test_searchhistory_500s_on_a_non_string_keyword(client, cookie, clean_db):
 def test_searchhistory_dedupes(client, cookie, clean_db):
     for keyword in ("a", "b", "a"):
         _post(client, cookie, "/api/searchhistory", {"keyword": keyword})
-    # Re-adding `a` deletes the old row and re-inserts, so the order is b, a.
-    assert _get(client, cookie, "/api/searchhistory").json() == ["b", "a"]
+    # Re-adding `a` deletes the old row and re-inserts it with a fresh
+    # microsecond stamp (PLAN.md change 45), so it is the newest entry — the
+    # same order the redis backends give (lpush puts the re-add at the head).
+    assert _get(client, cookie, "/api/searchhistory").json() == ["a", "b"]
 
 
 def test_searchhistory_caps_at_twenty(client, cookie, clean_db):
     for i in range(25):
         _post(client, cookie, "/api/searchhistory", {"keyword": f"kw{i}"})
     history = _get(client, cookie, "/api/searchhistory").json()
-    # The cap is the client's 20, applied on read and on write. `CURRENT_TIMESTAMP`
-    # has second resolution, so 25 inserts in one test land on one timestamp and
-    # the write-side prune (`id NOT IN (… ORDER BY created_at DESC LIMIT 20)`)
-    # keeps the **first** 20 rows on the tie — the same SQL D1 ran, so this is
-    # upstream's behavior, not a port gap. The read-side `ORDER BY … LIMIT 20`
-    # is what keeps the newest 20 when the inserts are spread over time.
+    # `add_search_history` stamps an explicit microsecond timestamp (PLAN.md
+    # change 45), so rows never tie and both sides are deterministic: the
+    # write-side prune keeps the newest 20 and the read serves them newest-first,
+    # whatever the runner's wall clock does. (Under the old schema default,
+    # CURRENT_TIMESTAMP tied within a second and kept the **oldest** 20; the
+    # CI run that crossed a second boundary mid-burst kept kw5..kw24 and this
+    # assertion failed — backend-tests run 45262004117.)
     assert len(history) == 20
-    assert set(history) == {f"kw{i}" for i in range(20)}
+    assert history == [f"kw{i}" for i in range(24, 4, -1)]
 
 
 def test_searchhistory_delete_one_and_all(client, cookie, clean_db):
