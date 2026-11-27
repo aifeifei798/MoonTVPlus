@@ -48,8 +48,18 @@ def get_auth_info_from_cookie(request) -> dict | None:
 
 # ---------------------------------------------------------------------------
 # HMAC signatures (`generateSignature` / `verifySignature`)
-# HMAC-SHA256 keyed by env PASSWORD over the username.
+# HMAC-SHA256 keyed by env PASSWORD over the username. MOONTVPLUS_COOKIE_SECRET
+# overrides the key so a weak PASSWORD cannot be turned into forged cookies
+# offline (redteam round 5: the key IS the password, so guessing the password
+# bypasses the login limiter entirely).
 # ---------------------------------------------------------------------------
+
+
+COOKIE_SECRET = "MOONTVPLUS_COOKIE_SECRET"
+
+
+def signature_secret() -> str:
+    return env_raw(COOKIE_SECRET) or env_raw(PASSWORD) or ""
 
 
 def generate_signature(data: str, secret: str) -> str:
@@ -79,9 +89,10 @@ def generate_auth_cookie(
         auth_data["password"] = password
 
     env_password = env_raw(PASSWORD)
-    if username and env_password:
+    secret = signature_secret()
+    if username and secret:
         auth_data["username"] = username
-        auth_data["signature"] = generate_signature(username, env_password)
+        auth_data["signature"] = generate_signature(username, secret)
         auth_data["timestamp"] = int(time.time() * 1000)
 
     payload = json.dumps(auth_data, ensure_ascii=False, separators=(",", ":"))
@@ -204,7 +215,7 @@ def auth_gate_response(request, pathname: str):
         return _auth_failure(request, pathname)
 
     if auth_info.get("signature") and verify_signature(
-        auth_info["username"], auth_info["signature"], env(PASSWORD, "")
+        auth_info["username"], auth_info["signature"], signature_secret()
     ):
         return None
 
