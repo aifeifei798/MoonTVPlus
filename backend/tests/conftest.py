@@ -37,6 +37,9 @@ os.environ["NEXT_PUBLIC_STORAGE_TYPE"] = "sqlite"
 # 127.0.0.1, which the SSRF guard blocks by default. The guard itself is
 # covered by test_url_guard.py.
 os.environ["MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE"] = "1"
+# Likewise the login limiter: the suite authenticates once per test from one shared
+# TestClient peer, which would trip the 10/60 s window. test_url_guard.py re-enables it.
+os.environ["MOONTVPLUS_RATE_LIMIT_DISABLED"] = "1"
 
 from moontv.main import create_app  # noqa: E402
 from moontv.storage.db import Db  # noqa: E402

@@ -24,8 +24,12 @@ the loopback — and `validate_public_url`, the same checks without the whitelis
 which is what `/api/image-proxy` and the manifest's own AES-key/segment hosts
 get. The blacklist is also wider than upstream's string list: an IP literal is
 additionally decided by `ipaddress`, which is what catches IPv4-mapped IPv6
-(`::ffff:127.0.0.1`) and `fd00::/8`. Neither is reachable by a string pattern,
-and the mapped form was proved live against the shipped proxies.
+(`::ffff:127.0.0.1`) and `fd00::/8`; numeric IPv4 spellings `ipaddress` rejects
+but the resolver dials (`0x7f000001`, `0177.0.0.1`, `127.1`) are decided by
+`socket.inet_aton`; and names are decided by DNS resolution, which is what
+catches a public name whose A record points at loopback (`localtest.me`). The
+string list alone misses all three families, and the mapped form was proved live
+against the shipped proxies.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import socket
 
 from urllib.parse import urljoin, urlsplit
 
@@ -49,7 +54,7 @@ PRIVATE_HOST_PATTERNS = [
     re.compile(r"^172\.(1[6-9]|2[0-9]|3[01])\."),
     re.compile(r"^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\."),  # 运营商级 NAT (100.64/10)
     re.compile(r"^::1$"),
-    re.compile(r"^fc00:", re.IGNORECASE),
+    re.compile(r"^f[c-d]00:", re.IGNORECASE),
     re.compile(r"^fe80:", re.IGNORECASE),
     re.compile(r"^\[::1\]$"),
 ]
@@ -96,10 +101,15 @@ def is_blocked_host(hostname: str) -> bool:
       actually assigned is `fd00::/8`, which `^fc00:` does not match.
 
     So an IP literal is decided by `ipaddress` as well as by the patterns. A
-    hostname is not: the blacklist is a string check, and a public name whose A
-    record points at loopback is the one thing it cannot catch (see the PLAN.md
-    note). CGNAT `100.64.0.0/10` is not `is_private` in Python, so its pattern
-    stays.
+    hostname is decided by DNS resolution instead — see `resolves_to_private`,
+    which `_basic_url_check` applies to names. CGNAT `100.64.0.0/10` is not
+    `is_private` in Python, so its pattern stays.
+
+    A third family survives the literal branch: numeric IPv4 spellings that
+    `ipaddress` refuses to parse but glibc's resolver accepts — `0x7f000001`,
+    `0x7f.0.0.1`, `0177.0.0.1`, `127.1` (hex/octal/mixed/short forms all resolve
+    to `127.0.0.1` via `inet_aton`). They reach here as names, so the literal
+    branch decides them through `socket.inet_aton` too.
     """
     host = hostname.strip().lower()
     if not host:
@@ -108,11 +118,51 @@ def is_blocked_host(hostname: str) -> bool:
         return True
     if any(pattern.match(host) for pattern in PRIVATE_HOST_PATTERNS):
         return True
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
+    address = parse_host_address(host)
+    if address is None:
         return False
-    return address.is_private
+    return address.is_private or address.is_reserved
+
+
+def parse_host_address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The host as an address if it is one, else None (a DNS name).
+
+    `ipaddress.ip_address` covers the dotted/colon spellings; `socket.inet_aton`
+    covers the numeric spellings it rejects, which the resolver still dials.
+    """
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host))
+    except (OSError, ValueError):
+        return None
+
+
+def resolves_to_private(hostname: str) -> bool:
+    """True when a DNS name resolves to any private/reserved address.
+
+    Closes the gap the string blacklist cannot see: a public name whose A
+    record points at loopback (`localtest.me`, DNS rebind). Resolution is a
+    snapshot — a rebind between this check and the connect is the residual TOCTOU
+    the upstream `dns.lookup` guard shares; hop-by-hop revalidation in
+    `open_guarded` keeps the window to one request. Unresolvable names are not
+    blocked here (the fetch would fail anyway); only an address that would
+    actually reach the cluster is.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except OSError:
+        return False
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if address.is_private or address.is_reserved:
+            return True
+    return False
 
 
 def read_allow_hosts() -> list[str]:
@@ -132,6 +182,18 @@ def matches_allow_list(hostname: str, allow_hosts: list[str]) -> bool:
         elif host == pattern:
             return True
     return False
+
+
+def _host_from_netloc(netloc: str) -> str:
+    """Host extraction that `urlsplit.hostname` misses: an unbracketed IPv6 literal
+    (`http://fd00::1/x`) parses as host `fd00` with port `:1`, so a private literal
+    slips through as a DNS name. Read the netloc directly instead."""
+    host = netloc.rsplit("@", 1)[-1]
+    if host.startswith("["):
+        return host.split("]", 1)[0][1:]
+    if host.count(":") >= 2:
+        return host
+    return host.split(":", 1)[0]
 
 
 def _basic_url_check(raw: object) -> tuple[str | None, str]:
@@ -162,10 +224,20 @@ def _basic_url_check(raw: object) -> tuple[str | None, str]:
         return "仅支持 http/https 协议", ""
 
     # `urlsplit` reports no host as `None` where `new URL` reports `''`, and
-    # `isBlockedHost('')` is true either way.
-    hostname = parsed.hostname or ""
-    if not guard_allows_private() and is_blocked_host(hostname):
-        return "不允许访问该地址", hostname
+    # `isBlockedHost('')` is true either way. `urlsplit.hostname` also mis-parses
+    # an unbracketed IPv6 literal (`http://fd00::1/` → host `fd00`), so read the
+    # netloc directly instead.
+    hostname = _host_from_netloc(parsed.netloc)
+    if not guard_allows_private():
+        if is_blocked_host(hostname):
+            return "不允许访问该地址", hostname
+        # Names are decided by resolution, not by the string list: a public A
+        # record pointing at loopback (`localtest.me`) is the one bypass the
+        # patterns cannot see. The `MOONTVPLUS_URL_GUARD_ALLOW_PRIVATE` hatch
+        # reopens this too — it is the documented "this is my own machine"
+        # dev/test opt-out, and production leaves it unset.
+        if hostname and parse_host_address(hostname) is None and resolves_to_private(hostname):
+            return "不允许访问该地址", hostname
 
     return None, hostname
 

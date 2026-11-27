@@ -86,6 +86,23 @@ def create_app() -> FastAPI:
             return gated
         return await call_next(request)
 
+    # Added after auth_gate so it wraps it: the security headers land on the
+    # gate's own 307/401 responses too. The app never set these (redteam-report.md
+    # round 4): without X-Frame-Options the panel is frameable for clickjacking,
+    # without nosniff a text body can be executed as script, without a referrer
+    # policy full URLs leak to every external image host. HSTS only when the
+    # request actually arrived over TLS — uvicorn here is plain HTTP, so it stays
+    # off until TLS is fronted.
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if request.scope.get("scheme") == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
     for module in ROUTE_MODULES:
         for path, handler, methods in module.ROUTES:
             app.add_api_route(path, handler, methods=methods, include_in_schema=False)

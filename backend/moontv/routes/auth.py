@@ -12,6 +12,7 @@ from fastapi import Request, Response
 from ..auth import clear_auth_cookie, generate_auth_cookie, get_auth_info_from_cookie, set_auth_cookie
 from ..config import get_config
 from ..env import PASSWORD, USERNAME, STORAGE_TYPE, env, env_raw
+from ..ratelimit import client_ip, login_limiter, register_limiter
 from ..routes import json_response
 from ..storage.db import Db
 
@@ -22,6 +23,11 @@ from ..storage.db import Db
 
 
 async def login(request: Request) -> Response:
+    # Brute-force gate (redteam-report.md round 4): 20 rapid attempts were all
+    # answered, so a password list could run indefinitely. Failures are counted;
+    # a success is also counted, which only penalizes an attacker who guesses.
+    if not login_limiter.allow(client_ip(request)):
+        return json_response({"error": "尝试过于频繁，请稍后再试"}, 429)
     try:
         body = await request.json()
         username = body.get("username")
@@ -68,6 +74,8 @@ async def login(request: Request) -> Response:
 
 
 async def register(request: Request) -> Response:
+    if not register_limiter.allow(client_ip(request)):
+        return json_response({"error": "尝试过于频繁，请稍后再试"}, 429)
     try:
         config = await get_config()
         if not (config.get("UserConfig") or {}).get("AllowRegister"):

@@ -11,6 +11,13 @@ import { checkForUpdates, CURRENT_VERSION, UpdateStatus } from '@/lib/version';
 import { useSite } from '@/components/SiteProvider';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
+// 登录后只跳站内相对路径：'//' 开头是协议相对 URL（会被当作 //evil.com），
+// 'javascript:' 等 scheme 更不能交给 router.replace（redteam-report.md 第四轮）。
+function safeRedirect(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  return value;
+}
+
 // 版本显示组件
 function VersionDisplay() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
@@ -106,7 +113,7 @@ function LoginPageClient() {
       });
 
       if (res.ok) {
-        const redirect = searchParams.get('redirect') || '/';
+        const redirect = safeRedirect(searchParams.get('redirect'));
         router.replace(redirect);
       } else if (res.status === 401) {
         setError('密码错误');
@@ -135,7 +142,7 @@ function LoginPageClient() {
       });
 
       if (res.ok) {
-        const redirect = searchParams.get('redirect') || '/';
+        const redirect = safeRedirect(searchParams.get('redirect'));
         router.replace(redirect);
       } else {
         const data = await res.json().catch(() => ({}));
